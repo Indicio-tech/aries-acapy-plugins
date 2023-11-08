@@ -15,11 +15,10 @@ from aiohttp_apispec import (
 from aries_cloudagent.messaging.models.openapi import OpenAPISchema
 from aries_cloudagent.wallet.jwt import jwt_verify
 from marshmallow import fields
-from .models.cred_sup_record import OID4VCICredentialSupported
+from .models.supported_cred import SupportedCredential
 
 LOGGER = logging.getLogger(__name__)
 OID4VCI_ENDPOINT = getenv("OID4VCI_ENDPOINT")
-assert OID4VCI_ENDPOINT
 
 
 class IssueCredentialRequestSchema(OpenAPISchema):
@@ -66,9 +65,7 @@ async def oid_cred_issuer(request: web.Request):
     # Wallet query to retrieve credential definitions
     tag_filter = {"type": {"$in": ["sd_jwt", "jwt_vc_json"]}}
     async with profile.session() as session:
-        credentials_supported = await OID4VCICredentialSupported.query(
-            session, tag_filter
-        )
+        credentials_supported = await SupportedCredential.query(session, tag_filter)
 
     metadata = {
         "credential_issuer": f"{public_url}/",  # TODO: update path with wallet id
@@ -122,8 +119,8 @@ async def register(app: web.Application):
                 oid_cred_issuer,
                 allow_head=False,
             ),
-            # web.get("/auth-server/.well-known/oauth-authorization-server", self., allow_head=False),
-            # web.get("/auth-server/.well-known/openid-configuration", self., allow_head=False),
+            # TODO add .well-known/oauth-authorization-server
+            # TODO add .well-known/openid-configuration
             web.post("/draft-13/credential", issue_cred),
             web.post("/draft-11/credential", issue_cred),
             web.post("/draft-13/token", get_token),
