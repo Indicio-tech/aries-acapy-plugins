@@ -1,0 +1,57 @@
+.input-form-wrapper {
+  position: absolute;
+  background-color: #D9D9D9;
+  margin: 0;
+  display: flex;
+  flex-direction: column; /* Change from row to column */
+  justify-content: center;
+  align-items: center;
+  border-radius: 20px;
+  max-width: 25%;
+  top: 20%;
+  left: 50%;
+  padding: 3% 5% 5% 5%;
+  transform: translate(-50%, -50%);
+}
+
+.input-form-rows {
+  /* Remove the display and flex-direction properties */
+}
+
+.input-form-title {
+  font-family: "Roboto";
+  font-size: 40px;
+  margin-bottom: 20px; /* Add some margin to separate the title from the form */
+}
+
+.input-form-form {
+  text-align: left;
+}
+
+.input-form-label {
+  font-family: "Roboto";
+  font-size: 24px;
+}
+
+.input-form-rectangle {
+    width: 256px; /* Adjust the width as needed */
+    height: 25px; /* Adjust the height as needed */
+    border: 1px solid black; /* 1px black stroke */
+}
+
+.input-form-button-div {
+  align-items: center;
+}
+
+.input-form-button {
+    width: 150px; /* Adjust the width as needed */
+    height: 32px; /* Adjust the height as needed */
+    border: 0.25px solid black; /* 1px black stroke */
+    background-color: #F26923;
+    border-radius: 60px;
+    align-items: center;
+}
+
+.input-form-button:hover {
+  background-color: hsl(28, 100%, 60%); 
+}
