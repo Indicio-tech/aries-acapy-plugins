@@ -2,12 +2,11 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import "./InputForm.css"
 
-
 const InputForm = () => {
   const navigate = useNavigate();
   const [firstName, setFirstName] = useState('Bob');
   const [lastName, setLastName] = useState('Builder');
-  const [email, setEmail] = useState('bobthebuilder@professional.com');
+  const [email, setEmail] = useState('bobsthearchitect@email.com');
   const [did, setDid] = useState('');
   const [credential, setCredential] = useState('');
 
@@ -36,78 +35,82 @@ const InputForm = () => {
     
   };
 
- return (
-    <div className="input-form-wrapper">
-      <h2 className="input-form-title">OID4VCI Demo</h2>
+  return (
+   <div class="container" style={{padding: "3px"}}>
+     <div class="row">
+      <div class="col-md-3"></div>
+      <div class="col-md-6 input-wrapper">
+        <h1 class="input-h1">OID4VCI Demo</h1>
+        <hr />
+        <div>
+          <form class="input-form">
+              <div class="input-form-group">
+                <label htmlFor="firstName" class="input-label">First Name</label>
+                <br />
+                <input
+                  type="text"
+                  id="firstName"
+                  value={firstName}
+                  onChange={handleFirstNameChange}
+                  class="input-form-control"
+                />
+              </div>
 
-      <div>
-        <form className="input-form-form">
-          <div>
-            <label htmlFor="firstName" className="input-for-label">First Name:</label>
-            <br />
-            <input
-              type="text"
-              id="firstName"
-              value={firstName}
-              onChange={handleFirstNameChange}
-              className="input-form-rectangle"
-            />
-          </div>
+              <div class="input-form-group">
+                <label htmlFor="lastName" class="input-label">Last Name</label>
+                <br />
+                <input
+                  type="text"
+                  id="lastName"
+                  value={lastName}
+                  onChange={handleLastNameChange}
+                  class="input-form-control"
+                />
+              </div>
 
-          <div>
-            <label htmlFor="lastName" className="input-for-label">Last Name:</label>
-            <br />
-            <input
-              type="text"
-              id="lastName"
-              value={lastName}
-              onChange={handleLastNameChange}
-              className="input-form-rectangle"
-            />
-          </div>
+              <div class="input-form-group">
+                <label htmlFor="email" class="input-label">Email</label>
+                <br />
+                <input
+                  type="email"
+                  id="email"
+                  value={email}
+                  onChange={handleEmailChange}
+                  class="input-form-control"
+                />
+              </div>
 
-          <div>
-            <label htmlFor="email" classname="input-for-label">Email:</label>
-            <br />
-            <input
-              type="email"
-              id="email"
-              value={email}
-              onChange={handleEmailChange}
-              className="input-form-rectangle"
-            />
-          </div>
+              <div class="input-form-group">
+                <label htmlFor="did" class="input-label">DID</label>
+                <br />
+                <input
+                  type="did"
+                  id="did"
+                  value={did}
+                  onChange={handleDidChange}
+                  class="input-form-control"
+                />
+              </div>
 
-          <div>
-            <label htmlFor="did" classname="input-for-label">Did:</label>
-            <br />
-            <input
-              type="did"
-              id="did"
-              value={did}
-              onChange={handleDidChange}
-              className="input-form-rectangle"
-            />
-          </div>
+              <div class="input-form-group">
+                <label htmlFor="credential" class="input-label">Credential</label>
+                <br />
+                <input
+                  type="credential"
+                  id="credential"
+                  value={credential}
+                  onChange={handleCredentialChange}
+                  class="input-form-control"
+                />
+              </div>
 
-          <div>
-            <label htmlFor="credential" classname="input-for-label">Credential:</label>
-            <br />
-            <input
-              type="credential"
-              id="credential"
-              value={credential}
-              onChange={handleCredentialChange}
-              className="input-form-rectangle"
-            />
+              <div class="input-form-group">
+                <button type="button" onClick={handleShareClick} class="btn btn-warning btn-lg input-form-button" data-toggle="button" aria-pressed="false" autocomplete="off">Share</button>
+              </div>
+            </form>
           </div>
-
-          <div className="input-form-button-div">
-            <button type="button" onClick={handleShareClick} className="input-form-button">
-              Share
-            </button>
-          </div>
-        </form>
+        </div>
+      <div class="col-md-3"></div>
       </div>
     </div>
   );

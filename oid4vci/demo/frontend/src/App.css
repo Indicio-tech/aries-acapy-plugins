@@ -36,3 +36,14 @@
     transform: rotate(360deg);
   }
 }
+
+@font-face {
+  font-family: open-sans;
+  src: url(../public/OpenSans-Regular.ttf);
+}
+
+.open-sans {
+  font-family: open-sans;
+}
+
+
