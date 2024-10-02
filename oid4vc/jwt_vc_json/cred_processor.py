@@ -9,6 +9,7 @@ from aries_cloudagent.admin.request_context import AdminRequestContext
 from aries_cloudagent.core.profile import Profile
 from pydid import DIDUrl
 
+from jwt_vc_json.supported_credential import JwtSupportedCredential
 from oid4vc.cred_processor import (
     CredProcessorError,
     CredVerifier,
@@ -37,8 +38,8 @@ class JwtVcJsonCredProcessor(Issuer, CredVerifier, PresVerifier):
         context: AdminRequestContext,
     ) -> Any:
         """Return signed credential in JWT format."""
-        assert supported.format_data
-        if not types_are_subset(body.get("types"), supported.format_data.get("types")):
+        assert isinstance(supported, JwtSupportedCredential)
+        if not types_are_subset(body.get("types"), supported.type):
             raise CredProcessorError("Requested types does not match offer.")
 
         current_time = datetime.datetime.now(datetime.timezone.utc)
@@ -57,7 +58,8 @@ class JwtVcJsonCredProcessor(Issuer, CredVerifier, PresVerifier):
 
         payload = {
             "vc": {
-                **(supported.vc_additional_data or {}),
+                "type": supported.type,
+                "@context": supported.context,
                 "id": f"urn:uuid:{cred_id}",
                 "issuer": ex_record.issuer_id,
                 "issuanceDate": formatted_time,
@@ -81,7 +83,9 @@ class JwtVcJsonCredProcessor(Issuer, CredVerifier, PresVerifier):
 
         return jws
 
-    def validate_credential_subject(self, supported: SupportedCredential, subject: dict):
+    def validate_credential_subject(
+        self, supported: SupportedCredential, subject: dict
+    ):
         """Validate the credential subject."""
         pass
 
@@ -97,7 +101,9 @@ class JwtVcJsonCredProcessor(Issuer, CredVerifier, PresVerifier):
             payload=res.payload,
         )
 
-    async def verify_credential(self, profile: Profile, credential: Any) -> VerifyResult:
+    async def verify_credential(
+        self, profile: Profile, credential: Any
+    ) -> VerifyResult:
         """Verify a credential in JWT VC format."""
         return await self.verify(profile, credential)
 

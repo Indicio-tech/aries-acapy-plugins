@@ -12,6 +12,7 @@ from aries_cloudagent.core.util import SHUTDOWN_EVENT_PATTERN, STARTUP_EVENT_PAT
 from aries_cloudagent.resolver.did_resolver import DIDResolver
 
 from jwt_vc_json.cred_processor import JwtVcJsonCredProcessor
+from jwt_vc_json.supported_credential import JwtSupportedCredential
 from oid4vc.cred_processor import CredProcessors
 from .jwk import DID_JWK, P256
 
@@ -47,6 +48,7 @@ async def setup(context: InjectionContext):
     processors.register_cred_verifier("jwt_vc", jwt_vc_json)
     processors.register_pres_verifier("jwt_vp_json", jwt_vc_json)
     processors.register_pres_verifier("jwt_vp", jwt_vc_json)
+    processors.register_supported_cred("jwt_vc_json", JwtSupportedCredential)
 
     context.injector.bind_instance(CredProcessors, processors)
 

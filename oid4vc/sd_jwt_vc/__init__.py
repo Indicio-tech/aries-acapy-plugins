@@ -5,6 +5,7 @@ from importlib.util import find_spec
 from aries_cloudagent.config.injection_context import InjectionContext
 from sd_jwt_vc.cred_processor import SdJwtCredIssueProcessor
 from oid4vc.cred_processor import CredProcessors
+from sd_jwt_vc.supported_credential import SdJwtSupportedCredential
 
 jsonpointer = find_spec("jsonpointer")
 if not jsonpointer:
@@ -18,3 +19,4 @@ async def setup(context: InjectionContext):
     processors.register_issuer("vc+sd-jwt", sd_jwt)
     processors.register_cred_verifier("vc+sd-jwt", sd_jwt)
     processors.register_pres_verifier("vc+sd-jwt", sd_jwt)
+    processors.register_supported_cred("vc+sd-jwt", SdJwtSupportedCredential)

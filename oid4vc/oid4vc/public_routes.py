@@ -95,7 +95,8 @@ async def credential_issuer_metadata(request: web.Request):
 
     async with context.session() as session:
         # TODO If there's a lot, this will be a problem
-        credentials_supported = await SupportedCredential.query(session)
+        processors = context.inject(CredProcessors)
+        credentials_supported = await processors.retrieve_all_types(session)
 
     metadata = {
         "credential_issuer": f"{public_url}/",

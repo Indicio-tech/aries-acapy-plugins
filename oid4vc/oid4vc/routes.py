@@ -38,6 +38,10 @@ from aries_askar import Key, KeyAlg
 from marshmallow import fields
 from marshmallow.validate import OneOf
 
+from jwt_vc_json.supported_credential import (
+    JwtSupportedCredential,
+    JwtSupportedCredentialSchema,
+)
 from oid4vc.cred_processor import CredProcessors
 from oid4vc.jwk import DID_JWK, P256
 from oid4vc.models.presentation import OID4VPPresentation, OID4VPPresentationSchema
@@ -366,80 +370,11 @@ async def get_cred_offer(request: web.BaseRequest):
     return web.json_response(offer)
 
 
-class SupportedCredCreateRequestSchema(OpenAPISchema):
-    """Schema for SupportedCredCreateRequestSchema."""
-
-    format = fields.Str(required=True, metadata={"example": "jwt_vc_json"})
-    identifier = fields.Str(
-        data_key="id", required=True, metadata={"example": "UniversityDegreeCredential"}
-    )
-    cryptographic_binding_methods_supported = fields.List(
-        fields.Str(), metadata={"example": ["did"]}
-    )
-    cryptographic_suites_supported = fields.List(
-        fields.Str(), metadata={"example": ["ES256K"]}
-    )
-    display = fields.List(
-        fields.Dict(),
-        metadata={
-            "example": [
-                {
-                    "name": "University Credential",
-                    "locale": "en-US",
-                    "logo": {
-                        "url": "https://w3c-ccg.github.io/vc-ed/plugfest-1-2022/images/JFF_LogoLockup.png",
-                        "alt_text": "a square logo of a university",
-                    },
-                    "background_color": "#12107c",
-                    "text_color": "#FFFFFF",
-                }
-            ]
-        },
-    )
-    format_data = fields.Dict(
-        required=False,
-        metadata={
-            "description": (
-                "Data specific to the credential format to be included in issuer "
-                "metadata."
-            ),
-            "example": {
-                "credentialSubject": {
-                    "given_name": {
-                        "display": [{"name": "Given Name", "locale": "en-US"}]
-                    },
-                    "last_name": {"display": [{"name": "Surname", "locale": "en-US"}]},
-                    "degree": {},
-                    "gpa": {"display": [{"name": "GPA"}]},
-                },
-                "types": ["VerifiableCredential", "UniversityDegreeCredential"],
-            },
-        },
-    )
-    vc_additional_data = fields.Dict(
-        required=False,
-        metadata={
-            "description": (
-                "Additional data to be included in each credential of this type. "
-                "This is for data that is not specific to the subject but required "
-                "by the credential format and is included in every credential."
-            ),
-            "example": {
-                "@context": [
-                    "https://www.w3.org/2018/credentials/v1",
-                    "https://www.w3.org/2018/credentials/examples/v1",
-                ],
-                "type": ["VerifiableCredential", "UniversityDegreeCredential"],
-            },
-        },
-    )
-
-
-@docs(tags=["oid4vci"], summary="Register a Oid4vci credential")
-@request_schema(SupportedCredCreateRequestSchema())
-@response_schema(SupportedCredentialSchema())
+@docs(tags=["oid4vci"], summary="Register a JWT-VC credential")
+@request_schema(JwtSupportedCredentialSchema())
+@response_schema(JwtSupportedCredentialSchema())
 @tenant_authentication
-async def supported_credential_create(request: web.Request):
+async def jwt_supported_credential_create(request: web.Request):
     """Request handler for creating a credential supported record."""
     context = request["context"]
     assert isinstance(context, AdminRequestContext)
@@ -447,11 +382,8 @@ async def supported_credential_create(request: web.Request):
 
     body: Dict[str, Any] = await request.json()
     LOGGER.info(f"body: {body}")
-    body["identifier"] = body.pop("id")
 
-    record = SupportedCredential(
-        **body,
-    )
+    record = JwtSupportedCredential.deserialize(body)
 
     registered_processors = context.inject(CredProcessors)
     if record.format not in registered_processors.issuers:
@@ -943,7 +875,8 @@ async def register(app: web.Application):
             web.post("/oid4vci/exchange/create", exchange_create),
             web.delete("/oid4vci/exchange/records/{exchange_id}", exchange_delete),
             web.post(
-                "/oid4vci/credential-supported/create", supported_credential_create
+                "/oid4vci/credential-supported/jwt/create",
+                jwt_supported_credential_create,
             ),
             web.get(
                 "/oid4vci/credential-supported/records",

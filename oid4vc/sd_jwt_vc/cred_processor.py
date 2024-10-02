@@ -30,6 +30,7 @@ from oid4vc.jwt import jwt_sign, jwt_verify
 from oid4vc.models.exchange import OID4VCIExchangeRecord
 from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.pop_result import PopResult
+from sd_jwt_vc.supported_credential import SdJwtSupportedCredential
 
 LOGGER = logging.getLogger(__name__)
 # Certain claims, if present, are never to be included in the selective disclosures list.
@@ -71,13 +72,12 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
         context: AdminRequestContext,
     ) -> Any:
         """Return a signed credential in SD-JWT format."""
-        assert supported.format_data
-        assert supported.vc_additional_data
+        assert isinstance(supported, SdJwtSupportedCredential)
 
-        sd_list = supported.vc_additional_data.get("sd_list", [])
+        sd_list = supported.sd_list or []
         assert isinstance(sd_list, list)
 
-        if body.get("vct") != supported.format_data.get("vct"):
+        if body.get("vct") != supported.vct:
             raise CredProcessorError("Requested vct does not match offer.")
 
         current_time = int(time.time())
@@ -100,7 +100,7 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
 
         claims = {
             **claims,
-            "vct": supported.format_data["vct"],
+            "vct": supported.vct,
             "iss": ex_record.issuer_id,
             "iat": current_time,
         }
@@ -124,11 +124,10 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
         self, supported: SupportedCredential, subject: dict
     ):
         """Validate the credential subject."""
-        vc_additional = supported.vc_additional_data
-        assert vc_additional
-        assert supported.format_data
-        claims_metadata = supported.format_data.get("claims")
-        sd_list = vc_additional.get("sd_list", [])
+        assert isinstance(supported, SdJwtSupportedCredential)
+
+        claims_metadata = supported.claims
+        sd_list = supported.sd_list or []
 
         # TODO this will only enforce mandatory fields that are selectively disclosable
         # We should validate that disclosed claims that are mandatory are also present
@@ -141,6 +140,8 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
 
             metadata = pointer.resolve(claims_metadata)
             if metadata:
+                if not isinstance(metadata, dict):
+                    raise CredProcessorError("Invalid claim metadata")
                 metadata = ClaimMetadata(**metadata)
             else:
                 metadata = ClaimMetadata()
@@ -160,17 +161,9 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
     def validate_supported_credential(self, supported: SupportedCredential):
         """Validate a supported SD JWT VC Credential."""
 
-        format_data = supported.format_data
-        vc_additional = supported.vc_additional_data
-        if not format_data:
-            raise ValueError("SD-JWT VC needs format_data")
-        if not format_data.get("vct"):
-            raise ValueError('SD-JWT VC needs format_data["vct"]')
-        if not vc_additional:
-            raise ValueError("SD-JWT VC needs vc_additional_data")
+        assert isinstance(supported, SdJwtSupportedCredential)
 
-        sd_list = vc_additional.get("sd_list", [])
-
+        sd_list = supported.sd_list or []
         bad_claims = []
         for sd in sd_list:
             if (
@@ -185,7 +178,8 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
             raise SDJWTError(
                 "The following claims cannot be "
                 f"included in the selective disclosures: {bad_claims} "
-                "\nThese values are protected and cannot be selectively disclosable: "
+                "\nThe following values are protected "
+                "and cannot be selectively disclosable: "
                 f"{', '.join(FLAT_CLAIMS_NEVER_SD)}, /cnf, /status "
                 "\nOr, you provided an empty string, or a string that ends with a `/` "
                 "which are invalid for this purpose."

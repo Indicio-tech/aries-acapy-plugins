@@ -294,7 +294,11 @@ class PresentationExchangeEvaluator:
                 assert item.path_nested.path
                 path = jsonpath.parse(item.path_nested.path)
                 values = path.find(presentation)
-                if len(values) != 1:
+                if len(values) == 0:
+                    return PexVerifyResult(
+                        details=f"No value found for path {item.path_nested.path}"
+                    )
+                if len(values) > 1:
                     return PexVerifyResult(
                         details="More than one value found for path "
                         f"{item.path_nested.path}"

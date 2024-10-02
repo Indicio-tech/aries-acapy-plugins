@@ -29,8 +29,6 @@ class SupportedCredential(BaseRecord):
         cryptographic_binding_methods_supported: Optional[List[str]] = None,
         cryptographic_suites_supported: Optional[List[str]] = None,
         display: Optional[List[Dict]] = None,
-        format_data: Optional[Dict] = None,
-        vc_additional_data: Optional[Dict] = None,
         **kwargs,
     ):
         """Initialize a new SupportedCredential Record.
@@ -47,10 +45,6 @@ class SupportedCredential(BaseRecord):
             cryptographic_suites_supported (Optional[List[str]]): A list of
                 supported cryptographic suites.
             display (Optional[List[Dict]]): Display characteristics of the credential.
-            format_data (Optional[Dict]): Format sepcific attributes; e.g.
-                credentialSubject for jwt_vc_json
-            vc_additional_data (Optional[Dict]): Additional data to include in the
-                Verifiable Credential.
             kwargs: Keyword arguments to allow generic initialization of the record.
         """
         super().__init__(supported_cred_id, **kwargs)
@@ -61,56 +55,15 @@ class SupportedCredential(BaseRecord):
         )
         self.cryptographic_suites_supported = cryptographic_suites_supported
         self.display = display
-        self.format_data = format_data
-        self.vc_additional_data = vc_additional_data
 
     @property
     def supported_cred_id(self):
         """Accessor for the ID associated with this record."""
         return self._id
 
-    @property
-    def record_value(self) -> dict:
-        """Return dict representation of the exchange record for storage."""
-        return {
-            prop: getattr(self, prop)
-            for prop in (
-                "format",
-                "identifier",
-                "cryptographic_binding_methods_supported",
-                "cryptographic_suites_supported",
-                "display",
-                "format_data",
-                "vc_additional_data",
-            )
-        }
-
     def to_issuer_metadata(self) -> dict:
-        """Return a representation of this record as issuer metadata.
-
-        To arrive at the structure defined by the specification, it must be
-        derived from this record (the record itself is not exactly aligned with
-        the spec).
-        """
-        issuer_metadata = {
-            prop: value
-            for prop in (
-                "format",
-                "cryptographic_binding_methods_supported",
-                "cryptographic_suites_supported",
-                "display",
-            )
-            if (value := getattr(self, prop)) is not None
-        }
-
-        issuer_metadata["id"] = self.identifier
-
-        # Flatten the format specific metadata into the object
-        issuer_metadata = {
-            **issuer_metadata,
-            **(self.format_data or {}),
-        }
-        return issuer_metadata
+        """Return a representation of this record as issuer metadata."""
+        raise NotImplementedError()
 
 
 class SupportedCredentialSchema(BaseRecordSchema):
@@ -127,7 +80,7 @@ class SupportedCredentialSchema(BaseRecordSchema):
     )
     format = fields.Str(required=True, metadata={"example": "jwt_vc_json"})
     identifier = fields.Str(
-        required=True, metadata={"example": "UniversityDegreeCredential"}
+        data_key="id", required=True, metadata={"example": "UniversityDegreeCredential"}
     )
     cryptographic_binding_methods_supported = fields.List(
         fields.Str(), metadata={"example": []}
@@ -150,32 +103,5 @@ class SupportedCredentialSchema(BaseRecordSchema):
                     "text_color": "#FFFFFF",
                 }
             ]
-        },
-    )
-    format_data = fields.Dict(
-        required=False,
-        metadata={
-            "example": {
-                "credentialSubject": {
-                    "given_name": {
-                        "display": [{"name": "Given Name", "locale": "en-US"}]
-                    },
-                    "last_name": {"display": [{"name": "Surname", "locale": "en-US"}]},
-                    "degree": {},
-                    "gpa": {"display": [{"name": "GPA"}]},
-                }
-            }
-        },
-    )
-    vc_additional_data = fields.Dict(
-        required=False,
-        metadata={
-            "example": {
-                "@context": [
-                    "https://www.w3.org/2018/credentials/v1",
-                    "https://www.w3.org/2018/credentials/examples/v1",
-                ],
-                "type": ["VerifiableCredential", "UniversityDegreeCredential"],
-            }
         },
     )
