@@ -82,7 +82,7 @@ async def offer(controller: Controller, issuer_did: str, supported_cred_id: str)
     offer_uri = "openid-credential-offer://?" + urlencode(
         {"credential_offer": json.dumps(offer)}, quote_via=quote
     )
-    yield offer_uri
+    yield offer["offer_uri"]
 
 
 @pytest_asyncio.fixture
@@ -99,7 +99,7 @@ async def sdjwt_supported_cred_id(controller: Controller, issuer_did: str):
                     "name": "ID Card",
                     "locale": "en-US",
                     "background_color": "#12107c",
-                    "text_color": "#FFFFFF"
+                    "text_color": "#FFFFFF",
                 }
             ],
             "format_data": {
@@ -112,6 +112,18 @@ async def sdjwt_supported_cred_id(controller: Controller, issuer_did: str):
                     "family_name": {
                         "mandatory": True,
                         "value_type": "string",
+                    },
+                    "something_nested": {
+                        "key1": {
+                            "mandatory": True,
+                            "value_type": "string",
+                        },
+                        "key2": {
+                            "nested_again": {
+                                "mandatory": True,
+                                "value_type": "string",
+                            }
+                        },
                     },
                     "age_equal_or_over": {
                         "12": {
@@ -138,28 +150,33 @@ async def sdjwt_supported_cred_id(controller: Controller, issuer_did: str):
                             "mandatory": True,
                             "value_type": "boolean",
                         },
-                    }
-                }
+                    },
+                },
             },
             "vc_additional_data": {
                 "sd_list": [
                     "/given_name",
                     "/family_name",
+                    "/something_nested/key1",
+                    # "/something_nested/key2",
+                    "/something_nested/key2/nested_again",
                     "/age_equal_or_over/12",
                     "/age_equal_or_over/14",
                     "/age_equal_or_over/16",
                     "/age_equal_or_over/18",
                     "/age_equal_or_over/21",
-                    "/age_equal_or_over/65"
+                    "/age_equal_or_over/65",
                 ]
-            }
+            },
         },
     )
     yield supported["supported_cred_id"]
 
 
 @pytest_asyncio.fixture
-async def sdjwt_offer(controller: Controller, issuer_did: str, sdjwt_supported_cred_id: str):
+async def sdjwt_offer(
+    controller: Controller, issuer_did: str, sdjwt_supported_cred_id: str
+):
     """Create a cred offer for an SD-JWT VC."""
     exchange = await controller.post(
         "/oid4vci/exchange/create",
@@ -168,6 +185,12 @@ async def sdjwt_offer(controller: Controller, issuer_did: str, sdjwt_supported_c
             "credential_subject": {
                 "given_name": "Erika",
                 "family_name": "Mustermann",
+                "something_nested": {
+                    "key1": "val1",
+                    "key2": {
+                        "nested_again": "val2",
+                    },
+                },
                 "source_document_type": "id_card",
                 "age_equal_or_over": {
                     "12": True,
@@ -175,8 +198,8 @@ async def sdjwt_offer(controller: Controller, issuer_did: str, sdjwt_supported_c
                     "16": True,
                     "18": True,
                     "21": True,
-                    "65": False
-                }
+                    "65": False,
+                },
             },
             "verification_method": issuer_did + "#0",
         },
@@ -188,7 +211,7 @@ async def sdjwt_offer(controller: Controller, issuer_did: str, sdjwt_supported_c
     offer_uri = "openid-credential-offer://?" + urlencode(
         {"credential_offer": json.dumps(offer)}, quote_via=quote
     )
-    yield offer_uri
+    yield offer["offer_uri"]
 
 
 @pytest_asyncio.fixture
@@ -219,7 +242,10 @@ async def presentation_definition_id(controller: Controller, issuer_did: str):
                                         "$.vc.credentialSubject.name",
                                         "$.credentialSubject.name",
                                     ],
-                                    "filter": {"type": "string", "pattern": "^.{1,64}$"},
+                                    "filter": {
+                                        "type": "string",
+                                        "pattern": "^.{1,64}$",
+                                    },
                                 },
                             ]
                         },
@@ -240,9 +266,7 @@ async def sdjwt_presentation_definition_id(controller: Controller, issuer_did: s
             "pres_def": {
                 "id": str(uuid4()),
                 "purpose": "Present basic profile info",
-                "format": {
-                    "vc+sd-jwt": {}
-                },
+                "format": {"vc+sd-jwt": {}},
                 "input_descriptors": [
                     {
                         "id": "ID Card",
@@ -252,27 +276,27 @@ async def sdjwt_presentation_definition_id(controller: Controller, issuer_did: s
                             "limit_disclosure": "required",
                             "fields": [
                                 {
-                                    "path": [
-                                        "$.vct"
-                                    ],
-                                    "filter": {
-                                        "type": "string"
-                                    }
+                                    "path": ["$.vct"],
+                                    "filter": {"type": "string"},
                                 },
                                 {
-                                    "path": [
-                                        "$.family_name"
-                                    ]
+                                    "path": ["$.family_name"],
                                 },
                                 {
-                                    "path": [
-                                        "$.given_name"
-                                    ]
-                                }
-                            ]
-                        }
+                                    "path": ["$.given_name"],
+                                },
+                                {
+                                    "path": ["$.something_nested.key1"],
+                                    "filter": {"type": "string"},
+                                },
+                                {
+                                    "path": ["$.something_nested.key2.nested_again"],
+                                    # "filter": {"type": "string"},
+                                },
+                            ],
+                        },
                     }
-                ]
+                ],
             }
         },
     )
@@ -289,10 +313,10 @@ async def request_uri(
         json={
             "pres_def_id": presentation_definition_id,
             "vp_formats": {
-                "jwt_vc_json": { "alg": [ "ES256", "EdDSA" ] },
-                "jwt_vp_json": { "alg": [ "ES256", "EdDSA" ] },
-                "jwt_vc": { "alg": [ "ES256", "EdDSA" ] },
-                "jwt_vp": { "alg": [ "ES256", "EdDSA" ] },
+                "jwt_vc_json": {"alg": ["ES256", "EdDSA"]},
+                "jwt_vp_json": {"alg": ["ES256", "EdDSA"]},
+                "jwt_vc": {"alg": ["ES256", "EdDSA"]},
+                "jwt_vp": {"alg": ["ES256", "EdDSA"]},
             },
         },
     )
@@ -310,12 +334,214 @@ async def sdjwt_request_uri(
             "pres_def_id": sdjwt_presentation_definition_id,
             "vp_formats": {
                 "vc+sd-jwt": {
-                    "sd-jwt_alg_values": [
-                        "ES256", "EdDSA"
-                    ],
-                    "kb-jwt_alg_values": [
-                        "ES256", "EdDSA"
-                    ]
+                    "sd-jwt_alg_values": ["ES256", "EdDSA"],
+                    "kb-jwt_alg_values": ["ES256", "EdDSA"],
+                }
+            },
+        },
+    )
+    yield exchange["request_uri"]
+
+
+@pytest_asyncio.fixture
+async def sdjwt_epassport_supported_cred_id(
+    controller,
+):
+
+    body = {
+        "vct": "IATA_One_ID_ePassport",
+        "claims": {
+            "@context": {"value_type": "array", "mandatory": True},
+            "type": {"value_type": "array", "mandatory": True},
+            "issuer": {"value_type": "string"},
+            "issuanceDate": {"value_type": "string", "mandatory": True},
+            "expirationDate": {"value_type": "string", "mandatory": True},
+            "credentialSubject": {
+                "id": {"value_type": "string"},
+                "electronicPassport": {
+                    "dataGroup1": {
+                        "birthdate": {"value_type": "string"},
+                        "docTypeCode": {"value_type": "string"},
+                        "expiryDate": {"value_type": "string"},
+                        "sexCode": {"value_type": "string"},
+                        "holdersName": {"value_type": "string"},
+                        "issuerCode": {"value_type": "string"},
+                        "natlCode": {"value_type": "string"},
+                        "passportNumberIdentifier": {"value_type": "string"},
+                    },
+                    "dataGroup2EncodedFaceBiometrics": {
+                        "faceBiometricDataEncodedPicture": {"value_type": "string"}
+                    },
+                    "dataGroup15": {
+                        "activeAuthentication": {
+                            "publicKeyBinaryObject": {"value_type": "string"}
+                        }
+                    },
+                    "digitalTravelCredential": {
+                        "dTCContentInfo": {"value_type": "string"}
+                    },
+                    "docSecurityObject": {
+                        "digestHashAlgorithmIdentifier": {"value_type": "string"},
+                        "versionNumber": {"value_type": "string"},
+                        "dataGroupHash": {"value_type": "array"},
+                    },
+                },
+            },
+            "credentialSchema": {
+                "id": {"value_type": "string"},
+                "type": {"value_type": "string"},
+            },
+        },
+    }
+
+    supported = await controller.post(
+        "/oid4vci/credential-supported/create",
+        json={
+            "format": "vc+sd-jwt",
+            "id": "IDCard",
+            "cryptographic_binding_methods_supported": ["jwk"],
+            "display": [
+                {
+                    "name": "ID Card",
+                    "locale": "en-US",
+                    "background_color": "#12107c",
+                    "text_color": "#FFFFFF",
+                }
+            ],
+            "format_data": body,
+            "vc_additional_data": {
+                "sd_list": [
+                    "/credentialSubject/",
+                    "/credentialSubject/electronicPassport/",
+                    "/credentialSubject/electronicPassport/dataGroup1/",
+                    "/credentialSubject/electronicPassport/dataGroup1/birthdate",
+                    "/credentialSubject/electronicPassport/dataGroup1/docTypeCode",
+                    "/credentialSubject/electronicPassport/dataGroup1/expiryDate",
+                    "/credentialSubject/electronicPassport/dataGroup1/sexCode",
+                    "/credentialSubject/electronicPassport/dataGroup1/holdersName",
+                    "/credentialSubject/electronicPassport/dataGroup1/issuerCode",
+                    "/credentialSubject/electronicPassport/dataGroup1/holdersName",
+                    "/credentialSubject/electronicPassport/dataGroup1/natlCode",
+                    "/credentialSubject/electronicPassport/dataGroup1/passportNumberIdentifier",
+                ]
+            },
+        },
+    )
+
+    yield supported["supported_cred_id"]
+
+
+@pytest_asyncio.fixture
+async def sdjwt_epassport_offer(
+    controller, issuer_did: str, sdjwt_epassport_supported_cred_id: str
+):
+    exchange = await controller.post(
+        "/oid4vci/exchange/create",
+        json={
+            "supported_cred_id": sdjwt_epassport_supported_cred_id,
+            "credential_subject": {
+                "@context": ["context string"],
+                "type": ["type string"],
+                "issuer": issuer_did,
+                "issuanceDate": "today",
+                "expirationDate": "tomorrow",
+                "credentialSubject": {
+                    "id": "cred_id",
+                    "electronicPassport": {
+                        "dataGroup1": {
+                            "birthdate": "a while ago",
+                            "docTypeCode": "1234",
+                            "expiryDate": "in a while",
+                            "sexCode": "M",
+                            "holdersName": "Somefun referencename",
+                            "issuerCode": "DMV",
+                            "natlCode": "USA",
+                            "passportNumberIdentifier": "passportID",
+                        },
+                        "dataGroup2EncodedFaceBiometrics": {
+                            "faceBiometricDataEncodedPicture": "face pic"
+                        },
+                        "dataGroup15": {
+                            "activeAuthentication": {"publicKeyBinaryObject": "asdf"}
+                        },
+                        "digitalTravelCredential": {"dTCContentInfo": "dtc info"},
+                        "docSecurityObject": {
+                            "digestHashAlgorithmIdentifier": "Has alg",
+                            "versionNumber": "1",
+                            "dataGroupHash": ["data hash array"],
+                        },
+                    },
+                },
+                "credentialSchema": {
+                    "id": "SchemaID",
+                    "type": "ePassport",
+                },
+            },
+            "verification_method": issuer_did + "#0",
+        },
+    )
+
+    offer = await controller.get(
+        "/oid4vci/credential-offer",
+        params={"exchange_id": exchange["exchange_id"]},
+    )
+
+    yield offer["offer_uri"]
+
+
+async def sdjwt_epassport_presentation_definition_id(
+    controller: Controller, issuer_did: str
+):
+
+    record = await controller.post(
+        "/oid4vp/presentation-definition",
+        json={
+            "pres_def": {
+                "id": str(uuid4()),
+                "purpose": "Present basic profile info",
+                "format": {"vc+sd-jwt": {}},
+                "input_descriptors": [
+                    {
+                        "id": "ID Card",
+                        "name": "Profile",
+                        "purpose": "Present basic profile info",
+                        "constraints": {
+                            "limit_disclosure": "required",
+                            "fields": [
+                                {
+                                    "path": ["$.vct"],
+                                    "filter": {"type": "string"},
+                                },
+                                {
+                                    "path": [
+                                        "$.credentialSubject.electronicPassport.dataGroup1.docTypeCode"
+                                    ],
+                                },
+                            ],
+                        },
+                    }
+                ],
+            }
+        },
+    )
+    yield record["pres_def_id"]
+
+
+@pytest_asyncio.fixture
+async def sdjwt_epassport_request_uri(
+    controller: Controller,
+    issuer_did: str,
+    sdjwt_epassport_presentation_definition_id: str,
+):
+    """Create a credential offer."""
+    exchange = await controller.post(
+        "/oid4vp/request",
+        json={
+            "pres_def_id": sdjwt_epassport_presentation_definition_id,
+            "vp_formats": {
+                "vc+sd-jwt": {
+                    "sd-jwt_alg_values": ["ES256", "EdDSA"],
+                    "kb-jwt_alg_values": ["ES256", "EdDSA"],
                 }
             },
         },

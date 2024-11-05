@@ -10,9 +10,9 @@ from aiohttp_apispec import (
     request_schema,
     response_schema,
 )
-from aries_cloudagent.admin.decorators.auth import tenant_authentication
-from aries_cloudagent.admin.request_context import AdminRequestContext
-from aries_cloudagent.messaging.models.openapi import OpenAPISchema
+from acapy_agent.admin.decorators.auth import tenant_authentication
+from acapy_agent.admin.request_context import AdminRequestContext
+from acapy_agent.messaging.models.openapi import OpenAPISchema
 from marshmallow import fields
 
 
@@ -121,7 +121,7 @@ class SdJwtSupportedCredCreateReq(OpenAPISchema):
                 "/is_over_18",
                 "/is_over_21",
                 "/is_over_65",
-            ]
+            ],
         },
     )
 
@@ -129,12 +129,14 @@ class SdJwtSupportedCredCreateReq(OpenAPISchema):
 @docs(
     tags=["oid4vci"],
     summary="Register a configuration for a supported SD-JWT VC credential",
-    description=dedent("""
+    description=dedent(
+        """
     This endpoint feeds into the Credential Issuer Metadata reported by the Issuer to its clients.
 
     See the SD-JWT VC profile for more details on these properties:
     https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-ID1.html#name-credential-issuer-metadata-6
-    """), # noqa
+    """
+    ),  # noqa
 )
 @request_schema(SdJwtSupportedCredCreateReq())
 @response_schema(SupportedCredentialSchema())
@@ -185,7 +187,8 @@ async def register(app: web.Application):
     app.add_routes(
         [
             web.post(
-                "/oid4vci/credential-supported/create/sd-jwt", supported_credential_create
+                "/oid4vci/credential-supported/create/sd-jwt",
+                supported_credential_create,
             ),
         ]
     )

@@ -20,7 +20,9 @@ async def test_accept_credential_offer_sdjwt(credo: CredoWrapper, sdjwt_offer: s
 
 @pytest.mark.interop
 @pytest.mark.asyncio
-async def test_accept_auth_request(controller: Controller, credo: CredoWrapper, offer: str, request_uri: str):
+async def test_accept_auth_request(
+    controller: Controller, credo: CredoWrapper, offer: str, request_uri: str
+):
     """Test OOB DIDExchange Protocol."""
     await credo.openid4vci_accept_offer(offer)
     await credo.openid4vp_accept_request(request_uri)
@@ -30,9 +32,27 @@ async def test_accept_auth_request(controller: Controller, credo: CredoWrapper, 
 @pytest.mark.interop
 @pytest.mark.asyncio
 async def test_accept_sdjwt_auth_request(
-    controller: Controller, credo: CredoWrapper, sdjwt_offer: str, sdjwt_request_uri: str
+    controller: Controller,
+    credo: CredoWrapper,
+    sdjwt_offer: str,
+    sdjwt_request_uri: str,
 ):
     """Test OOB DIDExchange Protocol."""
     await credo.openid4vci_accept_offer(sdjwt_offer)
     await credo.openid4vp_accept_request(sdjwt_request_uri)
+    await controller.event_with_values("oid4vp", state="presentation-valid")
+
+
+@pytest.mark.interop
+@pytest.mark.asyncio
+@pytest.mark.skip
+async def test_accept_sdjwt_epassport_auth_request(
+    controller: Controller,
+    credo: CredoWrapper,
+    sdjwt_epassport_offer: str,
+    sdjwt_epassport_request_uri: str,
+):
+    """Test OOB DIDExchange Protocol."""
+    await credo.openid4vci_accept_offer(sdjwt_epassport_offer)
+    await credo.openid4vp_accept_request(sdjwt_epassport_request_uri)
     await controller.event_with_values("oid4vp", state="presentation-valid")
