@@ -472,6 +472,218 @@ async function issue_sdjwt_credential(req, res) {
   events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: "Begin listening for credential to be issued."});
 }
 
+// Begin Issue MSO_MDOC Credential Flow
+async function issue_mdoc_credential(req, res) {
+  res.status(200).send("");
+  events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: "Received credential data from user."});
+
+  const { fname: firstName, lname: lastName, age: ageString } = req.body
+  const age = parseInt(ageString);
+
+  const headers = {
+    accept: "application/json",
+  };
+  const commonHeaders = {
+    accept: "application/json",
+    "Content-Type": "application/json",
+    "Authorization": "Bearer " + token.token,
+  };
+  if (API_KEY) {
+    commonHeaders["X-API-KEY"] =  API_KEY;
+  }
+  axios.defaults.withCredentials = true;
+  axios.defaults.headers.common["Access-Control-Allow-Origin"] = API_BASE_URL;
+  axios.defaults.headers.common["X-API-KEY"] = API_KEY;
+  axios.defaults.headers.common["Authorization"] = "Bearer " + token.token;
+
+  const fetchApiData = async (url, options) => {
+    const response = await fetch(url, options);
+    return await response.json();
+  };
+
+
+  // Create credential schema
+  const createCredentialSupportedUrl = `${API_BASE_URL}/oid4vci/credential-supported/create`;
+  const createCredentialSupportedOptions = {
+    method: "POST",
+    headers: commonHeaders,
+    body: JSON.stringify({
+      format: "vc+sd-jwt",
+      id: "IDCard",
+      format_data: {
+        cryptographic_binding_methods_supported: ["jwk"],
+        display: [
+          {
+            "name": "ID Card",
+            "locale": "en-US",
+            "background_color": "#12107c",
+            "text_color": "#FFFFFF"
+          }
+        ],
+        vct: "ExampleIDCard",
+        "claims": {
+          "given_name": {
+            "mandatory": true,
+            "value_type": "string",
+          },
+          "family_name": {
+            "mandatory": true,
+            "value_type": "string",
+          },
+          "something_nested": {
+            "key1": {
+              "key2": {
+                "key3": {
+                  "mandatory": true,
+                  "value_type": "string",
+                },
+              },
+            },
+          },
+          "age_equal_or_over": {
+            "12": {
+              "mandatory": true,
+              "value_type": "boolean",
+            },
+            "14": {
+              "mandatory": true,
+              "value_type": "boolean",
+            },
+            "16": {
+              "mandatory": true,
+              "value_type": "boolean",
+            },
+            "18": {
+              "mandatory": true,
+              "value_type": "boolean",
+            },
+            "21": {
+              "mandatory": true,
+              "value_type": "boolean",
+            },
+            "65": {
+              "mandatory": true,
+              "value_type": "boolean",
+            },
+          }
+        },
+      },
+      vc_additional_data: {
+        sd_list: [
+          "/given_name",
+          "/family_name",
+          "/age_equal_or_over/12",
+          "/age_equal_or_over/14",
+          "/age_equal_or_over/16",
+          "/age_equal_or_over/18",
+          "/age_equal_or_over/21",
+          "/age_equal_or_over/65"
+        ]
+      }
+    }),
+  };
+
+  if (!sdJwtSupportedCredCreated){
+
+    events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: `Posting Create Credential Request to: ${createCredentialSupportedUrl}`});
+    events.emit(`issuance-${req.body.registrationId}`, {type: "debug-message", message: "Request options", data: createCredentialSupportedOptions});
+    const supportedCredentialData = await fetchApiData(
+      createCredentialSupportedUrl,
+      createCredentialSupportedOptions
+    );
+    sdJwtSupportedCredID = supportedCredentialData.supported_cred_id;
+    sdJwtSupportedCredCreated = true;
+  }
+
+
+  // Create DID for issuance
+  const createDidUrl = `${API_BASE_URL}/did/jwk/create`;
+  const createDidOptions = {
+    method: "POST",
+    headers: commonHeaders,
+    body: JSON.stringify({
+      key_type: "p256",
+    }),
+  };
+
+  events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: "Creating DID."});
+  events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: `Posting Create DID Request to: ${createDidUrl}`});
+  events.emit(`issuance-${req.body.registrationId}`, {type: "debug-message", message: "Request options", data: createDidOptions});
+  const didData = await fetchApiData(createDidUrl, createDidOptions);
+  const { did } = didData;
+  events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: `Created DID: ${did}`});
+  logger.info(did);
+  logger.info(sdJwtSupportedCredID);
+
+
+  // Create Credential Exchange records
+  const exchangeCreateUrl = `${API_BASE_URL}/oid4vci/exchange/create`;
+  const exchangeCreateOptions = {
+    did: did,
+    verification_method: did+"#0",
+    supported_cred_id: sdJwtSupportedCredID,
+    credential_subject: {
+      given_name: firstName,
+      family_name: lastName,
+      something_nested: {key1: {key2: {key3: "something nested"}}},
+      source_document_type: "id_card",
+      age_equal_or_over: {
+        "12": age >= 12,
+        "14": age >= 14,
+        "16": age >= 16,
+        "18": age >= 18,
+        "21": age >= 21,
+        "65": age >= 65,
+      }
+    },
+  };
+  events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: "Generating Credential Exchange."});
+  events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: `Posting Credential Exchange Creation Request to: ${exchangeCreateUrl}`});
+  events.emit(`issuance-${req.body.registrationId}`, {type: "debug-message", message: "Request options", data: exchangeCreateOptions});
+  const exchangeResponse = await axios.post(exchangeCreateUrl, exchangeCreateOptions);
+  const exchangeId = exchangeResponse.data.exchange_id;
+  events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: `Received Credential Exchange ID: ${exchangeId}`});
+
+
+  // Get Credential Offer information
+  const credentialOfferUrl = `${API_BASE_URL}/oid4vci/credential-offer`;
+  const queryParams = {
+    user_pin_required: false,
+    exchange_id: exchangeId,
+  };
+  const credentialOfferOptions = {
+    params: queryParams,
+    headers: headers,
+  };
+  events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: "Requesting Credential Offer."});
+  events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: `Retrieving Credential Offer from: ${credentialOfferUrl}`});
+  events.emit(`issuance-${req.body.registrationId}`, {type: "debug-message", message: "Request options", data: credentialOfferOptions});
+  const offerResponse = await axios.get(credentialOfferUrl, credentialOfferOptions);
+  const credentialOffer = offerResponse.data;
+
+  // Generate QRCode and send it to the browser via HTMX events
+  logger.info(JSON.stringify(offerResponse.data));
+  logger.info(exchangeId);
+
+  let qrcode;
+  if (credentialOffer.hasOwnProperty("credential_offer")) {
+    // credential offer is passed by value
+    qrcode = credentialOffer.credential_offer
+  } else {
+    // credential offer is passed by reference, and the wallet must dereference it using the
+    // /oid4vci/dereference-credential-offer endpoint
+    qrcode = credentialOffer.credential_offer_uri
+  }
+
+  events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: `Sending offer to user: ${qrcode}`});
+  events.emit(`issuance-${req.body.registrationId}`, {type: "qrcode", credentialOffer, exchangeId, qrcode});
+  exchangeCache.set(exchangeId, { exchangeId, credentialOffer, did, sdJwtSupportedCredID, registrationId: req.body.registrationId });
+
+  // Polling for the credential is an option at this stage, but we opt to just listen for the appropriate webhook instead
+  events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: "Begin listening for credential to be issued."});
+}
+
+
 
 // Begin JWT VC JSON Presentation Flow
 async function create_jwt_vc_presentation(req, res) {
@@ -925,6 +1137,9 @@ app.post("/issue", (req, res, next) => {
         break;
       case "sdjwt":
         issue_sdjwt_credential(req, res).catch(next);
+        break;
+      case "mso_mdoc":
+        issue_mdoc_credential(req, res).catch(next);
         break;
       default:
         res.status(400).send("");
