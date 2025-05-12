@@ -508,78 +508,12 @@ async function issue_mdoc_credential(req, res) {
     method: "POST",
     headers: commonHeaders,
     body: JSON.stringify({
-      format: "vc+sd-jwt",
+      format: "mso_mdoc",
       id: "IDCard",
       format_data: {
-        cryptographic_binding_methods_supported: ["jwk"],
-        display: [
-          {
-            "name": "ID Card",
-            "locale": "en-US",
-            "background_color": "#12107c",
-            "text_color": "#FFFFFF"
-          }
-        ],
-        vct: "ExampleIDCard",
-        "claims": {
-          "given_name": {
-            "mandatory": true,
-            "value_type": "string",
-          },
-          "family_name": {
-            "mandatory": true,
-            "value_type": "string",
-          },
-          "something_nested": {
-            "key1": {
-              "key2": {
-                "key3": {
-                  "mandatory": true,
-                  "value_type": "string",
-                },
-              },
-            },
-          },
-          "age_equal_or_over": {
-            "12": {
-              "mandatory": true,
-              "value_type": "boolean",
-            },
-            "14": {
-              "mandatory": true,
-              "value_type": "boolean",
-            },
-            "16": {
-              "mandatory": true,
-              "value_type": "boolean",
-            },
-            "18": {
-              "mandatory": true,
-              "value_type": "boolean",
-            },
-            "21": {
-              "mandatory": true,
-              "value_type": "boolean",
-            },
-            "65": {
-              "mandatory": true,
-              "value_type": "boolean",
-            },
-          }
-        },
+        credentialSubject: {},
       },
-      vc_additional_data: {
-        sd_list: [
-          "/given_name",
-          "/family_name",
-          "/age_equal_or_over/12",
-          "/age_equal_or_over/14",
-          "/age_equal_or_over/16",
-          "/age_equal_or_over/18",
-          "/age_equal_or_over/21",
-          "/age_equal_or_over/65"
-        ]
-      }
+      vc_additional_data: {}
     }),
   };
 
@@ -623,18 +557,20 @@ async function issue_mdoc_credential(req, res) {
     verification_method: did+"#0",
     supported_cred_id: sdJwtSupportedCredID,
     credential_subject: {
-      given_name: firstName,
-      family_name: lastName,
-      something_nested: {key1: {key2: {key3: "something nested"}}},
-      source_document_type: "id_card",
-      age_equal_or_over: {
-        "12": age >= 12,
-        "14": age >= 14,
-        "16": age >= 16,
-        "18": age >= 18,
-        "21": age >= 21,
-        "65": age >= 65,
-      }
+      headers: {"deviceKey": "12345678123456781234567812345678"},
+      payload: {
+        "org.iso.18013.5.1": {
+          "expiry_date": "2029-03-31",
+          "issue_date": "2024-04-01",
+          "issuing_country": "CA",
+          "issuing_authority": "Ontario Ministry of Transportation",
+          "family_name": "Doe",
+          "given_name": "John",
+          "birth_date": "1990-03-31",
+          "document_number": "DJ123-45678-90123",
+          "un_distinguishing_sign": "CDN",
+        }
+      },
     },
   };
   events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: "Generating Credential Exchange."});
