@@ -86,8 +86,8 @@ async def mso_mdoc_sign(
 def mdoc_sign(jwk: dict, headers: Mapping[str, Any], payload: Mapping[str, Any]) -> str:
     """Create a signed mso_mdoc given headers, payload, and private key."""
     pk_dict = {
-        "KTY": jwk.get("kty") or "",  # OKP, EC
-        "CURVE": jwk.get("crv") or "",  # ED25519, P_256
+        "KTY": "EC2" if jwk.get("kty") == "EC" else jwk.get("kty", ""),  # OKP, EC
+        "CURVE": "P_256" if jwk.get("crv") == "P-256" else jwk.get("crv", ""),  # ED25519, P_256
         "ALG": "EdDSA" if jwk.get("kty") == "OKP" else "ES256",
         "D": b64_to_bytes(jwk.get("d") or "", True),  # EdDSA
         "X": b64_to_bytes(jwk.get("x") or "", True),  # EdDSA, EcDSA

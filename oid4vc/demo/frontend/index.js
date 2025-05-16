@@ -509,8 +509,9 @@ async function issue_mdoc_credential(req, res) {
     headers: commonHeaders,
     body: JSON.stringify({
       format: "mso_mdoc",
-      id: "IDCard",
+      id: "org.iso.18013.5.1.mDL",
       format_data: {
+        doctype: "org.iso.18013.5.1.mDL",
         credentialSubject: {},
       },
       vc_additional_data: {}
