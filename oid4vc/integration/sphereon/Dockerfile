@@ -2,7 +2,7 @@ FROM oven/bun:slim AS base
 WORKDIR /usr/src/app
 RUN apt-get update && apt-get install ncat -y && apt-get clean
 
-COPY bun.lockb package.json ./
+COPY bun.lock package.json ./
 RUN bun install
 COPY . .
 
