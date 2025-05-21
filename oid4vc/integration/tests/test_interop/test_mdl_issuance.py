@@ -7,19 +7,23 @@ from credo_wrapper import CredoWrapper
 from sphereon_wrapper import SphereaonWrapper
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="module")
 async def mdl_supported_cred_id(controller: Controller, issuer_did: str):
     """Create an mDL supported credential."""
     supported = await controller.post(
         "/oid4vci/credential-supported/create",
         json={
             "format": "mso_mdoc",
-            #"id": "org.iso.18013.5.1.mDL",
+            # "id": "org.iso.18013.5.1.mDL",
             "id": str(uuid.uuid4()),
             "cryptographic_binding_methods_supported": ["jwk"],
             "format_data": {
                 "doctype": "org.iso.18013.5.1.mDL",
-                "credentialSubject": {
+                "claims": {
+                    "org.iso.18013.5.1": {
+                        "given_name": {},
+                        "last_name": {},
+                    }
                     # TODO: add additional detail to model an mDL
                 },
             },
@@ -40,7 +44,13 @@ async def mdl_offer(
         json={
             # TODO: add values to match the supported credential
             "supported_cred_id": mdl_supported_cred_id,
-            "credential_subject": {},
+            "credential_subject": {
+                "org.iso.18013.5.1": {
+                    "given_name": "Test",
+                    "test_name": "Surname",
+                }
+            },
+            "did": issuer_did,
             "verification_method": issuer_did + "#0",
         },
     )
@@ -55,13 +65,15 @@ async def mdl_offer(
 
 @pytest.mark.interop
 @pytest.mark.asyncio
-async def test_mdl_accept_credential_offer(credo: CredoWrapper, mdl_offer: str):
-   """Test OOB DIDExchange Protocol."""
-   await credo.openid4vci_accept_offer(mdl_offer)
+async def test_mdl_credo_accept_credential_offer(credo: CredoWrapper, mdl_offer: str):
+    """Test Credo accepting an mDL offer."""
+    await credo.openid4vci_accept_offer(mdl_offer)
 
 
 @pytest.mark.interop
 @pytest.mark.asyncio
-async def test_sphereon_pre_auth(sphereon: SphereaonWrapper, mdl_offer: str):
-    """Test receive offer for pre auth code flow."""
+async def test_mdl_sphereon_accept_credential_offer(
+    sphereon: SphereaonWrapper, mdl_offer: str
+):
+    """Test Sphereon accepting an mDL offer."""
     await sphereon.accept_mdl_credential_offer(mdl_offer)
