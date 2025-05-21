@@ -36,4 +36,8 @@ class SphereaonWrapper:
 
     async def accept_credential_offer(self, offer: str):
         """Accpet offer."""
-        return await self.client.request("acceptCredentialOffer", offer=offer)
+        return await self.client.request("acceptJwtCredentialOffer", offer=offer)
+
+    async def accept_mdl_credential_offer(self, offer: str):
+        """Accpet offer."""
+        return await self.client.request("acceptMDLCredentialOffer", offer=offer)

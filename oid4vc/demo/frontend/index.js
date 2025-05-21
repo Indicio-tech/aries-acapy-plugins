@@ -243,13 +243,13 @@ async function issue_jwt_credential(req, res) {
   logger.info(exchangeId);
   
   let qrcode;
-  if (credentialOffer.hasOwnProperty("credential_offer")) {
-    // credential offer is passed by value
-    qrcode = credentialOffer.credential_offer
-  } else {
+  if (credentialOffer.hasOwnProperty("credential_offer_uri")) {
     // credential offer is passed by reference, and the wallet must dereference it using the
     // /oid4vci/dereference-credential-offer endpoint
     qrcode = credentialOffer.credential_offer_uri
+  } else {
+    // credential offer is passed by value
+    qrcode = credentialOffer.credential_offer
   }
 
   events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: `Sending offer to user: ${qrcode}`});
@@ -455,13 +455,13 @@ async function issue_sdjwt_credential(req, res) {
   logger.info(exchangeId);
 
   let qrcode;
-  if (credentialOffer.hasOwnProperty("credential_offer")) {
-    // credential offer is passed by value
-    qrcode = credentialOffer.credential_offer
-  } else {
+  if (credentialOffer.hasOwnProperty("credential_offer_uri")) {
     // credential offer is passed by reference, and the wallet must dereference it using the
     // /oid4vci/dereference-credential-offer endpoint
     qrcode = credentialOffer.credential_offer_uri
+  } else {
+    // credential offer is passed by value
+    qrcode = credentialOffer.credential_offer
   }
 
   events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: `Sending offer to user: ${qrcode}`});
@@ -512,7 +512,10 @@ async function issue_mdoc_credential(req, res) {
       id: "org.iso.18013.5.1.mDL",
       format_data: {
         doctype: "org.iso.18013.5.1.mDL",
-        credentialSubject: {},
+        credentialSubject: {
+          given_name: {},
+          family_name: {},
+        },
       },
       vc_additional_data: {}
     }),
@@ -561,15 +564,8 @@ async function issue_mdoc_credential(req, res) {
       headers: {"deviceKey": "12345678123456781234567812345678"},
       payload: {
         "org.iso.18013.5.1": {
-          "expiry_date": "2029-03-31",
-          "issue_date": "2024-04-01",
-          "issuing_country": "CA",
-          "issuing_authority": "Ontario Ministry of Transportation",
           "family_name": "Doe",
           "given_name": "John",
-          "birth_date": "1990-03-31",
-          "document_number": "DJ123-45678-90123",
-          "un_distinguishing_sign": "CDN",
         }
       },
     },
@@ -603,13 +599,13 @@ async function issue_mdoc_credential(req, res) {
   logger.info(exchangeId);
 
   let qrcode;
-  if (credentialOffer.hasOwnProperty("credential_offer")) {
-    // credential offer is passed by value
-    qrcode = credentialOffer.credential_offer
-  } else {
+  if (credentialOffer.hasOwnProperty("credential_offer_uri")) {
     // credential offer is passed by reference, and the wallet must dereference it using the
     // /oid4vci/dereference-credential-offer endpoint
     qrcode = credentialOffer.credential_offer_uri
+  } else {
+    // credential offer is passed by value
+    qrcode = credentialOffer.credential_offer
   }
 
   events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: `Sending offer to user: ${qrcode}`});
@@ -996,6 +992,7 @@ function handleEvents(event_type, req, res) {
 
     // For OID4VCI: when we receive a "qrcode" message, generate a code and send it to the browser
     if ("qrcode" in data) {
+      logger.debug(data.qrcode);
       var qrcode = new QRCode({
         content: data.qrcode,
         padding: 4,
@@ -1005,7 +1002,6 @@ function handleEvents(event_type, req, res) {
         background: "#ffffff",
         ecl: "M",
       });
-      logger.debug(data.qrcode);
       res.write(`event: qrcode\ndata: ${qrcode.svg().replace(/\r?\n|\r/g, " ")}\n\n`);
     }
   });

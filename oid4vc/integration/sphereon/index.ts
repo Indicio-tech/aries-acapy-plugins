@@ -31,7 +31,7 @@ function jwkToBase64Url(jwk: any): string {
     return base64Url;
 }
 
-proxy.rpc.addMethod('acceptCredentialOffer', async ({offer}: {offer: string}): Promise<any> => {
+proxy.rpc.addMethod('acceptJwtCredentialOffer', async ({offer}: {offer: string}): Promise<any> => {
   const client = await OpenID4VCIClientV1_0_13.fromURI({
     uri: offer,
     clientId: 'test-clientId', // The clientId if the Authrozation Service requires it.  If a clientId is needed you can defer this also to when the acquireAccessToken method is called
@@ -74,6 +74,55 @@ proxy.rpc.addMethod('acceptCredentialOffer', async ({offer}: {offer: string}): P
     credentialTypes: 'UniversityDegreeCredential',
     proofCallbacks: callbacks,
     format: 'jwt_vc_json',
+    alg: Alg.ES256,
+    kid: 'did:example:ebfeb1f712ebc6f1c276e12ec21#keys-1',
+  });
+  console.log(credentialResponse.credential);
+})
+
+proxy.rpc.addMethod('acceptMDLCredentialOffer', async ({offer}: {offer: string}): Promise<any> => {
+  const client = await OpenID4VCIClientV1_0_13.fromURI({
+    uri: offer,
+    clientId: 'test-clientId', // The clientId if the Authrozation Service requires it.  If a clientId is needed you can defer this also to when the acquireAccessToken method is called
+    retrieveServerMetadata: true, // Already retrieve the server metadata. Can also be done afterwards by invoking a method yourself.
+  });
+
+  const accessToken = await client.acquireAccessToken();
+  console.log(accessToken);
+
+  const { privateKey, publicKey } = await jose.generateKeyPair('ES256');
+
+  // Must be JWS
+  async function signCallback(args: Jwt, kid?: string): Promise<string> {
+    const jwt = new jose.SignJWT({ ...args.payload })
+      .setProtectedHeader({
+        alg: args.header.alg,
+        typ: 'openid4vci-proof+jwt',
+        kid: `did:jwk:${jwkToBase64Url(await jose.exportJWK(publicKey))}#0`
+      })
+      .setIssuedAt()
+      .setExpirationTime('2h')
+    if (kid) {
+      jwt.setIssuer(kid)
+    }
+    if (args.payload.aud) {
+      jwt.setAudience(args.payload.aud)
+    }
+    console.log('signing: ', jwt)
+    console.log(privateKey)
+
+    return await jwt.sign(privateKey)
+  }
+
+  const callbacks: ProofOfPossessionCallbacks<DIDDocument> = {
+    signCallback,
+  };
+
+  console.log(client.getCredentialEndpoint())
+  const credentialResponse = await client.acquireCredentials({
+    credentialTypes: 'org.iso.18013.5.1.mDL',
+    proofCallbacks: callbacks,
+    format: 'mso_mdoc',
     alg: Alg.ES256,
     kid: 'did:example:ebfeb1f712ebc6f1c276e12ec21#keys-1',
   });

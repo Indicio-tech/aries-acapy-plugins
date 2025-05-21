@@ -78,8 +78,8 @@ async def dereference_cred_offer(request: web.BaseRequest):
     offer = await _parse_cred_offer(context, exchange_id)
     return web.json_response(
         {
-            "offer": offer,
-            "credential_offer": f"openid-credential-offer://?credential_offer={quote(json.dumps(offer))}",
+            "credential_offer": offer,
+            "credential_offer_uri": f"openid-credential-offer://?credential_offer={quote(json.dumps(offer))}",
         }
     )
 
@@ -126,9 +126,9 @@ async def credential_issuer_metadata(request: web.Request):
         metadata = {
             "credential_issuer": f"{public_url}{subpath}",
             "credential_endpoint": f"{public_url}{subpath}/credential",
-            "credentials_supported": [
-                supported.to_issuer_metadata() for supported in credentials_supported
-            ],
+            "credential_configurations_supported": {
+                supported.identifier: supported.to_issuer_metadata() for supported in credentials_supported
+            },
         }
 
     LOGGER.debug("METADATA: %s", metadata)

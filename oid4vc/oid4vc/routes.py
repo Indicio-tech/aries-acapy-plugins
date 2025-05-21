@@ -405,7 +405,7 @@ async def _parse_cred_offer(context: AdminRequestContext, exchange_id: str) -> d
     subpath = f"/tenant/{wallet_id}" if wallet_id else ""
     return {
         "credential_issuer": f"{config.endpoint}{subpath}",
-        "credentials": [supported.identifier],
+        "credential_configuration_ids": [supported.identifier],
         "grants": {
             "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
                 "pre-authorized_code": code,
@@ -430,8 +430,8 @@ async def get_cred_offer(request: web.BaseRequest):
     offer = await _parse_cred_offer(context, exchange_id)
     offer_uri = quote(json.dumps(offer))
     offer_response = {
-        "offer": offer,
-        "credential_offer": f"openid-credential-offer://?credential_offer={offer_uri}",
+        "credential_offer": offer,
+        "credential_offer_uri": f"openid-credential-offer://?credential_offer={offer_uri}",
     }
     return web.json_response(offer_response)
 

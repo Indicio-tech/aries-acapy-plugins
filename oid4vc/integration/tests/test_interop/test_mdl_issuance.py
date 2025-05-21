@@ -16,6 +16,7 @@ async def mdl_supported_cred_id(controller: Controller, issuer_did: str):
             "format": "mso_mdoc",
             #"id": "org.iso.18013.5.1.mDL",
             "id": str(uuid.uuid4()),
+            "cryptographic_binding_methods_supported": ["jwk"],
             "format_data": {
                 "doctype": "org.iso.18013.5.1.mDL",
                 "credentialSubject": {
@@ -47,7 +48,7 @@ async def mdl_offer(
         "/oid4vci/credential-offer",
         params={"exchange_id": exchange["exchange_id"]},
     )
-    offer_uri = offer["credential_offer"]
+    offer_uri = offer["credential_offer_uri"]
 
     yield offer_uri
 
@@ -55,12 +56,12 @@ async def mdl_offer(
 @pytest.mark.interop
 @pytest.mark.asyncio
 async def test_mdl_accept_credential_offer(credo: CredoWrapper, mdl_offer: str):
-    """Test OOB DIDExchange Protocol."""
-    await credo.openid4vci_accept_offer(mdl_offer)
+   """Test OOB DIDExchange Protocol."""
+   await credo.openid4vci_accept_offer(mdl_offer)
 
 
 @pytest.mark.interop
 @pytest.mark.asyncio
 async def test_sphereon_pre_auth(sphereon: SphereaonWrapper, mdl_offer: str):
     """Test receive offer for pre auth code flow."""
-    await sphereon.accept_credential_offer(mdl_offer)
+    await sphereon.accept_mdl_credential_offer(mdl_offer)
