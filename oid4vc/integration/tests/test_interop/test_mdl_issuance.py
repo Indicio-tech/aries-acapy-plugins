@@ -1,4 +1,5 @@
 from typing import Any, Dict
+import uuid
 import pytest
 import pytest_asyncio
 from acapy_controller.controller import Controller
@@ -13,7 +14,8 @@ async def mdl_supported_cred_id(controller: Controller, issuer_did: str):
         "/oid4vci/credential-supported/create",
         json={
             "format": "mso_mdoc",
-            "id": "org.iso.18013.5.1.mDL",
+            #"id": "org.iso.18013.5.1.mDL",
+            "id": str(uuid.uuid4()),
             "format_data": {
                 "doctype": "org.iso.18013.5.1.mDL",
                 "credentialSubject": {
