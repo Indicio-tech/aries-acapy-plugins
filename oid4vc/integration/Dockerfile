@@ -16,6 +16,7 @@ RUN poetry install --only main
 # add tests to image
 COPY sphereon_wrapper/ sphereon_wrapper/
 COPY credo_wrapper/ credo_wrapper/
+COPY isomdl_wrapper/ isomdl_wrapper/
 COPY tests/ tests/
 COPY oid4vci_client/ oid4vci_client/
 

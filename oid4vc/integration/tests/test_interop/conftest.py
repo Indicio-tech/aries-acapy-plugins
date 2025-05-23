@@ -5,6 +5,7 @@ from jrpc_client import JsonRpcClient, TCPSocketTransport
 
 from sphereon_wrapper import SphereaonWrapper
 from credo_wrapper import CredoWrapper
+from isomdl_wrapper import ISOMDLWrapper
 
 SPHEREON_HOST = getenv("SPHEREON_HOST", "localhost")
 SPHEREON_PORT = int(getenv("SPHEREON_PORT", "3000"))
@@ -28,5 +29,15 @@ async def credo():
     transport = TCPSocketTransport(CREDO_HOST, CREDO_PORT)
     client = JsonRpcClient(transport)
     wrapper = CredoWrapper(transport, client)
+    async with wrapper as wrapper:
+        yield wrapper
+
+
+@pytest_asyncio.fixture
+async def isomdl():
+    """Create a wrapper instance and connect to the server."""
+    transport = TCPSocketTransport(CREDO_HOST, CREDO_PORT)
+    client = JsonRpcClient(transport)
+    wrapper = ISOMDLWrapper(transport, client)
     async with wrapper as wrapper:
         yield wrapper

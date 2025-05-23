@@ -1783,6 +1783,85 @@ async def create_did_jwk(request: web.Request):
         return web.json_response({"did": did})
 
 
+"""X.509 certificate utilities."""
+
+from datetime import datetime, timezone, timedelta
+from cryptography import x509
+from cryptography.x509.oid import NameOID
+from cryptography.hazmat.primitives import hashes, serialization
+from cwt import COSEKey
+from pycose.keys import CoseKey
+from pycose.keys.keytype import KtyOKP
+
+
+def selfsigned_x509cert(private_key: CoseKey):
+    """Generate a self-signed X.509 certificate from a COSE key."""
+    ckey = COSEKey.from_bytes(private_key.encode())
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "CN"),
+            x509.NameAttribute(NameOID.COMMON_NAME, "Local CA"),
+        ]
+    )
+    utcnow = datetime.now(timezone.utc)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(ckey.key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(utcnow)
+        .not_valid_after(utcnow + timedelta(days=10))
+        .sign(ckey.key, None if private_key.kty == KtyOKP else hashes.SHA256())
+    )
+    return cert.public_bytes(getattr(serialization.Encoding, "DER"))
+
+def did_lookup_name(value: str) -> str:
+    """Return the value used to lookup a DID in the wallet.
+
+    If value is did:sov, return the unqualified value. Else, return value.
+    """
+    return value.split(":", 3)[2] if value.startswith("did:sov:") else value
+from acapy_agent.wallet.util import b64_to_bytes, bytes_to_b64
+from pycose.keys import CoseKey
+import os
+@tenant_authentication
+async def get_cert(request: web.Request):
+    """
+    """
+    context: AdminRequestContext = request["context"]
+    profile: Profile = context.profile
+    body: Dict[str, Any] = await request.json()
+    LOGGER.debug(f"Creating OID4VCI exchange with: {body}")
+
+    did = body.get("did", None)
+    async with profile.session() as session:
+        wallet = session.inject(BaseWallet)
+        LOGGER.info(f"mso_mdoc sign: {did}")
+
+        did_info = await wallet.get_local_did(did_lookup_name(did))
+        key_pair = await wallet._session.handle.fetch_key(did_info.verkey)
+        jwk_bytes = key_pair.key.get_jwk_secret()
+        jwk = json.loads(jwk_bytes)
+    pk_dict = {
+        "KTY": "EC2" if jwk.get("kty") == "EC" else jwk.get("kty", ""),  # OKP, EC
+        "CURVE": "P_256" if jwk.get("crv") == "P-256" else jwk.get("crv", ""),  # ED25519, P_256
+        "ALG": "EdDSA" if jwk.get("kty") == "OKP" else "ES256",
+        "D": b64_to_bytes(jwk.get("d") or "", True),  # EdDSA
+        "X": b64_to_bytes(jwk.get("x") or "", True),  # EdDSA, EcDSA
+        "Y": b64_to_bytes(jwk.get("y") or "", True),  # EcDSA
+        "KID": os.urandom(32),
+    }
+    cose_key = CoseKey.from_dict(pk_dict)
+    _cert = selfsigned_x509cert(private_key=cose_key)
+    import base64
+    return web.json_response(
+        {
+            "cert": base64.b64encode(_cert).decode("ascii"),
+        }
+    )
+
+
 async def register(app: web.Application):
     """Register routes."""
     app.add_routes(
@@ -1798,6 +1877,7 @@ async def register(app: web.Application):
                 list_exchange_records,
                 allow_head=False,
             ),
+            web.post("/oid4vci/cert/get", get_cert),
             web.post("/oid4vci/exchange/create", exchange_create),
             web.get("/oid4vci/exchange/records/{exchange_id}", get_exchange_by_id),
             web.delete("/oid4vci/exchange/records/{exchange_id}", exchange_delete),

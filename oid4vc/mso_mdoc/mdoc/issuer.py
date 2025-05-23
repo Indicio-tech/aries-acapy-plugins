@@ -130,6 +130,7 @@ def mdoc_sign(jwk: dict, headers: Mapping[str, Any], payload: Mapping[str, Any])
             #  # TODO
             #  }
         }
+        # -2796 bytes leftover after decoding
         documents.append(document)
 
     signed = {
