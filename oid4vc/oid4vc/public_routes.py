@@ -95,7 +95,7 @@ class CredentialIssuerMetadataSchema(OpenAPISchema):
         required=True,
         metadata={"description": "The credential endpoint."},
     )
-    credentials_supported = fields.List(
+    credential_configurations_supported = fields.List(
         fields.Dict(),
         metadata={"description": "The supported credentials."},
     )

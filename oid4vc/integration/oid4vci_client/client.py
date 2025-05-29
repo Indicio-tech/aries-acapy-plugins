@@ -46,10 +46,10 @@ class CredentialOffer:
     @classmethod
     def from_dict(cls, value: dict):
         """Parse from dict."""
-        offer = value["offer"]
+        offer = value["credential_offer"]
         return cls(
             offer["credential_issuer"],
-            offer["credentials"],
+            offer["credential_configuration_ids"],
             offer.get("grants", {}).get("authorization_code"),
             CredentialGrantPreAuth.from_grants(offer.get("grants", {})),
         )
@@ -101,7 +101,7 @@ class OpenID4VCIClient:
         return IssuerMetadata(
             metadata["credential_endpoint"],
             token_endpoint,
-            metadata["credentials_supported"],
+            metadata["credential_configurations_supported"],
         )
 
     async def request_token(self, offer: CredentialOffer, metadata: IssuerMetadata):

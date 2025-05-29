@@ -337,7 +337,7 @@ class CredOfferSchema(OpenAPISchema):
             "example": "https://example.com",
         },
     )
-    credentials = fields.List(
+    credential_configuration_ids = fields.List(
         fields.Str(
             required=True,
             metadata={
@@ -359,7 +359,7 @@ class CredOfferResponseSchemaVal(OpenAPISchema):
             "example": "openid-credential-offer://...",
         },
     )
-    offer = fields.Nested(CredOfferSchema(), required=True)
+    credential_offer = fields.Nested(CredOfferSchema(), required=True)
 
 
 class CredOfferResponseSchemaRef(OpenAPISchema):
@@ -372,7 +372,7 @@ class CredOfferResponseSchemaRef(OpenAPISchema):
             "example": "openid-credential-offer://...",
         },
     )
-    offer = fields.Nested(CredOfferSchema(), required=True)
+    credential_offer = fields.Nested(CredOfferSchema(), required=True)
 
 
 async def _parse_cred_offer(context: AdminRequestContext, exchange_id: str) -> dict:
@@ -462,7 +462,7 @@ async def get_cred_offer_by_ref(request: web.BaseRequest):
     subpath = f"/tenant/{wallet_id}" if wallet_id else ""
     ref_uri = f"{config.endpoint}{subpath}/oid4vci/dereference-credential-offer"
     offer_response = {
-        "offer": offer,
+        "credential_offer": offer,
         "credential_offer_uri": f"openid-credential-offer://?credential_offer={quote(ref_uri)}",
     }
     return web.json_response(offer_response)

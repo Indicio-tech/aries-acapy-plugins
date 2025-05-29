@@ -1,5 +1,6 @@
 from typing import Any, Dict
 import uuid
+from oid4vci_client.client import OpenID4VCIClient
 import pytest
 import pytest_asyncio
 from acapy_controller.controller import Controller
@@ -59,16 +60,15 @@ async def mdl_offer(
         "/oid4vci/credential-offer",
         params={"exchange_id": exchange["exchange_id"]},
     )
-    offer_uri = offer["credential_offer_uri"]
 
-    yield offer_uri
+    yield offer
 
 
 @pytest.mark.interop
 @pytest.mark.asyncio
 async def test_mdl_credo_accept_credential_offer(credo: CredoWrapper, mdl_offer: str):
     """Test Credo accepting an mDL offer."""
-    await credo.openid4vci_accept_offer(mdl_offer)
+    await credo.openid4vci_accept_offer(mdl_offer["credential_offer_uri"])
 
 
 @pytest.mark.interop
@@ -77,12 +77,12 @@ async def test_mdl_sphereon_accept_credential_offer(
     sphereon: SphereaonWrapper, mdl_offer: str
 ):
     """Test Sphereon accepting an mDL offer."""
-    await sphereon.accept_mdl_credential_offer(mdl_offer)
+    await sphereon.accept_mdl_credential_offer(mdl_offer["credential_offer_uri"])
 
 @pytest.mark.interop
 @pytest.mark.asyncio
 async def test_mdl_isomdl_accept_credential_offer(
-    isomdl: ISOMDLWrapper, mdl_offer: str, controller: Controller, issuer_did: str
+    isomdl: ISOMDLWrapper, mdl_offer: str, controller: Controller, issuer_did: str, test_client: OpenID4VCIClient
 ):
     result = await controller.post(
         "/oid4vci/cert/get",
@@ -101,4 +101,4 @@ async def test_mdl_isomdl_accept_credential_offer(
     print(f"cert: {cert}")
 
     """Test isomdl accepting an mDL offer."""
-    await isomdl.accept_mdl_credential_offer(cert, mdl_offer)
+    await isomdl.accept_mdl_credential_offer(test_client, cert, mdl_offer)
