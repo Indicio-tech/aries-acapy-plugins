@@ -33,6 +33,7 @@ async def mdl_supported_cred_id(controller: Controller, issuer_did: str):
         },
     )
     print(f"SUPPORTED: {supported}")
+    print("POP: ", supported["format_data"]["pop"])
     yield supported["supported_cred_id"]
 
 
@@ -78,6 +79,7 @@ async def test_mdl_sphereon_accept_credential_offer(
 ):
     """Test Sphereon accepting an mDL offer."""
     await sphereon.accept_mdl_credential_offer(mdl_offer["credential_offer_uri"])
+
 
 @pytest.mark.interop
 @pytest.mark.asyncio
