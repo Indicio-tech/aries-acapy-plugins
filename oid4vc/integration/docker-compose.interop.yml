@@ -29,6 +29,7 @@ services:
     volumes:
       - ../docker/entrypoint.sh:/entrypoint.sh:ro,z
       - ../oid4vc:/usr/src/app/oid4vc:z
+      - ./isomdl_wrapper:/usr/src/app/mso_mdoc/uniffi_scratch:z
     environment:
       RUST_LOG: warn
       OID4VCI_HOST: 0.0.0.0
