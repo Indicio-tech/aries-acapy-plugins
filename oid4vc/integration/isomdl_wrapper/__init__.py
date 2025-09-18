@@ -1,15 +1,20 @@
 """AFJ Wrapper."""
 
 from base64 import b64encode, urlsafe_b64encode
-from jrpc_client import BaseSocketTransport, JsonRpcClient
-from oid4vci_client.client import OpenID4VCIClient
 from . import isomdl_uniffi
 from aries_askar import Key as AskarKey
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from oid4vci_client.client import OpenID4VCIClient
+    from jrpc_client import BaseSocketTransport, JsonRpcClient
+
 
 class ISOMDLWrapper:
     """Sphereon Wrapper."""
 
-    def __init__(self, transport: BaseSocketTransport, client: JsonRpcClient):
+    def __init__(self, transport: "BaseSocketTransport", client: "JsonRpcClient"):
         """Initialize the wrapper."""
         self.transport = transport
         self.client = client
@@ -37,10 +42,13 @@ class ISOMDLWrapper:
         """Hit test method."""
         return await self.client.request("test")
 
-    async def accept_mdl_credential_offer(self, test_client: OpenID4VCIClient, trust_anchor: str, offer: str):
+    async def accept_mdl_credential_offer(
+        self, test_client: "OpenID4VCIClient", trust_anchor: str, offer: str
+    ):
         """Accpet offer."""
         # print(f"Offer: {offer}")
         from urllib.parse import urlparse, parse_qs
+
         parsed_url = urlparse(offer["credential_offer_uri"])
         query_string = parse_qs(parsed_url.query)
         print(query_string)
@@ -48,6 +56,7 @@ class ISOMDLWrapper:
         print(f"Parsed Offer: {offer2}")
         assert offer2, "Offer is None or empty"
         import json
+
         offer2 = json.loads(offer2)
         for key in offer2:
             print(f"Offer key: {key}, value: {offer2[key]}")
@@ -76,7 +85,7 @@ class ISOMDLWrapper:
                     "family_name": True,
                 }
             },
-            [trust_anchor]
+            [trust_anchor],
         )
         if not session:
             print("Session is None")

@@ -18,6 +18,8 @@ services:
       retries: 5
 
   issuer:
+    platform:
+      linux/amd64
     image: oid4vc
     build: 
       dockerfile: docker/Dockerfile
@@ -99,12 +101,15 @@ services:
       retries: 5
 
   tests:
+    platform:
+      linux/amd64
     image: oid4vc-test-runner
     build:
       context: .
     volumes:
       - ./oid4vci_client:/usr/src/app/oid4vci_client:z
       - ./tests:/usr/src/app/tests:z
+      - ./isomdl_wrapper:/usr/src/app/integration/isomdl_wrapper:z
     environment:
       ISSUER_ADMIN_ENDPOINT: http://issuer:3001
       SPHEREON_HOST: sphereon

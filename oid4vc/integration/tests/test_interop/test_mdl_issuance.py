@@ -33,7 +33,7 @@ async def mdl_supported_cred_id(controller: Controller, issuer_did: str):
         },
     )
     print(f"SUPPORTED: {supported}")
-    print("POP: ", supported["format_data"]["pop"])
+    # print("POP: ", supported["format_data"]["pop"])
     yield supported["supported_cred_id"]
 
 
