@@ -16,11 +16,7 @@ from .issuer import (
     process_presentation_response,
     verify_presentation,
 )
-from .verifier import (
-    MdocVerifyResult,
-    mdoc_verify,
-    verify_presentation_response,
-)
+from .verifier import MdocVerifyResult, mdoc_verify, verify_presentation_response
 
 __all__ = [
     "create_mdoc_credential",

@@ -2,9 +2,9 @@ from unittest.mock import MagicMock
 
 import pytest
 from acapy_agent.admin.request_context import AdminRequestContext
-from acapy_agent.utils.testing import create_test_profile
 from acapy_agent.core.profile import Profile
 from acapy_agent.resolver.did_resolver import DIDResolver
+from acapy_agent.utils.testing import create_test_profile
 
 from jwt_vc_json import JwtVcJsonCredProcessor
 from oid4vc.cred_processor import CredProcessors

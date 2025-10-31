@@ -14,7 +14,7 @@ Key Protocol Compliance:
 import logging
 import uuid
 from datetime import datetime, timedelta
-from typing import Dict, Any, Tuple, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -26,21 +26,21 @@ LOGGER = logging.getLogger(__name__)
 
 def generate_ec_key_pair() -> Tuple[str, str, Dict[str, Any]]:
     """Generate an ECDSA key pair for mDoc signing.
-    
+
     Generates a P-256 (secp256r1) elliptic curve key pair compliant with
     ISO 18013-5 § 9.1.3.5 requirements for mDoc cryptographic operations.
     The generated key supports ES256 algorithm as specified in RFC 7518 § 3.4.
-    
+
     Returns:
         Tuple containing:
         - private_key_pem: PEM-encoded private key string
-        - public_key_pem: PEM-encoded public key string  
+        - public_key_pem: PEM-encoded public key string
         - jwk: JSON Web Key dictionary with EC parameters
-        
+
     Raises:
         ValueError: If key generation parameters are invalid
         RuntimeError: If cryptographic operation fails
-        
+
     Example:
         >>> private_pem, public_pem, jwk = generate_ec_key_pair()
         >>> print(jwk['kty'])  # 'EC'
@@ -70,13 +70,13 @@ def generate_ec_key_pair() -> Tuple[str, str, Dict[str, Any]]:
     # Convert to JWK format
     def int_to_base64url_uint(val: int) -> str:
         """Convert integer to base64url unsigned integer.
-        
+
         Converts an elliptic curve coordinate integer to base64url encoding
         as required by RFC 7517 for EC JWK format.
-        
+
         Args:
             val: Integer value to encode
-            
+
         Returns:
             Base64url-encoded string without padding
         """
@@ -104,7 +104,7 @@ def generate_self_signed_certificate(
     validity_days: int = 365,
 ) -> str:
     """Generate a self-signed X.509 certificate for mDoc issuer.
-    
+
     Creates a self-signed certificate compliant with ISO 18013-5 requirements
     for mDoc issuer authentication. The certificate uses SHA-256 with ECDSA
     signature algorithm as specified in ISO 18013-5 § 9.1.3.5.
@@ -114,14 +114,14 @@ def generate_self_signed_certificate(
         subject_name: Subject Distinguished Name (default: CN=mDoc Test Issuer)
         issuer_name: Issuer DN (uses subject_name if None)
         validity_days: Certificate validity period in days (default: 365)
-        
+
     Returns:
         PEM-encoded X.509 certificate string
-        
+
     Raises:
         ValueError: If private key format is invalid or parameters are invalid
         RuntimeError: If certificate generation fails
-        
+
     Example:
         >>> private_pem, _, _ = generate_ec_key_pair()
         >>> cert = generate_self_signed_certificate(private_pem)
@@ -152,27 +152,19 @@ def generate_self_signed_certificate(
                 value = value.strip()
 
                 if attr == "CN":
-                    name_parts.append(
-                        x509.NameAttribute(NameOID.COMMON_NAME, value)
-                    )
+                    name_parts.append(x509.NameAttribute(NameOID.COMMON_NAME, value))
                 elif attr == "O":
                     name_parts.append(
                         x509.NameAttribute(NameOID.ORGANIZATION_NAME, value)
                     )
                 elif attr == "C":
-                    name_parts.append(
-                        x509.NameAttribute(NameOID.COUNTRY_NAME, value)
-                    )
+                    name_parts.append(x509.NameAttribute(NameOID.COUNTRY_NAME, value))
                 elif attr == "ST":
                     name_parts.append(
-                        x509.NameAttribute(
-                            NameOID.STATE_OR_PROVINCE_NAME, value
-                        )
+                        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, value)
                     )
                 elif attr == "L":
-                    name_parts.append(
-                        x509.NameAttribute(NameOID.LOCALITY_NAME, value)
-                    )
+                    name_parts.append(x509.NameAttribute(NameOID.LOCALITY_NAME, value))
         return x509.Name(name_parts)
 
     subject = parse_dn(subject_name)
@@ -186,9 +178,7 @@ def generate_self_signed_certificate(
     cert_builder = cert_builder.public_key(private_key.public_key())
     cert_builder = cert_builder.serial_number(int(uuid.uuid4()))
     cert_builder = cert_builder.not_valid_before(now)
-    cert_builder = cert_builder.not_valid_after(
-        now + timedelta(days=validity_days)
-    )
+    cert_builder = cert_builder.not_valid_after(now + timedelta(days=validity_days))
 
     # Add extensions
     cert_builder = cert_builder.add_extension(
@@ -221,7 +211,7 @@ async def generate_default_keys_and_certs(
     storage_manager: Any, session: Any
 ) -> Dict[str, Any]:
     """Generate default keys and certificates for mDoc operations.
-    
+
     Creates a complete set of cryptographic materials for mDoc issuance
     including ECDSA signing keys and X.509 certificates. All materials
     are generated according to ISO 18013-5 specifications and stored
@@ -236,11 +226,11 @@ async def generate_default_keys_and_certs(
         - key_id: Identifier for the signing key
         - cert_id: Identifier for the X.509 certificate
         - jwk: JSON Web Key for the generated key pair
-        
+
     Raises:
         StorageError: If key/certificate storage fails
         RuntimeError: If key generation fails
-        
+
     Example:
         >>> storage = MdocStorageManager(profile)
         >>> result = await generate_default_keys_and_certs(storage, session)
@@ -299,9 +289,7 @@ async def generate_default_keys_and_certs(
         session, "default_certificate", {"cert_id": cert_id}
     )
 
-    LOGGER.info(
-        "Generated default mDoc key: %s and certificate: %s", key_id, cert_id
-    )
+    LOGGER.info("Generated default mDoc key: %s and certificate: %s", key_id, cert_id)
 
     return {
         "key_id": key_id,

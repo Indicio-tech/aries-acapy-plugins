@@ -139,22 +139,24 @@ class MsoMdocCredProcessor(Issuer):
         self, body: Dict[str, Any], supported: SupportedCredential
     ) -> str:
         """Validate and extract doctype from request and configuration.
-        
+
         Validates the document type identifier according to ISO 18013-5 § 8.3.2.1.2.1
         requirements and OpenID4VCI 1.0 § E.1.1 specification.
-        
+
         Args:
             body: Request body containing credential issuance parameters
             supported: Supported credential configuration with format data
-            
+
         Returns:
             Validated doctype string (e.g., "org.iso.18013.5.1.mDL")
-            
+
         Raises:
             CredProcessorError: If doctype validation fails with detailed context
         """
         doctype_from_request = body.get("doctype")
-        doctype_from_config = supported.format_data.get("doctype") if supported.format_data else None
+        doctype_from_config = (
+            supported.format_data.get("doctype") if supported.format_data else None
+        )
 
         if not doctype_from_request and not doctype_from_config:
             raise CredProcessorError(
@@ -182,8 +184,8 @@ class MsoMdocCredProcessor(Issuer):
 
         if not doctype.startswith("org.iso."):
             LOGGER.warning(
-                "Document type '%s' does not follow ISO format convention (org.iso.*)", 
-                doctype
+                "Document type '%s' does not follow ISO format convention (org.iso.*)",
+                doctype,
             )
 
         return doctype
@@ -192,18 +194,18 @@ class MsoMdocCredProcessor(Issuer):
         self, pop: PopResult, ex_record: OID4VCIExchangeRecord
     ) -> Optional[str]:
         """Extract device authentication key from proof of possession or exchange record.
-        
+
         Extracts and validates the device key for holder binding according to
-        ISO 18013-5 § 9.1.3.4 device authentication requirements and 
+        ISO 18013-5 § 9.1.3.4 device authentication requirements and
         OpenID4VCI proof of possession mechanisms.
-        
+
         Args:
             pop: Proof of possession result containing holder key information
             ex_record: Exchange record with credential issuance context
-            
+
         Returns:
             Serialized device key string (JWK JSON or key identifier), or None if unavailable
-            
+
         Raises:
             CredProcessorError: If device key format is invalid or unsupported
         """
@@ -265,9 +267,7 @@ class MsoMdocCredProcessor(Issuer):
                 )
             else:
                 # Generate default key if none exists
-                jwk = await resolve_signing_key_for_credential(
-                    context.profile, session
-                )
+                jwk = await resolve_signing_key_for_credential(context.profile, session)
                 LOGGER.info("Generated new default signing key")
 
         if not jwk:
@@ -329,11 +329,7 @@ class MsoMdocCredProcessor(Issuer):
                 "Issuing mso_mdoc with jwk=%s headers=%s payload_keys=%s",
                 "<redacted>" if jwk else None,
                 headers,
-                (
-                    list(payload.keys())
-                    if isinstance(payload, dict)
-                    else type(payload)
-                ),
+                (list(payload.keys()) if isinstance(payload, dict) else type(payload)),
             )
             mso_mdoc = isomdl_mdoc_sign(jwk, headers, payload)
 
@@ -358,17 +354,17 @@ class MsoMdocCredProcessor(Issuer):
 
     def _normalize_mdoc_result(self, result: Any) -> str:
         """Normalize mDoc result handling for robust string/bytes processing.
-        
+
         Handles various return formats from isomdl-uniffi library including
         string representations of bytes, actual bytes objects, and plain strings.
         Ensures consistent string output for credential storage and transmission.
-        
+
         Args:
             result: Raw result from isomdl_mdoc_sign operation
-            
+
         Returns:
             Normalized string representation of the mDoc credential
-            
+
         Raises:
             CredProcessorError: If result format cannot be normalized
         """
@@ -377,17 +373,17 @@ class MsoMdocCredProcessor(Issuer):
                 "mDoc signing returned None result. "
                 "Check key material and payload format."
             )
-        
+
         # Handle bytes objects
         if isinstance(result, bytes):
             try:
-                return result.decode('utf-8')
+                return result.decode("utf-8")
             except UnicodeDecodeError as e:
                 raise CredProcessorError(
                     f"Failed to decode mDoc bytes result: {e}. "
                     "Result may contain binary data requiring base64 encoding."
                 ) from e
-        
+
         # Handle string representations of bytes (e.g., "b'data'")
         if isinstance(result, str):
             # Remove b' prefix and ' suffix if present
@@ -397,21 +393,23 @@ class MsoMdocCredProcessor(Issuer):
                 try:
                     # Use literal_eval to safely parse escape sequences
                     import ast
+
                     return ast.literal_eval(f"'{cleaned}'")
                 except (ValueError, SyntaxError):
                     # Fallback to simple string cleanup
                     return cleaned
-            # Remove b" prefix and " suffix if present  
+            # Remove b" prefix and " suffix if present
             elif result.startswith('b"') and result.endswith('"'):
                 cleaned = result[2:-1]
                 try:
                     import ast
+
                     return ast.literal_eval(f'"{cleaned}"')
                 except (ValueError, SyntaxError):
                     return cleaned
             else:
                 return result
-        
+
         # Handle other types by converting to string
         try:
             return str(result)

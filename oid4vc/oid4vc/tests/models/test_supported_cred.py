@@ -34,9 +34,9 @@ async def test_save(profile: Profile, record: SupportedCredential):
 
 
 def test_to_issuer_metadata(record: SupportedCredential):
+    """Test conversion to issuer metadata per OID4VCI 1.0 § 11.2.3."""
     assert record.to_issuer_metadata() == {
         "format": "jwt_vc_json",
-        "id": "MyCredential",
         "cryptographic_suites_supported": ["EdDSA"],
         "credentialSubject": {"name": "alice"},
     }

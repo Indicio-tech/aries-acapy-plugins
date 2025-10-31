@@ -27,9 +27,7 @@ class MsoVerifier:
     @property
     def raw_public_keys(self) -> bytes:
         """Extract public key from x509 certificates."""
-        _mixed_heads = list(self.object.phdr.items()) + list(
-            self.object.uhdr.items()
-        )
+        _mixed_heads = list(self.object.phdr.items()) + list(self.object.uhdr.items())
         for h, v in _mixed_heads:
             if h.identifier == 33:
                 return list(self.object.uhdr.values())

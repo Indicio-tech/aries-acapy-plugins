@@ -35,7 +35,9 @@ class Issuer(Protocol):
         """Issue a credential."""
         ...
 
-    def validate_credential_subject(self, supported: SupportedCredential, subject: dict):
+    def validate_credential_subject(
+        self, supported: SupportedCredential, subject: dict
+    ):
         """Validate the credential subject."""
         ...
 
@@ -110,7 +112,9 @@ class CredProcessors:
         """Return the processor to handle the given format."""
         processor = self.cred_verifiers.get(format)
         if not processor:
-            raise CredProcessorError(f"No loaded credential verifier for format {format}")
+            raise CredProcessorError(
+                f"No loaded credential verifier for format {format}"
+            )
         return processor
 
     def pres_verifier_for_format(self, format: str) -> PresVerifier:

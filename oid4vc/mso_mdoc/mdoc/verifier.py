@@ -74,9 +74,7 @@ class MdocVerifyResultSchema(BaseModelSchema):
     )
 
 
-def mdoc_verify(
-    mdoc_cbor: str, trust_anchors: list = None
-) -> MdocVerifyResult:
+def mdoc_verify(mdoc_cbor: str, trust_anchors: list = None) -> MdocVerifyResult:
     """Verify an mDoc using isomdl-uniffi.
 
     Performs cryptographic verification of an ISO 18013-5 mobile document
@@ -114,13 +112,9 @@ def mdoc_verify(
         valid = True
         kid = mdoc.key_alias()
 
-        LOGGER.info(
-            "Verified mDoc with doctype: %s, valid: %s", mdoc.doctype(), valid
-        )
+        LOGGER.info("Verified mDoc with doctype: %s, valid: %s", mdoc.doctype(), valid)
 
-        return MdocVerifyResult(
-            headers=headers, payload=payload, valid=valid, kid=kid
-        )
+        return MdocVerifyResult(headers=headers, payload=payload, valid=valid, kid=kid)
 
     except Exception as ex:
         LOGGER.error("Failed to verify mDoc: %s", ex)
@@ -162,8 +156,7 @@ def verify_presentation_response(
             "issuer_authentication": str(result.issuer_authentication),
             "verified_data": result.verified_response,
             "errors": result.errors if hasattr(result, "errors") else [],
-            "valid": result.device_authentication
-            == AuthenticationStatus.VALID,
+            "valid": result.device_authentication == AuthenticationStatus.VALID,
         }
 
     except Exception as ex:

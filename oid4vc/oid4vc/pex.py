@@ -7,16 +7,16 @@ import jsonpath_ng as jsonpath
 from acapy_agent.core.profile import Profile
 from acapy_agent.messaging.models.base import BaseModel, BaseModelSchema
 from acapy_agent.messaging.valid import UUID4_EXAMPLE
-from acapy_agent.protocols.present_proof.dif.pres_exch import (
-    DIFField,
-    InputDescriptors,
-    PresentationDefinition,
-)
+from acapy_agent.protocols.present_proof.dif.pres_exch import DIFField
 from acapy_agent.protocols.present_proof.dif.pres_exch import (
     InputDescriptorMapping as InnerInDescMapping,
 )
 from acapy_agent.protocols.present_proof.dif.pres_exch import (
     InputDescriptorMappingSchema as InnerInDescMappingSchema,
+)
+from acapy_agent.protocols.present_proof.dif.pres_exch import (
+    InputDescriptors,
+    PresentationDefinition,
 )
 from jsonpath_ng import DatumInContext as Matched
 from jsonpath_ng import JSONPath
@@ -204,7 +204,9 @@ class DescriptorEvaluator:
         self._field_constraints = field_constraints
 
     @classmethod
-    def compile(cls, descriptor: Union[dict, InputDescriptors]) -> "DescriptorEvaluator":
+    def compile(
+        cls, descriptor: Union[dict, InputDescriptors]
+    ) -> "DescriptorEvaluator":
         """Compile an input descriptor."""
         if isinstance(descriptor, dict):
             descriptor = InputDescriptors.deserialize(descriptor)
@@ -311,7 +313,9 @@ class PresentationExchangeEvaluator:
 
             result = await processor.verify_credential(profile, vc)
             if not result.verified:
-                return PexVerifyResult(details="Credential signature verification failed")
+                return PexVerifyResult(
+                    details="Credential signature verification failed"
+                )
 
             try:
                 fields = evaluator.match(result.payload)

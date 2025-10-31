@@ -9,11 +9,12 @@ from acapy_agent.wallet.base import BaseWallet
 from acapy_agent.wallet.jwt import (
     BadJWSHeaderError,
     BaseVerificationKeyStrategy,
+    b64_to_bytes,
+    b64_to_dict,
     dict_to_b64,
     did_lookup_name,
     nym_to_did,
 )
-from acapy_agent.wallet.jwt import b64_to_bytes, b64_to_dict
 from acapy_agent.wallet.key_type import ED25519
 from acapy_agent.wallet.util import b58_to_bytes, bytes_to_b64
 from aries_askar import Key, KeyAlg

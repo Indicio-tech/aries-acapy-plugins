@@ -1,10 +1,10 @@
 """Models for DCQL queries."""
 
-from marshmallow import ValidationError, fields, validates_schema
 from typing import Any, List, Mapping, Optional, Union
-from acapy_agent.messaging.models.base_record import BaseRecord, BaseRecordSchema
-from acapy_agent.messaging.models.base import BaseModel, BaseModelSchema
 
+from acapy_agent.messaging.models.base import BaseModel, BaseModelSchema
+from acapy_agent.messaging.models.base_record import BaseRecord, BaseRecordSchema
+from marshmallow import ValidationError, fields, validates_schema
 
 ClaimsPath = List[str | int | None]
 
@@ -98,8 +98,12 @@ class ClaimsQuerySchema(BaseModelSchema):
         values = data.get("values")
         if values:
             for v in values:
-                if not (isinstance(v, str) or isinstance(v, int) or isinstance(v, bool)):
-                    raise ValidationError("Values elements must be string, int, or bool.")
+                if not (
+                    isinstance(v, str) or isinstance(v, int) or isinstance(v, bool)
+                ):
+                    raise ValidationError(
+                        "Values elements must be string, int, or bool."
+                    )
 
 
 ClaimQueryID = str
@@ -316,7 +320,9 @@ class DCQLQuery(BaseRecord):
         *,
         dcql_query_id: Optional[str] = None,
         credentials: Union[List[Mapping], List[CredentialQuery]],
-        credential_sets: Optional[Union[List[Mapping], List[CredentialSetQuery]]] = None,
+        credential_sets: Optional[
+            Union[List[Mapping], List[CredentialSetQuery]]
+        ] = None,
         **kwargs,
     ):
         """Initialize a new DCQL Credential Query Record."""

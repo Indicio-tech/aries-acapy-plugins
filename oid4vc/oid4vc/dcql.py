@@ -3,12 +3,11 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from oid4vc.cred_processor import CredProcessors
-from oid4vc.models.dcql_query import DCQLQuery
 from acapy_agent.core.profile import Profile
 
+from oid4vc.cred_processor import CredProcessors
+from oid4vc.models.dcql_query import DCQLQuery
 from oid4vc.models.presentation import OID4VPPresentation
-
 
 ClaimsPath = List[str | int | None]
 Absent = object()

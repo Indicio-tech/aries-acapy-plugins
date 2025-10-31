@@ -71,9 +71,7 @@ class MsoIssuer:
                     "elementValue": v,
                 }
                 self.hash_map[ns][digest_cnt] = hashfunc(
-                    cbor2.dumps(
-                        cbor2.CBORTag(24, self.disclosure_map[ns][digest_cnt])
-                    )
+                    cbor2.dumps(cbor2.CBORTag(24, self.disclosure_map[ns][digest_cnt]))
                 ).digest()
 
                 digest_cnt += 1
@@ -103,9 +101,7 @@ class MsoIssuer:
                     cbor2.CBORTag(0, self.format_datetime_repr(utcnow))
                 ),
                 "validFrom": cbor2.dumps(
-                    cbor2.CBORTag(
-                        0, self.format_datetime_repr(valid_from or utcnow)
-                    )
+                    cbor2.CBORTag(0, self.format_datetime_repr(valid_from or utcnow))
                 ),
                 "validUntil": cbor2.dumps(
                     cbor2.CBORTag(0, self.format_datetime_repr(exp))

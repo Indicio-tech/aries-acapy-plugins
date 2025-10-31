@@ -53,7 +53,13 @@ class SupportedCredential(BaseRecord):
                 Verifiable Credential.
             kwargs: Keyword arguments to allow generic initialization of the record.
         """
-        super().__init__(supported_cred_id, **kwargs)
+        # Filter kwargs to only include parameters that BaseRecord accepts
+        base_record_kwargs = {
+            k: v
+            for k, v in kwargs.items()
+            if k in ("state", "created_at", "updated_at", "new_with_id")
+        }
+        super().__init__(supported_cred_id, **base_record_kwargs)
         self.format = format
         self.identifier = identifier
         self.cryptographic_binding_methods_supported = (
@@ -88,28 +94,37 @@ class SupportedCredential(BaseRecord):
     def to_issuer_metadata(self) -> dict:
         """Return a representation of this record as issuer metadata.
 
-        To arrive at the structure defined by the specification, it must be
-        derived from this record (the record itself is not exactly aligned with
-        the spec).
+        OpenID4VCI 1.0 § 11.2.3: Credential Configuration Identifier
+        https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#section-11.2.3
+
+        Returns credential configuration object as per OID4VCI 1.0 specification.
         """
+        # Base credential configuration per OID4VCI 1.0 § 11.2.3
         issuer_metadata = {
-            prop: value
-            for prop in (
-                "format",
-                "cryptographic_binding_methods_supported",
-                "cryptographic_suites_supported",
-                "display",
+            "format": self.format,  # REQUIRED: Credential format identifier
+        }
+
+        # Add optional cryptographic binding methods (OID4VCI 1.0 § 11.2.3.2)
+        if self.cryptographic_binding_methods_supported:
+            issuer_metadata["cryptographic_binding_methods_supported"] = (
+                self.cryptographic_binding_methods_supported
             )
-            if (value := getattr(self, prop)) is not None
-        }
 
-        issuer_metadata["id"] = self.identifier
+        # Add optional cryptographic suites (OID4VCI 1.0 § 11.2.3.3)
+        if self.cryptographic_suites_supported:
+            issuer_metadata["cryptographic_suites_supported"] = (
+                self.cryptographic_suites_supported
+            )
 
-        # Flatten the format specific metadata into the object
-        issuer_metadata = {
-            **issuer_metadata,
-            **(self.format_data or {}),
-        }
+        # Add optional display properties (OID4VCI 1.0 § 11.2.3.1)
+        if self.display:
+            issuer_metadata["display"] = self.display
+
+        # OID4VCI 1.0 § E: Format-specific parameters
+        # Flatten the format specific metadata into the configuration object
+        if self.format_data:
+            issuer_metadata.update(self.format_data)
+
         return issuer_metadata
 
 

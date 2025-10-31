@@ -15,11 +15,7 @@ import logging
 
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.messaging.models.openapi import OpenAPISchema
-from acapy_agent.messaging.valid import (
-    GENERIC_DID_EXAMPLE,
-    GENERIC_DID_VALIDATE,
-    Uri,
-)
+from acapy_agent.messaging.valid import GENERIC_DID_EXAMPLE, GENERIC_DID_VALIDATE, Uri
 from aiohttp import web
 from aiohttp_apispec import docs, request_schema, response_schema
 from marshmallow import fields
@@ -33,9 +29,7 @@ from .storage import MdocStorageManager
 # OpenID4VCI 1.0 § E.1.1: mso_mdoc Credential Format
 # https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#appendix-E.1.1
 # ISO/IEC 18013-5:2021 official specification URI
-SPEC_URI = (
-    "https://www.iso.org/obp/ui/#iso:std:iso-iec:18013:-5:dis:ed-1:v1:en"
-)
+SPEC_URI = "https://www.iso.org/obp/ui/#iso:std:iso-iec:18013:-5:dis:ed-1:v1:en"
 OID4VCI_SPEC_URI = (
     "https://openid.net/specs/openid-4-verifiable-credential-issuance-"
     "1_0.html#appendix-E.1.1"
@@ -112,7 +106,7 @@ async def mdoc_sign(request: web.BaseRequest):
 
     Creates and signs a mobile document (mDoc) credential following both
     ISO 18013-5 mobile document format and OpenID4VCI 1.0 mso_mdoc credential format.
-    
+
     This endpoint implements the complete mDoc issuance workflow including:
     - Credential payload validation and formatting
     - ECDSA key resolution and validation
@@ -135,15 +129,15 @@ async def mdoc_sign(request: web.BaseRequest):
             "did": { Optional DID for issuer identification },
             "verificationMethod": { Optional verification method URI }
         }
-        
+
     Returns:
         JSON response with signed mDoc credential or error details
-        
+
     Raises:
         web.HTTPBadRequest: If request payload is invalid or malformed
         web.HTTPUnprocessableEntity: If credential data validation fails
         web.HTTPInternalServerError: If signing operation fails
-        
+
     Example:
         POST /oid4vc/mdoc/sign
         {
@@ -185,9 +179,7 @@ async def mdoc_sign(request: web.BaseRequest):
 
             if not jwk:
                 # Fall back to default signing key
-                stored_key = await storage_manager.get_default_signing_key(
-                    session
-                )
+                stored_key = await storage_manager.get_default_signing_key(session)
                 if stored_key and stored_key.get("jwk"):
                     jwk = stored_key["jwk"]
                     LOGGER.info("Using default signing key for mDoc signing")
@@ -198,9 +190,7 @@ async def mdoc_sign(request: web.BaseRequest):
                         session,
                         verification_method=verification_method,
                     )
-                    LOGGER.info(
-                        "Generated new signing key for verification method"
-                    )
+                    LOGGER.info("Generated new signing key for verification method")
                 else:
                     raise ValueError(
                         "No signing key available and no verification method"
@@ -254,9 +244,7 @@ async def mdoc_verify(request: web.BaseRequest):
     except ValueError as err:
         raise web.HTTPBadRequest(reason=str(err)) from err
     except Exception as err:
-        raise web.HTTPInternalServerError(
-            reason=f"Verification failed: {err}"
-        ) from err
+        raise web.HTTPInternalServerError(reason=f"Verification failed: {err}") from err
 
     return web.json_response(result.serialize())
 

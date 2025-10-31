@@ -10,7 +10,7 @@ from oid4vc import public_routes as test_module
 
 @pytest.mark.asyncio
 async def test_issuer_metadata(context: AdminRequestContext, req: web.Request):
-    """Test issuer metadata endpoint."""
+    """Test issuer metadata endpoint per OID4VCI 1.0 § 11.2.1."""
     supported = test_module.SupportedCredential(
         format="jwt_vc_json",
         identifier="MyCredential",
@@ -28,13 +28,12 @@ async def test_issuer_metadata(context: AdminRequestContext, req: web.Request):
             {
                 "credential_issuer": f"http://localhost:8020/tenant/{req.match_info.get()}",
                 "credential_endpoint": f"http://localhost:8020/tenant/{req.match_info.get()}/credential",
-                "credentials_supported": [
-                    {
+                "credential_configurations_supported": {
+                    "MyCredential": {
                         "format": "jwt_vc_json",
-                        "id": "MyCredential",
                         "credentialSubject": {"name": "alice"},
                     }
-                ],
+                },
             }
         )
 

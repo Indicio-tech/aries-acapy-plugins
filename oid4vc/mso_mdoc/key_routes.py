@@ -33,15 +33,11 @@ class MdocCertListSchema(OpenAPISchema):
 class MdocKeyGenSchema(OpenAPISchema):
     """Response schema for key generation."""
 
-    key_id = fields.Str(
-        required=True, metadata={"description": "Generated key ID"}
-    )
+    key_id = fields.Str(required=True, metadata={"description": "Generated key ID"})
     cert_id = fields.Str(
         required=True, metadata={"description": "Generated certificate ID"}
     )
-    message = fields.Str(
-        required=True, metadata={"description": "Success message"}
-    )
+    message = fields.Str(required=True, metadata={"description": "Success message"})
 
 
 @docs(
@@ -65,18 +61,14 @@ async def list_keys(request: web.BaseRequest):
                 "key_type": key["key_type"],
                 "created_at": key["created_at"],
                 "metadata": {
-                    k: v
-                    for k, v in key.get("metadata", {}).items()
-                    if k != "jwk"
+                    k: v for k, v in key.get("metadata", {}).items() if k != "jwk"
                 },
             }
             safe_keys.append(safe_key)
 
         return web.json_response({"keys": safe_keys})
     except Exception as e:
-        raise web.HTTPInternalServerError(
-            reason=f"Failed to list keys: {e}"
-        ) from e
+        raise web.HTTPInternalServerError(reason=f"Failed to list keys: {e}") from e
 
 
 @docs(
@@ -111,23 +103,18 @@ async def generate_keys(request: web.BaseRequest):
 
     try:
         async with context.profile.session() as session:
-            generated = await generate_default_keys_and_certs(
-                storage_manager, session
-            )
+            generated = await generate_default_keys_and_certs(storage_manager, session)
         return web.json_response(
             {
                 "key_id": generated["key_id"],
                 "cert_id": generated["cert_id"],
                 "message": (
-                    "Successfully generated new mDoc signing key and"
-                    " certificate"
+                    "Successfully generated new mDoc signing key and" " certificate"
                 ),
             }
         )
     except Exception as e:
-        raise web.HTTPInternalServerError(
-            reason=f"Failed to generate keys: {e}"
-        ) from e
+        raise web.HTTPInternalServerError(reason=f"Failed to generate keys: {e}") from e
 
 
 def register_key_management_routes(app: web.Application):

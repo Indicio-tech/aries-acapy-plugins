@@ -37,18 +37,18 @@ MDOC_CONFIG_RECORD_TYPE = "mdoc_config"
 
 class MdocStorageManager:
     """Storage manager for mDoc keys, certificates, and configuration.
-    
+
     Provides secure storage operations for cryptographic materials used in
     mDoc issuance and verification processes. Implements proper key lifecycle
     management following NIST SP 800-57 guidelines.
-    
+
     Attributes:
         profile: ACA-Py profile for accessing storage backend
     """
 
     def __init__(self, profile: Profile) -> None:
         """Initialize storage manager with profile.
-        
+
         Args:
             profile: ACA-Py profile containing storage configuration
         """
@@ -56,30 +56,26 @@ class MdocStorageManager:
 
     def get_storage(self, session: ProfileSession) -> BaseStorage:
         """Get storage instance from session.
-        
+
         Retrieves the configured storage backend from the session context
         for performing persistent storage operations.
-        
+
         Args:
             session: Active database session with storage context
-            
+
         Returns:
             BaseStorage instance for record operations
-            
+
         Raises:
             StorageError: If storage backend is not available
         """
-        LOGGER.debug(
-            "Attempting to inject BaseStorage from session: %s", session
-        )
+        LOGGER.debug("Attempting to inject BaseStorage from session: %s", session)
         try:
             storage = session.inject(BaseStorage)
             LOGGER.debug("Successfully injected BaseStorage: %s", storage)
             return storage
         except Exception as e:
-            LOGGER.error(
-                "Failed to inject BaseStorage from session %s: %s", session, e
-            )
+            LOGGER.error("Failed to inject BaseStorage from session %s: %s", session, e)
             raise
 
     async def store_key(
@@ -91,22 +87,22 @@ class MdocStorageManager:
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Store a JSON Web Key (JWK) for mDoc operations.
-        
+
         Persistently stores an ECDSA key in JWK format following RFC 7517
         specifications. Keys are indexed by purpose and can include additional
         metadata for key management operations.
-        
+
         Args:
             session: Active database session for storage operations
             key_id: Unique identifier for the key (used as storage record ID)
             jwk: JSON Web Key dictionary with EC parameters
-            purpose: Key usage purpose (default: "signing")  
+            purpose: Key usage purpose (default: "signing")
             metadata: Optional additional key metadata and attributes
-            
+
         Raises:
             StorageError: If key storage operation fails
             ValueError: If key_id or jwk parameters are invalid
-            
+
         Example:
             >>> jwk = {"kty": "EC", "crv": "P-256", "x": "...", "y": "...", "d": "..."}
             >>> await storage.store_key(session, "key-123", jwk, "signing")
@@ -136,16 +132,12 @@ class MdocStorageManager:
         await storage.add_record(record)
         LOGGER.info("Stored mDoc key: %s", key_id)
 
-    async def get_key(
-        self, session: ProfileSession, key_id: str
-    ) -> Optional[Dict]:
+    async def get_key(self, session: ProfileSession, key_id: str) -> Optional[Dict]:
         """Retrieve a stored key by ID."""
         try:
             storage = self.get_storage(session)
         except Exception as e:
-            LOGGER.warning(
-                "Storage not available for getting key %s: %s", key_id, e
-            )
+            LOGGER.warning("Storage not available for getting key %s: %s", key_id, e)
             return None
 
         try:
@@ -201,9 +193,7 @@ class MdocStorageManager:
         try:
             storage = self.get_storage(session)
         except Exception as e:
-            LOGGER.warning(
-                "Storage not available for deleting key %s: %s", key_id, e
-            )
+            LOGGER.warning("Storage not available for deleting key %s: %s", key_id, e)
             return False
 
         try:
@@ -303,15 +293,11 @@ class MdocStorageManager:
         try:
             storage = self.get_storage(session)
         except Exception as e:
-            LOGGER.warning(
-                "Storage not available for listing certificates: %s", e
-            )
+            LOGGER.warning("Storage not available for listing certificates: %s", e)
             return []
 
         try:
-            records = await storage.find_all_records(
-                type_filter=MDOC_CERT_RECORD_TYPE
-            )
+            records = await storage.find_all_records(type_filter=MDOC_CERT_RECORD_TYPE)
 
             certificates = []
             for record in records:
@@ -372,10 +358,7 @@ class MdocStorageManager:
                 # Also check if identifier matches key fragment from verification method
                 if "#" in verification_method:
                     _, key_fragment = verification_method.split("#", 1)
-                    if (
-                        metadata.get("key_id") == key_fragment
-                        or key_id == key_fragment
-                    ):
+                    if metadata.get("key_id") == key_fragment or key_id == key_fragment:
                         return key
 
         return None
@@ -405,9 +388,7 @@ class MdocStorageManager:
             cert_pem = None
             for cert in certificates:
                 if cert["key_id"] == key_id:
-                    cert_result = await self.get_certificate(
-                        session, cert["cert_id"]
-                    )
+                    cert_result = await self.get_certificate(session, cert["cert_id"])
                     if cert_result:
                         cert_pem = cert_result[0]
                         break
@@ -471,9 +452,7 @@ class MdocStorageManager:
             return None
 
         try:
-            record = await storage.get_record(
-                MDOC_CONFIG_RECORD_TYPE, config_id
-            )
+            record = await storage.get_record(MDOC_CONFIG_RECORD_TYPE, config_id)
             return json.loads(record.value)
         except StorageNotFoundError:
             return None

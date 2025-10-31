@@ -24,18 +24,17 @@ from typing import Any, Dict, Mapping, Optional, Tuple
 
 from acapy_agent.core.profile import Profile
 
+# ISO 18013-5 § 8.4: Presentation session
+# ISO 18013-5 § 9.1.3.5: ECDSA P-256 key pairs
+# ISO 18013-5 § 8.4.1: Session establishment
+# ISO 18013-5 § 8.4.2: Response handling
+# Test mDL generation for ISO 18013-5 compliance
 # Import ISO 18013-5 compliant mDoc operations from isomdl-uniffi
 # These provide cryptographically secure implementations of:
 # - mDoc creation and signing (ISO 18013-5 § 8.3)
 # - Presentation protocols (ISO 18013-5 § 8.4)
 # - P-256 elliptic curve cryptography (ISO 18013-5 § 9.1.3.5)
 from isomdl_uniffi import Mdoc  # ISO 18013-5 § 8.3: Mobile document structure
-
-# ISO 18013-5 § 8.4: Presentation session
-# ISO 18013-5 § 9.1.3.5: ECDSA P-256 key pairs
-# ISO 18013-5 § 8.4.1: Session establishment
-# ISO 18013-5 § 8.4.2: Response handling
-# Test mDL generation for ISO 18013-5 compliance
 from isomdl_uniffi import (
     MdlPresentationSession,
     P256KeyPair,
@@ -81,9 +80,7 @@ async def create_mdoc_credential(
     holder_key = P256KeyPair()
     mdoc = generate_test_mdl(holder_key)
 
-    LOGGER.info(
-        "Created mDoc with doctype: %s, id: %s", mdoc.doctype(), mdoc.id()
-    )
+    LOGGER.info("Created mDoc with doctype: %s, id: %s", mdoc.doctype(), mdoc.id())
     return mdoc.stringify()
 
 
@@ -133,17 +130,13 @@ def parse_mdoc(cbor_data: str) -> Mdoc:
         raise ValueError(f"Failed to parse mdoc: {ex}") from ex
 
 
-def create_presentation_session(
-    mdoc: Mdoc, ble_uuid: str
-) -> MdlPresentationSession:
+def create_presentation_session(mdoc: Mdoc, ble_uuid: str) -> MdlPresentationSession:
     """Create a presentation session for an mDoc."""
     try:
         return MdlPresentationSession(mdoc, ble_uuid)
     except Exception as ex:
         LOGGER.error("Failed to create presentation session: %s", ex)
-        raise ValueError(
-            f"Failed to create presentation session: {ex}"
-        ) from ex
+        raise ValueError(f"Failed to create presentation session: {ex}") from ex
 
 
 def verify_presentation(
@@ -246,6 +239,4 @@ def process_presentation_response(session_state, response_data) -> dict:
             "verified_data": extracted_data,
         }
     except Exception as e:
-        raise ValueError(
-            f"Failed to process presentation response: {e}"
-        ) from e
+        raise ValueError(f"Failed to process presentation response: {e}") from e

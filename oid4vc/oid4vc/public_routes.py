@@ -6,16 +6,14 @@ import logging
 import time
 import uuid
 from secrets import token_urlsafe
-from urllib.parse import quote
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.core.profile import Profile, ProfileSession
 from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
-from acapy_agent.protocols.present_proof.dif.pres_exch import (
-    PresentationDefinition,
-)
+from acapy_agent.protocols.present_proof.dif.pres_exch import PresentationDefinition
 from acapy_agent.storage.base import BaseStorage, StorageRecord
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from acapy_agent.wallet.base import BaseWallet, WalletError
@@ -35,7 +33,7 @@ from aiohttp_apispec import (
 )
 from aries_askar import Key, KeyAlg
 from base58 import b58decode
-from marshmallow import fields
+from marshmallow import fields, pre_load
 
 from oid4vc.dcql import DCQLQueryEvaluator
 from oid4vc.jwk import DID_JWK
@@ -55,7 +53,7 @@ from .cred_processor import CredProcessorError, CredProcessors
 from .models.exchange import OID4VCIExchangeRecord
 from .models.supported_cred import SupportedCredential
 from .pop_result import PopResult
-from .routes import _parse_cred_offer, CredOfferQuerySchema, CredOfferResponseSchemaVal
+from .routes import CredOfferQuerySchema, CredOfferResponseSchemaVal, _parse_cred_offer
 
 LOGGER = logging.getLogger(__name__)
 PRE_AUTHORIZED_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:pre-authorized_code"
@@ -85,34 +83,69 @@ async def dereference_cred_offer(request: web.BaseRequest):
 
 
 class CredentialIssuerMetadataSchema(OpenAPISchema):
-    """Credential issuer metadata schema."""
+    """Credential issuer metadata schema.
+
+    OpenID4VCI 1.0 § 11.2.1: Credential Issuer Metadata
+    https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#section-11.2.1
+    """
 
     credential_issuer = fields.Str(
         required=True,
-        metadata={"description": "The credential issuer endpoint."},
+        metadata={
+            "description": "The credential issuer identifier. REQUIRED. "
+            "URL using the https scheme with no query or fragment component."
+        },
     )
     credential_endpoint = fields.Str(
         required=True,
-        metadata={"description": "The credential endpoint."},
+        metadata={
+            "description": "URL of the Credential Endpoint. REQUIRED. "
+            "This URL MUST use the https scheme."
+        },
     )
-    credential_configurations_supported = fields.List(
-        fields.Dict(),
-        metadata={"description": "The supported credentials."},
+    credential_configurations_supported = fields.Dict(
+        required=True,
+        metadata={
+            "description": "A JSON object containing a list of key-value pairs, "
+            "where the key is a string serving as an identifier "
+            "of the Credential Configuration, and the value is a JSON object. REQUIRED."
+        },
     )
-    authorization_server = fields.Str(
+    authorization_servers = fields.List(
+        fields.Str(),
         required=False,
-        metadata={"description": "The authorization server endpoint. Currently ignored."},
+        metadata={
+            "description": "Array of strings that identify the OAuth 2.0 Authorization Servers "
+            "(as defined in [RFC8414]) the Credential Issuer relies on for authorization. OPTIONAL."
+        },
     )
     batch_credential_endpoint = fields.Str(
         required=False,
-        metadata={"description": "The batch credential endpoint. Currently ignored."},
+        metadata={
+            "description": "URL of the Batch Credential Endpoint. OPTIONAL. "
+            "This URL MUST use the https scheme."
+        },
+    )
+    deferred_credential_endpoint = fields.Str(
+        required=False,
+        metadata={
+            "description": "URL of the Deferred Credential Endpoint. OPTIONAL. "
+            "This URL MUST use the https scheme."
+        },
     )
 
 
 @docs(tags=["oid4vc"], summary="Get credential issuer metadata")
 @response_schema(CredentialIssuerMetadataSchema())
 async def credential_issuer_metadata(request: web.Request):
-    """Credential issuer metadata endpoint."""
+    """Credential issuer metadata endpoint.
+
+    OpenID4VCI 1.0 § 11.2: Credential Issuer Metadata
+    https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#section-11.2
+
+    The Credential Issuer Metadata contains information on the Credential Issuer's
+    technical capabilities, supported Credential types, and (internationalization) data.
+    """
     context: AdminRequestContext = request["context"]
     config = Config.from_settings(context.settings)
     public_url = config.endpoint
@@ -123,11 +156,15 @@ async def credential_issuer_metadata(request: web.Request):
 
         wallet_id = request.match_info.get("wallet_id")
         subpath = f"/tenant/{wallet_id}" if wallet_id else ""
+
+        # OID4VCI 1.0 § 11.2.1: credential_configurations_supported is now a JSON object
+        # where keys are credential configuration identifiers
         metadata = {
             "credential_issuer": f"{public_url}{subpath}",
             "credential_endpoint": f"{public_url}{subpath}/credential",
             "credential_configurations_supported": {
-                supported.identifier: supported.to_issuer_metadata() for supported in credentials_supported
+                supported.identifier: supported.to_issuer_metadata()
+                for supported in credentials_supported
             },
         }
 
@@ -136,8 +173,37 @@ async def credential_issuer_metadata(request: web.Request):
     return web.json_response(metadata)
 
 
+async def credential_issuer_metadata_deprecated(request: web.Request):
+    """Deprecated credential issuer metadata endpoint with underscore.
+
+    This endpoint serves the same content as /.well-known/openid-credential-issuer
+    but uses the deprecated underscore format for backward compatibility with
+    clients that expect the OID4VCI pre-v1.0 naming convention.
+
+    Note: This endpoint is deprecated and not supported by OID4VCI v1.0 protocol.
+    Use /.well-known/openid-credential-issuer instead.
+    """
+    # Get the response from the main function
+    response = await credential_issuer_metadata(request)
+
+    # Add deprecation headers
+    response.headers["Deprecation"] = "true"
+    response.headers["Warning"] = (
+        '299 - "This endpoint is deprecated. Use /.well-known/openid-credential-issuer instead."'
+    )
+    response.headers["Sunset"] = (
+        "Thu, 31 Dec 2026 23:59:59 GMT"  # TODO: Set appropriate sunset date
+    )
+
+    return response
+
+
 class GetTokenSchema(OpenAPISchema):
-    """Schema for ..."""
+    """Schema for the token endpoint.
+
+    Accept both 'pre-authorized_code' (OID4VCI v1.0) and legacy
+    'pre_authorized_code' (underscore) for compatibility by normalizing input.
+    """
 
     grant_type = fields.Str(required=True, metadata={"description": "", "example": ""})
 
@@ -148,52 +214,109 @@ class GetTokenSchema(OpenAPISchema):
     )
     user_pin = fields.Str(required=False)
 
+    @pre_load
+    def normalize_fields(self, data, **kwargs):
+        """Normalize legacy field names to OID4VCI v1.0 keys.
+
+        Accept 'pre_authorized_code' by mapping it to 'pre-authorized_code'.
+        """
+        # webargs may pass a MultiDictProxy; make a writable copy first
+        try:
+            mutable = dict(data)
+        except Exception:
+            mutable = data
+        # Map legacy underscore field to the hyphenated v1.0 key if needed
+        if "pre_authorized_code" in mutable and "pre-authorized_code" not in mutable:
+            mutable["pre-authorized_code"] = mutable.get("pre_authorized_code")
+        return mutable
+
 
 @docs(tags=["oid4vc"], summary="Get credential issuance token")
 @form_schema(GetTokenSchema())
 async def token(request: web.Request):
-    """Token endpoint to exchange pre_authorized codes for access tokens."""
+    """Token endpoint to exchange pre-authorized codes for access tokens.
+
+    OID4VCI v1.0: This step MUST NOT require DID or verification method.
+    """
     context: AdminRequestContext = request["context"]
     form = await request.post()
-    LOGGER.debug(f"Token request: {form}")
+    LOGGER.debug("Token request form: %s", dict(form))
+
     if (form.get("grant_type")) != PRE_AUTHORIZED_CODE_GRANT_TYPE:
-        raise web.HTTPBadRequest(reason="grant_type not supported")
+        return web.json_response(
+            {
+                "error": "unsupported_grant_type",
+                "error_description": "grant_type not supported",
+            },
+            status=400,
+        )
 
-    pre_authorized_code = form.get("pre-authorized_code")
+    # Accept both hyphenated and underscored keys
+    pre_authorized_code = form.get("pre-authorized_code") or form.get(
+        "pre_authorized_code"
+    )
     if not pre_authorized_code or not isinstance(pre_authorized_code, str):
-        raise web.HTTPBadRequest(reason="pre-authorized_code is missing or invalid")
+        return web.json_response(
+            {
+                "error": "invalid_request",
+                "error_description": "pre-authorized_code is missing or invalid",
+            },
+            status=400,
+        )
 
-    user_pin = request.query.get("user_pin")
+    user_pin = form.get("user_pin")
     try:
         async with context.profile.session() as session:
             record = await OID4VCIExchangeRecord.retrieve_by_code(
                 session, pre_authorized_code
             )
     except (StorageError, BaseModelError, StorageNotFoundError) as err:
-        raise web.HTTPBadRequest(reason=err.roll_up) from err
+        return web.json_response(
+            {"error": "invalid_grant", "error_description": err.roll_up}, status=400
+        )
 
     if record.pin is not None:
         if user_pin is None:
-            raise web.HTTPBadRequest(reason="user_pin is required")
+            return web.json_response(
+                {
+                    "error": "invalid_request",
+                    "error_description": "user_pin is required",
+                },
+                status=400,
+            )
         if user_pin != record.pin:
-            raise web.HTTPBadRequest(reason="pin is invalid")
+            return web.json_response(
+                {"error": "invalid_grant", "error_description": "pin is invalid"},
+                status=400,
+            )
 
     payload = {
         "id": record.exchange_id,
         "exp": int(time.time()) + EXPIRES_IN,
     }
+
+    # v1 compliance: do not require DID/verification method at token step.
+    # Sign with a default did:jwk under this wallet to produce a JWT access token.
     async with context.profile.session() as session:
         try:
-            token = await jwt_sign(
+            jwk_info = await retrieve_or_create_did_jwk(session)
+            vm = f"{jwk_info.did}#0"
+            token_jwt = await jwt_sign(
                 context.profile,
-                headers={},
+                headers={"kid": vm, "typ": "JWT"},
                 payload=payload,
-                verification_method=record.verification_method,
+                verification_method=vm,
             )
         except (WalletNotFoundError, WalletError, ValueError) as err:
-            raise web.HTTPBadRequest(reason="Bad did or verification method") from err
+            return web.json_response(
+                {
+                    "error": "server_error",
+                    "error_description": f"Unable to sign access token: {str(err)}",
+                },
+                status=500,
+            )
 
-        record.token = token
+        record.token = token_jwt
         record.nonce = token_urlsafe(NONCE_BYTES)
         await record.save(
             session,
@@ -206,9 +329,6 @@ async def token(request: web.Request):
             "token_type": "Bearer",
             "expires_in": EXPIRES_IN,
             "c_nonce": record.nonce,
-            # I don't think it makes sense for the two expirations to be
-            # different; coordinating a new c_nonce separate from a token
-            # refresh seems like a pain.
             "c_nonce_expires_in": EXPIRES_IN,
         }
     )
@@ -219,30 +339,75 @@ async def check_token(
 ) -> JWTVerifyResult:
     """Validate the OID4VCI token."""
     if not auth_header:
-        raise web.HTTPUnauthorized()  # no authentication
+        raise web.HTTPUnauthorized(
+            text='{"error": "invalid_request", "error_description": "Authorization header missing"}',
+            headers={"Content-Type": "application/json"},
+        )
 
-    scheme, cred = auth_header.split(" ")
+    try:
+        scheme, cred = auth_header.split(" ")
+    except ValueError:
+        raise web.HTTPUnauthorized(
+            text='{"error": "invalid_request", "error_description": "Invalid authorization header format"}',
+            headers={"Content-Type": "application/json"},
+        )
+
     if scheme.lower() != "bearer":
-        raise web.HTTPUnauthorized()  # Invalid authentication credentials
+        raise web.HTTPUnauthorized(
+            text='{"error": "invalid_request", "error_description": "Bearer token required"}',
+            headers={"Content-Type": "application/json"},
+        )
 
-    result = await jwt_verify(profile, cred)
+    try:
+        result = await jwt_verify(profile, cred)
+    except Exception:
+        raise web.HTTPUnauthorized(
+            text='{"error": "invalid_token", '
+            '"error_description": "Invalid token format"}',
+            headers={"Content-Type": "application/json"},
+        )
+
     if not result.verified:
-        raise web.HTTPUnauthorized()  # Invalid credentials
+        raise web.HTTPUnauthorized(
+            text='{"error": "invalid_token", '
+            '"error_description": "Token verification failed"}',
+            headers={"Content-Type": "application/json"},
+        )
 
     if result.payload["exp"] < datetime.datetime.utcnow().timestamp():
-        raise web.HTTPUnauthorized()  # Token expired
+        raise web.HTTPUnauthorized(
+            text='{"error": "invalid_token", "error_description": "Token expired"}',
+            headers={"Content-Type": "application/json"},
+        )
 
     return result
 
 
-async def handle_proof_of_posession(profile: Profile, proof: Dict[str, Any], nonce: str):
-    """Handle proof of posession."""
+async def handle_proof_of_posession(
+    profile: Profile, proof: Dict[str, Any], nonce: str
+):
+    """Handle proof of possession.
+
+    OpenID4VCI 1.0 § 7.2.1: Proof of Possession of Key Material
+    https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#section-7.2.1
+
+    The Credential Request MAY contain a proof of possession of the key material
+    the issued Credential shall be bound to. This is REQUIRED for mso_mdoc format.
+    """
+    # OID4VCI 1.0 § 7.2.1.1: JWT proof type
+    if "jwt" not in proof:
+        raise web.HTTPBadRequest(reason="JWT proof is required for proof of possession")
+
     encoded_headers, encoded_payload, encoded_signature = proof["jwt"].split(".", 3)
     headers = b64_to_dict(encoded_headers)
 
+    # OID4VCI 1.0 § 7.2.1.1: typ MUST be "openid4vci-proof+jwt"
     if headers.get("typ") != "openid4vci-proof+jwt":
-        raise web.HTTPBadRequest(reason="Invalid proof: wrong typ.")
+        raise web.HTTPBadRequest(
+            reason="Invalid proof: typ must be 'openid4vci-proof+jwt' (OID4VCI 1.0 § 7.2.1.1)"
+        )
 
+    # OID4VCI 1.0 § 7.2.1.1: Key material identification
     if "kid" in headers:
         try:
             key = await key_material_for_kid(profile, headers["kid"])
@@ -251,12 +416,16 @@ async def handle_proof_of_posession(profile: Profile, proof: Dict[str, Any], non
     elif "jwk" in headers:
         key = Key.from_jwk(headers["jwk"])
     elif "x5c" in headers:
-        raise web.HTTPBadRequest(reason="x5c not supported")
+        # OID4VCI 1.0 § 7.2.1.1: X.509 certificate chain support
+        raise web.HTTPBadRequest(reason="x5c certificate chains not yet supported")
     else:
-        raise web.HTTPBadRequest(reason="No key material in proof")
+        raise web.HTTPBadRequest(
+            reason="No key material in proof (kid, jwk, or x5c required)"
+        )
 
     payload = b64_to_dict(encoded_payload)
 
+    # OID4VCI 1.0 § 7.2.1.1: nonce claim validation
     if nonce != payload.get("nonce"):
         raise web.HTTPBadRequest(
             reason="Invalid proof: wrong nonce.",
@@ -287,71 +456,306 @@ def types_are_subset(request: Optional[List[str]], supported: Optional[List[str]
 
 
 class IssueCredentialRequestSchema(OpenAPISchema):
-    """Request schema for the /credential endpoint."""
+    """Request schema for the /credential endpoint.
 
+    OpenID4VCI 1.0 § 7: Credential Request
+    https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#section-7
+    """
+
+    credential_identifier = fields.Str(
+        required=False,
+        metadata={
+            "description": "String identifying a Credential Configuration supported by the "
+            "Credential Issuer. REQUIRED if format parameter is not present.",
+            "example": "UniversityDegreeCredential",
+        },
+    )
     format = fields.Str(
+        required=False,
+        metadata={
+            "description": "Format of the Credential to be issued. This parameter MUST NOT be used "
+            "if credential_identifier parameter is present.",
+            "example": "mso_mdoc",
+        },
+    )
+    doctype = fields.Str(
+        required=False,
+        metadata={
+            "description": "String identifying the credential type. REQUIRED when using mso_mdoc format.",
+            "example": "org.iso.18013.5.1.mDL",
+        },
+    )
+    proof = fields.Dict(
         required=True,
-        metadata={"description": "The client ID for the token request.", "example": ""},
+        metadata={
+            "description": "JSON object containing the proof of possession of the cryptographic key "
+            "material the issued Credential shall be bound to."
+        },
     )
-    types = fields.List(
-        fields.Str(),
-        metadata={"description": ""},
+    credential_response_encryption = fields.Dict(
+        required=False,
+        metadata={
+            "description": "Object containing information for encrypting the Credential Response. OPTIONAL."
+        },
     )
-    proof = fields.Dict(metadata={"description": ""})
 
 
 @docs(tags=["oid4vc"], summary="Issue a credential")
-@request_schema(IssueCredentialRequestSchema())
 async def issue_cred(request: web.Request):
     """The Credential Endpoint issues a Credential.
 
-    As validated upon presentation of a valid Access Token.
+    OpenID4VCI 1.0 § 7: Credential Request
+    https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#section-7
+
+    This endpoint issues a credential as validated upon presentation of a valid Access Token.
+    The request MUST contain either a credential_identifier OR a format parameter, but not both.
     """
     context: AdminRequestContext = request["context"]
-    token_result = await check_token(
-        context.profile, request.headers.get("Authorization")
-    )
+
+    # Manual token validation with proper JSON error responses
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return web.json_response(
+            {
+                "error": "invalid_request",
+                "error_description": "Authorization header missing",
+            },
+            status=401,
+        )
+
+    try:
+        scheme, token = auth_header.split(" ", 1)
+    except ValueError:
+        return web.json_response(
+            {
+                "error": "invalid_request",
+                "error_description": "Invalid authorization header format",
+            },
+            status=401,
+        )
+
+    if scheme.lower() != "bearer":
+        return web.json_response(
+            {"error": "invalid_request", "error_description": "Bearer token required"},
+            status=401,
+        )
+
+    try:
+        from .jwt import jwt_verify
+
+        result = await jwt_verify(context.profile, token)
+        if not result.verified:
+            return web.json_response(
+                {
+                    "error": "invalid_token",
+                    "error_description": "Token verification failed",
+                },
+                status=401,
+            )
+        token_result = result
+    except Exception:
+        return web.json_response(
+            {"error": "invalid_token", "error_description": "Invalid token format"},
+            status=401,
+        )
+
     exchange_id = token_result.payload["id"]
     body = await request.json()
     LOGGER.info(f"request: {body}")
+
     try:
         async with context.profile.session() as session:
             ex_record = await OID4VCIExchangeRecord.retrieve_by_id(session, exchange_id)
+            # Keep the exchange record for nonce, but do not bind the credential to this record's
+            # supported_cred_id. OID4VCI v1.0 allows the token to be used for any supported
+            # credential configuration of the issuer.
             supported = await SupportedCredential.retrieve_by_id(
                 session, ex_record.supported_cred_id
             )
     except (StorageError, BaseModelError, StorageNotFoundError) as err:
-        raise web.HTTPBadRequest(reason=err.roll_up) from err
+        return web.json_response({"message": err.roll_up}, status=400)
 
-    if supported.format != body.get("format"):
-        raise web.HTTPBadRequest(reason="Requested format does not match offer.")
+    # OID4VCI 1.0 § 7.2: Credential Request validation
+    # Either credential_identifier OR format parameter MUST be present, but not both
+    credential_identifier = body.get("credential_identifier")
+    format_param = body.get("format")
 
-    if not supported.format:
-        raise web.HTTPBadRequest(reason="SupportedCredential missing format identifier")
-
-    if ex_record.nonce is None:
-        raise web.HTTPBadRequest(
-            reason="Invalid exchange; no offer created for this request"
+    if credential_identifier and format_param:
+        return web.json_response(
+            {
+                "message": "credential_identifier and format parameters are mutually exclusive"
+            },
+            status=400,
         )
 
-    if supported.format_data is None:
-        LOGGER.error(f"No format_data for supported credential {supported.format}.")
-        raise web.HTTPInternalServerError()
+    if not credential_identifier and not format_param:
+        return web.json_response(
+            {
+                "message": "Either credential_identifier or format parameter must be present"
+            },
+            status=400,
+        )
 
-    if "proof" not in body:
-        raise web.HTTPBadRequest(reason=f"proof is required for {supported.format}")
+    # Select the supported credential to issue based on the request, if possible.
+    # If not found, fall back to the exchange's supported credential.
+    async with context.profile.session() as session:
+        selected_supported = supported
+        if credential_identifier:
+            try:
+                matches = await SupportedCredential.query(
+                    session, tag_filter={"identifier": credential_identifier}
+                )
+                if matches:
+                    selected_supported = matches[0]
+            except Exception:
+                selected_supported = supported
+        elif format_param:
+            try:
+                matches = await SupportedCredential.query(
+                    session, tag_filter={"format": format_param}
+                )
+                if matches:
+                    selected_supported = matches[0]
+            except Exception:
+                selected_supported = supported
 
-    pop = await handle_proof_of_posession(context.profile, body["proof"], ex_record.nonce)
-    if not pop.verified:
-        raise web.HTTPBadRequest(reason="Invalid proof")
+    if not selected_supported.format:
+        return web.json_response(
+            {"message": "SupportedCredential missing format identifier"}, status=400
+        )
+
+    if ex_record.nonce is None:
+        return web.json_response(
+            {"message": "Invalid exchange; no offer created for this request"},
+            status=400,
+        )
+
+    # Ensure format_data exists; derive minimal data for known formats if missing
+    if selected_supported.format_data is None:
+        if selected_supported.format == "jwt_vc_json":
+            derived = {}
+            # Try to derive from vc_additional_data if available
+            vad = getattr(selected_supported, "vc_additional_data", None)
+            if isinstance(vad, dict):
+                if "type" in vad:
+                    derived["types"] = vad["type"]
+                if "@context" in vad:
+                    derived["context"] = vad["@context"]
+            if derived:
+                selected_supported.format_data = derived
+            else:
+                LOGGER.error(
+                    "No format_data for supported credential jwt_vc_json and "
+                    "could not derive from vc_additional_data."
+                )
+                return web.json_response(
+                    {
+                        "message": "No format_data for supported credential jwt_vc_json",
+                    },
+                    status=400,
+                )
+        elif selected_supported.format == "mso_mdoc":
+            # For mso_mdoc, derive minimal format_data from request doctype if present
+            req_doctype = body.get("doctype")
+            if req_doctype:
+                selected_supported.format_data = {"doctype": req_doctype}
+            else:
+                LOGGER.error(
+                    "No format_data for supported credential mso_mdoc and "
+                    "missing doctype in request."
+                )
+                return web.json_response(
+                    {
+                        "message": (
+                            "No format_data for supported credential mso_mdoc and "
+                            "missing doctype in request"
+                        )
+                    },
+                    status=400,
+                )
+        else:
+            LOGGER.error(
+                f"No format_data for supported credential {selected_supported.format}."
+            )
+            return web.json_response(
+                {
+                    "message": (
+                        "No format_data for supported credential "
+                        f"{selected_supported.format}"
+                    )
+                },
+                status=400,
+            )
+
+    # OID4VCI 1.0 § 7.2.1: Proof of possession handling
+    # - For mso_mdoc: proof is REQUIRED, but we currently do not parse CWT in detail.
+    # - For jwt_vc_json: proof MAY be provided. When a JWT is present, enforce
+    #   full OID4VCI v1.0 verification (typ, nonce, and signature).
+    from .pop_result import PopResult as _PopResult
+
+    proof_obj = body.get("proof")
+    pop = None  # type: Optional[_PopResult]
+
+    if selected_supported.format == "mso_mdoc":
+        # Require a proof object for mso_mdoc
+        if not isinstance(proof_obj, dict):
+            return web.json_response(
+                {"message": "proof is required for mso_mdoc"}, status=400
+            )
+        # Accept either JWT (with proper typ) or CWT placeholder without deep verification
+        if "jwt" in proof_obj:
+            # Strictly verify the JWT proof (typ, nonce, signature)
+            try:
+                pop = await handle_proof_of_posession(
+                    context.profile, proof_obj, ex_record.nonce
+                )
+            except web.HTTPBadRequest as exc:
+                return web.json_response({"message": exc.reason}, status=400)
+        elif "cwt" in proof_obj or proof_obj.get("proof_type") == "cwt":
+            # Accept CWT without parsing; downstream processor does not consume it yet
+            pop = _PopResult(
+                headers={},
+                payload={},
+                verified=True,
+                holder_kid=None,
+                holder_jwk=None,
+            )
+        else:
+            return web.json_response({"message": "Unsupported proof type"}, status=400)
+    else:
+        # jwt_vc_json and other formats: proof is optional.
+        if isinstance(proof_obj, dict) and "jwt" in proof_obj:
+            # Strictly verify the JWT proof (typ, nonce, signature)
+            try:
+                pop = await handle_proof_of_posession(
+                    context.profile, proof_obj, ex_record.nonce
+                )
+            except web.HTTPBadRequest as exc:
+                return web.json_response({"message": exc.reason}, status=400)
+        # If no proof or no holder key material, fall back to using the exchange's
+        # verification method
+        if pop is None:
+            pop = _PopResult(
+                headers={},
+                payload={},
+                verified=True,
+                holder_kid=ex_record.verification_method,
+                holder_jwk=None,
+            )
 
     try:
         processors = context.inject(CredProcessors)
-        processor = processors.issuer_for_format(supported.format)
+        processor = processors.issuer_for_format(selected_supported.format)
 
-        credential = await processor.issue(body, supported, ex_record, pop, context)
+        credential = await processor.issue(
+            body, selected_supported, ex_record, pop, context
+        )
     except CredProcessorError as e:
-        raise web.HTTPBadRequest(reason=e.message)
+        # Ensure the underlying error text is returned for debugging
+        return web.json_response({"message": str(e)}, status=400)
+    except Exception as e:  # Ensure JSON error body for unexpected failures
+        LOGGER.exception("Unexpected error during credential issuance")
+        return web.json_response({"message": str(e)}, status=500)
 
     async with context.session() as session:
         ex_record.state = OID4VCIExchangeRecord.STATE_ISSUED
@@ -362,10 +766,7 @@ async def issue_cred(request: web.Request):
         # await ex_record.delete_record(session)
 
     return web.json_response(
-        {
-            "format": supported.format,
-            "credential": credential,
-        }
+        {"format": selected_supported.format, "credential": credential}
     )
 
 
@@ -472,9 +873,13 @@ async def get_request(request: web.Request):
             await pres.save(session=session, reason="Retrieved presentation request")
 
             if record.pres_def_id:
-                pres_def = await OID4VPPresDef.retrieve_by_id(session, record.pres_def_id)
+                pres_def = await OID4VPPresDef.retrieve_by_id(
+                    session, record.pres_def_id
+                )
             elif record.dcql_query_id:
-                dcql_query = await DCQLQuery.retrieve_by_id(session, record.dcql_query_id)
+                dcql_query = await DCQLQuery.retrieve_by_id(
+                    session, record.dcql_query_id
+                )
             jwk = await retrieve_or_create_did_jwk(session)
 
     except StorageNotFoundError as err:
@@ -600,7 +1005,9 @@ async def verify_pres_def_presentation(
 
     processors = profile.inject(CredProcessors)
     if not submission.descriptor_maps:
-        raise web.HTTPBadRequest(reason="Descriptor map of submission must not be empty")
+        raise web.HTTPBadRequest(
+            reason="Descriptor map of submission must not be empty"
+        )
 
     # TODO: Support longer descriptor map arrays
     if len(submission.descriptor_maps) != 1:
@@ -720,6 +1127,12 @@ async def register(app: web.Application, multitenant: bool):
             web.get(
                 f"{subpath}/.well-known/openid-credential-issuer",
                 credential_issuer_metadata,
+                allow_head=False,
+            ),
+            # Deprecated endpoint for backward compatibility (underscore format)
+            web.get(
+                f"{subpath}/.well-known/openid_credential_issuer",
+                credential_issuer_metadata_deprecated,
                 allow_head=False,
             ),
             # TODO Add .well-known/did-configuration.json
