@@ -1,15 +1,38 @@
 """MDoc module."""
 
-from .issuer import mso_mdoc_sign, mdoc_sign
-from .verifier import mso_mdoc_verify, mdoc_verify, MdocVerifyResult
-from .exceptions import MissingPrivateKey, MissingIssuerAuth
-from .exceptions import NoDocumentTypeProvided, NoSignedDocumentProvided
+from .exceptions import (
+    MissingIssuerAuth,
+    MissingPrivateKey,
+    NoDocumentTypeProvided,
+    NoSignedDocumentProvided,
+)
+from .issuer import (
+    create_mdoc_credential,
+    create_oid4vc_presentation_session,
+    create_presentation_session,
+    establish_verifier_session,
+    isomdl_mdoc_sign,
+    parse_mdoc,
+    process_presentation_response,
+    verify_presentation,
+)
+from .verifier import (
+    MdocVerifyResult,
+    mdoc_verify,
+    verify_presentation_response,
+)
 
 __all__ = [
-    "mso_mdoc_sign",
-    "mdoc_sign",
-    "mso_mdoc_verify",
+    "create_mdoc_credential",
+    "isomdl_mdoc_sign",
+    "parse_mdoc",
+    "create_presentation_session",
+    "verify_presentation",
+    "create_oid4vc_presentation_session",
+    "establish_verifier_session",
+    "process_presentation_response",
     "mdoc_verify",
+    "verify_presentation_response",
     "MdocVerifyResult",
     "MissingPrivateKey",
     "MissingIssuerAuth",

@@ -27,7 +27,9 @@ def supported():
 def ex_record():
     yield OID4VCIExchangeRecord(
         state=OID4VCIExchangeRecord.STATE_OFFER_CREATED,
-        verification_method="did:key:z6Mkn6z3Eg2mrgQmripNPGDybZYYojwZw1VPjRkCzbNV7JfN#0",
+        verification_method=(
+            "did:key:z6Mkn6z3Eg2mrgQmripNPGDybZYYojwZw1VPjRkCzbNV7JfN#0"
+        ),
         issuer_id="did:key:z6Mkn6z3Eg2mrgQmripNPGDybZYYojwZw1VPjRkCzbNV7JfN",
         supported_cred_id="456",
         credential_subject={"name": "alice"},

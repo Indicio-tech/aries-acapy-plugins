@@ -1,19 +1,24 @@
 """MsoIssuer helper class to issue a mso."""
 
-from typing import Union
-import logging
-from datetime import datetime, timedelta, timezone
-import random
 import hashlib
+import logging
 import os
+import random
+from datetime import datetime, timedelta, timezone
+from typing import Union
+
 import cbor2
-from pycose.headers import Algorithm, KID
-from pycose.keys import CoseKey
-from pycose.messages import Sign1Message
+
+# Compatibility imports
+from ..x509 import KID, Algorithm, CoseKey, Sign1Message
 
 LOGGER = logging.getLogger(__name__)
 DIGEST_SALT_LENGTH = 32
-CBORTAGS_ATTR_MAP = {"birth_date": 1004, "expiry_date": 1004, "issue_date": 1004}
+CBORTAGS_ATTR_MAP = {
+    "birth_date": 1004,
+    "expiry_date": 1004,
+    "issue_date": 1004,
+}
 
 
 def shuffle_dict(d: dict):
@@ -66,7 +71,9 @@ class MsoIssuer:
                     "elementValue": v,
                 }
                 self.hash_map[ns][digest_cnt] = hashfunc(
-                    cbor2.dumps(cbor2.CBORTag(24, self.disclosure_map[ns][digest_cnt]))
+                    cbor2.dumps(
+                        cbor2.CBORTag(24, self.disclosure_map[ns][digest_cnt])
+                    )
                 ).digest()
 
                 digest_cnt += 1
@@ -96,7 +103,9 @@ class MsoIssuer:
                     cbor2.CBORTag(0, self.format_datetime_repr(utcnow))
                 ),
                 "validFrom": cbor2.dumps(
-                    cbor2.CBORTag(0, self.format_datetime_repr(valid_from or utcnow))
+                    cbor2.CBORTag(
+                        0, self.format_datetime_repr(valid_from or utcnow)
+                    )
                 ),
                 "validUntil": cbor2.dumps(
                     cbor2.CBORTag(0, self.format_datetime_repr(exp))

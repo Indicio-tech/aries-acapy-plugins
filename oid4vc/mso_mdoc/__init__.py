@@ -1,26 +1,56 @@
-"""MSO_MDOC Crendential Handler Plugin."""
+"""MSO_MDOC Credential Handler Plugin."""
 
-from importlib.util import find_spec
 import logging
 
 from acapy_agent.config.injection_context import InjectionContext
+from acapy_agent.core.profile import Profile
 
-from mso_mdoc.cred_processor import MsoMdocCredProcessor, UniffiMsoMdocCredProcessor
+from mso_mdoc.cred_processor import MsoMdocCredProcessor
+from mso_mdoc.key_generation import generate_default_keys_and_certs
+from mso_mdoc.storage import MdocStorageManager
 from oid4vc.cred_processor import CredProcessors
 
-cwt = find_spec("cwt")
-pycose = find_spec("pycose")
-cbor2 = find_spec("cbor2")
-cbor_diag = find_spec("cbor_diag")
-if not all((cwt, pycose, cbor2, cbor_diag)):
-    logging.getLogger(__name__).error("\n\n\nMSO_MDOC SETUP ERROR\n\n\n")
-    raise ImportError("`mso_mdoc` extra required")
+LOGGER = logging.getLogger(__name__)
 
 
 async def setup(context: InjectionContext):
     """Setup the plugin."""
-    logging.getLogger(__name__).error("\n\n\nMSO_MDOC SETUP\n\n\n")
+    LOGGER.info("Setting up MSO_MDOC plugin")
+
+    # Register credential processor
     processors = context.inject(CredProcessors)
-    # mso_mdoc = MsoMdocCredProcessor()
-    mso_mdoc = UniffiMsoMdocCredProcessor()
+    mso_mdoc = MsoMdocCredProcessor()
     processors.register_issuer("mso_mdoc", mso_mdoc)
+
+    # Initialize storage and generate default keys/certs if needed
+    try:
+        # Get profile from context
+        profile = context.inject(Profile)
+        storage_manager = MdocStorageManager(profile)
+
+        # Use a session for storage operations
+        async with profile.session() as session:
+            # Check if default keys exist
+            default_key = await storage_manager.get_default_signing_key(
+                session
+            )
+            if not default_key:
+                LOGGER.info(
+                    "No default mDoc keys found, generating new ones..."
+                )
+                generated = await generate_default_keys_and_certs(
+                    storage_manager, session
+                )
+                LOGGER.info(
+                    "Generated default mDoc key: %s", generated["key_id"]
+                )
+            else:
+                LOGGER.info(
+                    "Using existing default mDoc key: %s",
+                    default_key["key_id"],
+                )
+
+    except Exception as e:
+        LOGGER.error("Failed to initialize mDoc storage: %s", e)
+        # Don't fail plugin setup, but log the error
+        pass
