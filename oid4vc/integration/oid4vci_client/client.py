@@ -152,7 +152,9 @@ class OpenID4VCIClient:
                 json=request,
             ) as resp:
                 if resp.status != 200:
-                    raise ValueError(f"Error requesting credential: {await resp.text()}")
+                    raise ValueError(
+                        f"Error requesting credential: {await resp.text()}"
+                    )
                 credential = await resp.json()
 
         return credential

@@ -1,7 +1,7 @@
 from typing import Any, Dict
-from acapy_controller.controller import Controller
-import pytest
 
+import pytest
+from acapy_controller import Controller
 from credo_wrapper import CredoWrapper
 
 

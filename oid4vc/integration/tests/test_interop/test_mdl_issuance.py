@@ -1,12 +1,11 @@
-from typing import Any, Dict
 import uuid
-from oid4vci_client.client import OpenID4VCIClient
+from typing import Any, Dict
+
 import pytest
 import pytest_asyncio
-from acapy_controller.controller import Controller
+from acapy_controller import Controller
 from credo_wrapper import CredoWrapper
-from sphereon_wrapper import SphereaonWrapper
-from isomdl_wrapper import ISOMDLWrapper
+from oid4vci_client.client import OpenID4VCIClient
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -84,7 +83,11 @@ async def test_mdl_sphereon_accept_credential_offer(
 @pytest.mark.interop
 @pytest.mark.asyncio
 async def test_mdl_isomdl_accept_credential_offer(
-    isomdl: ISOMDLWrapper, mdl_offer: str, controller: Controller, issuer_did: str, test_client: OpenID4VCIClient
+    isomdl: ISOMDLWrapper,
+    mdl_offer: str,
+    controller: Controller,
+    issuer_did: str,
+    test_client: OpenID4VCIClient,
 ):
     result = await controller.post(
         "/oid4vci/cert/get",
@@ -94,8 +97,8 @@ async def test_mdl_isomdl_accept_credential_offer(
     )
     assert "cert" in result
     certificate = result["cert"]
-    import ssl
     import base64
+    import ssl
 
     pem_cert = ssl.DER_cert_to_PEM_cert(base64.b64decode(certificate))
     cert = pem_cert

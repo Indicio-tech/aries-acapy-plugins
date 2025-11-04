@@ -28,7 +28,8 @@ dependencies = [
     # sd_jwt dependencies  
     "jsonpointer>=3.0.0,<4.0.0",
     # isomdl-uniffi from GitHub (will be updated to releases once available)
-    "isomdl-uniffi @ git+https://github.com/Indicio-tech/isomdl-uniffi.git@feat/x509#subdirectory=python",
+    # Temporarily commented for Docker builds - installed via wheel file instead
+    # "isomdl-uniffi @ git+https://github.com/Indicio-tech/isomdl-uniffi.git@feat/x509#subdirectory=python",
 ]
 
 [project.optional-dependencies]

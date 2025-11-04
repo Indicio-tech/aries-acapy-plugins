@@ -1,7 +1,6 @@
 """Quick test script."""
 
 import pytest
-
 from oid4vci_client.client import OpenID4VCIClient
 
 

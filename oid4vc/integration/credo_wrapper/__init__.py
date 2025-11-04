@@ -1,26 +1,25 @@
-"""AFJ Wrapper."""
+"""Credo Wrapper."""
 
-from jrpc_client import BaseSocketTransport, JsonRpcClient
+import httpx
 
 
 class CredoWrapper:
-    """Credo Wrapper."""
+    """Credo Wrapper using HTTP."""
 
-    def __init__(self, transport: BaseSocketTransport, client: JsonRpcClient):
+    def __init__(self, base_url: str):
         """Initialize the wrapper."""
-        self.transport = transport
-        self.client = client
+        self.base_url = base_url.rstrip("/")
+        self.client = httpx.AsyncClient()
 
     async def start(self):
         """Start the wrapper."""
-        await self.transport.connect()
-        await self.client.start()
-        await self.client.request("initialize")
+        # Check Credo agent health
+        response = await self.client.get(f"{self.base_url}/health")
+        response.raise_for_status()
 
     async def stop(self):
         """Stop the wrapper."""
-        await self.client.stop()
-        await self.transport.close()
+        await self.client.aclose()
 
     async def __aenter__(self):
         """Start the wrapper when entering the context manager."""
@@ -33,16 +32,25 @@ class CredoWrapper:
 
     # Credo API
 
+    async def test(self):
+        """Test basic connectivity to Credo agent."""
+        response = await self.client.get(f"{self.base_url}/health")
+        response.raise_for_status()
+        return response.json()
+
     async def openid4vci_accept_offer(self, offer: str):
         """Accept OpenID4VCI credential offer."""
-        return await self.client.request(
-            "openid4vci.acceptCredentialOffer",
-            offer=offer,
+        response = await self.client.post(
+            f"{self.base_url}/oid4vci/accept-offer", json={"credential_offer": offer}
         )
+        response.raise_for_status()
+        return response.json()
 
     async def openid4vp_accept_request(self, request: str):
         """Accept OpenID4VP presentation (authorization) request."""
-        return await self.client.request(
-            "openid4vci.acceptAuthorizationRequest",
-            request=request,
+        response = await self.client.post(
+            f"{self.base_url}/openid4vci/acceptAuthorizationRequest",
+            json={"request": request},
         )
+        response.raise_for_status()
+        return response.json()

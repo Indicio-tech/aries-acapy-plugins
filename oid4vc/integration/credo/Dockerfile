@@ -1,11 +1,21 @@
-FROM node:20 AS base
-WORKDIR /usr/src/app
-RUN apt-get update && apt-get install ncat -y && apt-get clean
+FROM node:20-slim AS base
+WORKDIR /app
 
-COPY package*.json ./
-RUN npm install
+# Install system dependencies
+RUN apt-get update && apt-get install -y curl python3 make g++ git && rm -rf /var/lib/apt/lists/*
+
+# Install dependencies
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+# Copy source code and build
 COPY . .
+RUN npm run build
 
-EXPOSE 3000
+# Health check endpoint
+HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=3 \
+  CMD curl -f http://localhost:3020/health || exit 1
 
-CMD [ "npm", "run", "watch" ]
+EXPOSE 3020
+
+CMD ["npm", "start"]
