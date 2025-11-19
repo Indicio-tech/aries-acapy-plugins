@@ -319,7 +319,7 @@ class DCQLQuery(BaseRecord):
         self,
         *,
         dcql_query_id: Optional[str] = None,
-        credentials: Union[List[Mapping], List[CredentialQuery]],
+        credentials: Optional[Union[List[Mapping], List[CredentialQuery]]] = None,
         credential_sets: Optional[
             Union[List[Mapping], List[CredentialSetQuery]]
         ] = None,
@@ -328,7 +328,7 @@ class DCQLQuery(BaseRecord):
         """Initialize a new DCQL Credential Query Record."""
         super().__init__(dcql_query_id, **kwargs)
 
-        self._credentials = [CredentialQuery.serde(cred) for cred in credentials]
+        self._credentials = [CredentialQuery.serde(cred) for cred in credentials] if credentials else []
         self._credential_set = (
             [CredentialSetQuery.serde(cred) for cred in credential_sets]
             if credential_sets

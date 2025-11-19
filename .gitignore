@@ -149,6 +149,13 @@ Temporary Items
 **/.idea/*
 
 ###
+### Visual Studio Code
+###
+
+.vscode/
+*.code-workspace
+
+###
 ### Windows
 ###
 

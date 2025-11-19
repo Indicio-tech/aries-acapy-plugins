@@ -67,21 +67,6 @@ services:
       ngrok:
         condition: service_healthy
 
-  sphereon:
-    image: sphereon-json-rpc
-    build: sphereon
-    ports:
-      - "3010:3000"
-      - "6499:6499"
-    volumes:
-      - ./sphereon/index.ts:/usr/src/app/index.ts:z
-    healthcheck:
-      test: nc -z 0.0.0.0 3000
-      start_period: 1s
-      interval: 3s
-      timeout: 5s
-      retries: 5
-
   credo:
     image: credo-json-rpc
     build: credo
@@ -111,15 +96,11 @@ services:
       - ./isomdl_wrapper:/usr/src/app/integration/isomdl_wrapper:z
     environment:
       ISSUER_ADMIN_ENDPOINT: http://issuer:3001
-      SPHEREON_HOST: sphereon
-      SPHEREON_PORT: 3000
       CREDO_HOST: credo
       CREDO_PORT: 3000
     command: -m interop
     depends_on:
       issuer:
-        condition: service_healthy
-      sphereon:
         condition: service_healthy
       credo:
         condition: service_healthy

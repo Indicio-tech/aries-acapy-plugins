@@ -2,7 +2,7 @@
  * Simplified Credo OID4VC Agent
  * 
  * This service acts as a holder/verifier that can:
- * - Receive credentials from Keycloak OID4VCI issuer  
+ * - Receive credentials from ACA-Py OID4VCI issuer  
  * - Present credentials to ACA-Py OID4VP verifier
  * 
  * Supports both mso_mdoc and SD-JWT credential formats.
@@ -94,7 +94,7 @@ app.get('/health', (req: any, res: any) => {
   });
 });
 
-// Accept credential offer from Keycloak issuer
+// Accept credential offer from ACA-Py issuer
 app.post('/oid4vci/accept-offer', async (req: any, res: any) => {
   try {
     if (!agent) {

@@ -1,7 +1,7 @@
 """Simplified integration test fixtures for OID4VC v1 flows.
 
 This module provides pytest fixtures for testing the complete OID4VC v1 flow:
-Keycloak Issues → Credo Receives → Credo Presents → ACA-Py Verifies
+ACA-Py Issues → Credo Receives → Credo Presents → ACA-Py Verifies
 """
 
 import asyncio
@@ -33,15 +33,12 @@ async def credo_client():
     async with httpx.AsyncClient(base_url=CREDO_AGENT_URL, timeout=30.0) as client:
         # Wait for service to be ready
         for _ in range(5):  # Reduced since services should already be ready
-            try:
-                response = await client.get("/health")
-                if response.status_code == 200:
-                    break
-            except httpx.RequestError:
-                pass
+            response = await client.get("/health")
+            if response.status_code == 200:
+                break
             await asyncio.sleep(1)
         else:
-            pytest.skip("Credo agent service not available")
+            raise RuntimeError("Credo agent service not available")
 
         yield client
 
@@ -53,13 +50,12 @@ async def acapy_issuer_admin():
 
     # Wait for ACA-Py issuer to be ready
     for _ in range(30):
-        try:
-            await controller.get("/status/ready")
+        status = await controller.get("/status/ready")
+        if status.get("ready") is True:
             break
-        except httpx.RequestError:
-            await asyncio.sleep(1)
+        await asyncio.sleep(1)
     else:
-        pytest.skip("ACA-Py issuer service not available")
+        raise RuntimeError("ACA-Py issuer service not available")
 
     yield controller
 
@@ -71,13 +67,12 @@ async def acapy_verifier_admin():
 
     # Wait for ACA-Py verifier to be ready
     for _ in range(30):
-        try:
-            await controller.get("/status/ready")
+        status = await controller.get("/status/ready")
+        if status.get("ready") is True:
             break
-        except httpx.RequestError:
-            await asyncio.sleep(1)
+        await asyncio.sleep(1)
     else:
-        pytest.skip("ACA-Py verifier service not available")
+        raise RuntimeError("ACA-Py verifier service not available")
 
     yield controller
 
@@ -86,4 +81,11 @@ async def acapy_verifier_admin():
 @pytest_asyncio.fixture
 async def acapy_admin(acapy_verifier_admin):
     """Legacy alias for acapy_verifier_admin to maintain backward compatibility."""
+    yield acapy_verifier_admin
+
+
+# Controller fixture for DCQL tests
+@pytest_asyncio.fixture
+async def controller(acapy_verifier_admin):
+    """Controller fixture for DCQL tests - uses verifier admin API."""
     yield acapy_verifier_admin

@@ -1,0 +1,46 @@
+"""Simple mock ACA-Py controller for integration testing."""
+
+from typing import Any, Dict, Optional
+
+import httpx
+
+
+class Controller:
+    """Simple HTTP client wrapper for ACA-Py admin API."""
+
+    def __init__(self, base_url: str):
+        self.base_url = base_url.rstrip("/")
+        self.headers = {"Content-Type": "application/json"}
+
+    async def get(self, path: str, params: Optional[Dict] = None) -> Dict[str, Any]:
+        """Make GET request to ACA-Py admin API."""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}{path}",
+                params=params,
+                headers=self.headers,
+                timeout=30.0,
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def post(self, path: str, json: Optional[Dict] = None) -> Dict[str, Any]:
+        """Make POST request to ACA-Py admin API."""
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.base_url}{path}", json=json, headers=self.headers, timeout=30.0
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def event_with_values(self, topic: str, **kwargs) -> Dict[str, Any]:
+        """Mock event waiting - simplified for testing."""
+        # In real implementation, this would wait for webhooks
+        # For now, just return success
+        return {"topic": topic, "values": kwargs, "status": "received"}
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass

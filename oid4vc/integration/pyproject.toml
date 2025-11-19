@@ -11,6 +11,8 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "pytest>=8.4.2",
     "pytest-asyncio>=0.26.0",
+    "pytest-html>=4.1.1",
+    "pytest-xdist>=3.6.0",
     "httpx>=0.28.1",
     "aiohttp>=3.9.5",
     "aries-askar>=0.4.3",
@@ -44,20 +46,34 @@ dev-dependencies = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "-v --tb=short"
+addopts = [
+    "-v", 
+    "--tb=short", 
+    "--durations=10",
+    "--strict-markers",
+    "--strict-config",
+]
 markers = [
-    "interop: interoperability testing",
-    "sphereon: sphereon client tests", 
-    "credo: credo client tests",
+    "unit: Unit tests",
+    "integration: Integration testing",
+    "interop: Interoperability testing",
+    "connectivity: Basic connectivity tests",
+    "flow: End-to-end flow tests",
+    "credo: Credo client tests",
+    "acapy: ACA-Py tests",
     "mdoc: mso_mdoc credential tests",
     "sdjwt: SD-JWT credential tests",
-    "integration: integration testing",
-    "keycloak: keycloak tests",
-    "acapy: acapy tests",
+    "slow: Tests that take longer to run",
+    "requires_credo: Tests that require Credo agent",
+    "requires_acapy: Tests that require ACA-Py agents",
 ]
 testpaths = ["tests"]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
 
 [tool.ruff]
 line-length = 88

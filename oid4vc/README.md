@@ -2,15 +2,14 @@
 
 This plugin implements [OpenID4VCI 1.0][oid4vci]. This implementation follows the OpenID4VCI 1.0 final specification and is not backwards compatible with earlier drafts.
 
-## OpenID4VCI Plugin Demo with Sphereon Wallet
+## OpenID4VCI Plugin Demo
 
 ### Demo Overview
 
-This repository showcases a simplified demonstration of the OID4VCI (OpenID for Verifiable Credential Issuers) integration with the [Sphereon Wallet app](https://github.com/Sphereon-Opensource/ssi-mobile-wallet). Follow the steps below to run the demo successfully.
+This repository showcases a demonstration of the OID4VCI (OpenID for Verifiable Credential Issuers) integration using ACA-Py as both issuer and verifier, with Credo as the holder agent.
 
 ### Prerequisites
 
-- Sphereon Wallet App on your mobile device
 - Docker + Docker Compose
 - Ngrok Account (free tier is okay)
 
@@ -47,17 +46,17 @@ Navigate to `http://localhost:3002` in your browser. You will start at the landi
 
 2. Credential Offer Page
    - Presents a credential offer in the form of a QR code.
-   - Scan the QR code using the Sphereon Wallet app.
-   - The Sphereon Wallet follows the OID4VC flow, requesting an authentication token and using it to obtain a credential.
+   - Scan the QR code using a compatible wallet app.
+   - The wallet follows the OID4VC flow, requesting an authentication token and using it to obtain a credential.
    - The OID4VC plugin determines the credential subjects based on the exchange record.
 
-Now you have a `UniversityCredential` in your Sphereon Wallet. To demonstrate the other half of the OID4VC plugin, click on the `Present Credential` button on the sidebar.
+Now you have a `UniversityCredential` in your wallet. To demonstrate the other half of the OID4VC plugin, click on the `Present Credential` button on the sidebar.
 
 3. Present Credential
    - The Present Credential page has a single button on it: Present Credential
    - When you press that button, the demo will prepare a QR code that contains a presentation request
      - Again, the demo obscures and automates some of the necessary calls to prepare the request, but you can see the calls being made in the logs
-   - Scan this QR code with your Sphereon Wallet app
+   - Scan this QR code with your wallet app
    - Follow the steps on the app, which will prompt you to select a University Credential from your wallet
 
 As mentioned, the demo automatically takes care of a lot of the setup calls necessary to prepare credential definitions, presentation requests, and so forth. You can see what calls are being made, and with what values, both in the container logs and on the page.
@@ -345,10 +344,10 @@ poetry run pytest tests/
 
 ### Integration Tests
 
-This plugin includes two sets of integration tests:
+This plugin includes integration tests:
 
 - Tests against a minimal OpenID4VCI Client written in Python
-- Interop Tests against Credo and Sphereon
+- Interop Tests against Credo
   - The interop tests require an https endpoint, so they aren't run with the regular integration tests. See `integration/README.md` for instructions on running the interop tests
 
 To run the integration tests:
