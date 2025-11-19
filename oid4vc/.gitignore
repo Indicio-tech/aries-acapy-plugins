@@ -40,3 +40,6 @@ uv.lock
 # OS
 .DS_Store
 Thumbs.db
+
+# Test Results
+test-results/
