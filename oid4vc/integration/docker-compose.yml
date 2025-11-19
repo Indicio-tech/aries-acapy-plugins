@@ -17,8 +17,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:3020/health"]
       interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 15s
+      retries: 5
+      start_period: 30s
 
   # ACA-Py Issuer - Issues credentials via OID4VCI
   acapy-issuer:
@@ -82,7 +82,7 @@ services:
       - WAIT_HOSTS=credo-agent:3020,acapy-issuer:8021,acapy-verifier:8031
       - WAIT_HOSTS_TIMEOUT=300
       - WAIT_SLEEP_INTERVAL=5
-      - WAIT_HTTP_RETRY_COUNT=10
+      - WAIT_HTTP_RETRY_COUNT=15
     volumes:
       - ./test-results:/usr/src/app/test-results
     depends_on:
@@ -92,7 +92,15 @@ services:
         condition: service_healthy
       acapy-verifier:
         condition: service_healthy
-    command: ["uv", "run", "pytest", "tests/test_docker_connectivity.py", "tests/test_acapy_oid4vc_simple.py", "-v"]
+    command: [
+      "sh", "-c",
+      "echo 'Running essential OID4VC integration tests...' && \
+       uv run pytest tests/test_docker_connectivity.py tests/test_acapy_oid4vc_simple.py \
+       --verbose \
+       --tb=short \
+       --junit-xml=test-results/junit-quick.xml \
+       --durations=5"
+    ]
 
 volumes:
   test-results:

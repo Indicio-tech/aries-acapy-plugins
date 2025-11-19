@@ -36,6 +36,7 @@ async def test_acapy_oid4vci_credential_issuance_to_credo(
 
     # Step 1: Create a supported credential on ACA-Py issuer
     credential_supported = {
+        "id": "IdentityCredential",
         "format": "vc+sd-jwt",
         "scope": "IdentityCredential",
         "cryptographic_binding_methods_supported": ["did:key"],
@@ -142,14 +143,29 @@ async def test_acapy_oid4vp_presentation_verification_from_credo(
         ],
     }
 
-    # Step 2: ACA-Py creates presentation request
+    # Step 2: Create presentation definition first
+    pres_def_data = {
+        "pres_def": presentation_definition
+    }
+    
+    pres_def_response = await acapy_verifier_admin.post(
+        "/oid4vp/presentation-definition", json=pres_def_data
+    )
+    assert "pres_def_id" in pres_def_response
+    pres_def_id = pres_def_response["pres_def_id"]
+
+    # Step 3: ACA-Py creates presentation request
     presentation_request_data = {
-        "presentation_definition": presentation_definition,
-        "response_mode": "direct_post",
+        "pres_def_id": pres_def_id,
+        "vp_formats": {
+            "vc+sd-jwt": {
+                "sd-jwt_alg_values": ["EdDSA", "ES256K", "ES256"]
+            }
+        }
     }
 
     presentation_request = await acapy_verifier_admin.post(
-        "/oid4vp/create-request", json=presentation_request_data
+        "/oid4vp/request", json=presentation_request_data
     )
 
     assert "request_uri" in presentation_request
@@ -171,6 +187,7 @@ async def test_full_acapy_credo_oid4vc_flow(
 
     # Step 1: Setup credential configuration on ACA-Py issuer
     credential_supported = {
+        "id": "UniversityDegreeCredential",
         "format": "vc+sd-jwt",
         "scope": "UniversityDegree",
         "cryptographic_binding_methods_supported": ["did:key"],
@@ -273,13 +290,28 @@ async def test_full_acapy_credo_oid4vc_flow(
         ],
     }
 
+    # Create presentation definition first
+    pres_def_data = {
+        "pres_def": presentation_definition
+    }
+    
+    pres_def_response = await acapy_verifier_admin.post(
+        "/oid4vp/presentation-definition", json=pres_def_data
+    )
+    assert "pres_def_id" in pres_def_response
+    pres_def_id = pres_def_response["pres_def_id"]
+
     presentation_request_data = {
-        "presentation_definition": presentation_definition,
-        "response_mode": "direct_post",
+        "pres_def_id": pres_def_id,
+        "vp_formats": {
+            "vc+sd-jwt": {
+                "sd-jwt_alg_values": ["EdDSA", "ES256K", "ES256"]
+            }
+        }
     }
 
     presentation_request = await acapy_verifier_admin.post(
-        "/oid4vp/create-request", json=presentation_request_data
+        "/oid4vp/request", json=presentation_request_data
     )
     request_uri = presentation_request["request_uri"]
 
@@ -294,7 +326,7 @@ async def test_full_acapy_credo_oid4vc_flow(
 
     # Step 6: Verify presentation was successful
     assert "presentation_submission" in presentation_result
-    assert presentation_result.get("status") in ["success", "completed"]
+    assert presentation_result.get("status") == "success"
 
     # Step 7: Check that ACA-Py received and validated the presentation
     # Wait a moment for processing
@@ -306,7 +338,7 @@ async def test_full_acapy_credo_oid4vc_flow(
 
     # Find our presentation
     latest_presentation = presentations[0]  # Assuming most recent
-    assert latest_presentation.get("state") in ["presentation-valid", "completed"]
+    assert latest_presentation.get("state") == "presentation-valid"
 
     print("✅ Full OID4VC flow completed successfully!")
     print(f"   - ACA-Py issued credential: {config_id}")

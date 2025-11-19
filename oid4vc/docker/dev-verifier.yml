@@ -19,8 +19,9 @@ endpoint:
 # plugins
 plugin:
   - oid4vc
-
-# OID4VC plugin configuration - Use different ports for OID4VCI and OID4VP servers
+  - sd_jwt_vc
+  # Temporarily disabled due to missing libisomdl_uniffi.so dependency  
+  # - mso_mdoc# OID4VC plugin configuration - Use different ports for OID4VCI and OID4VP servers
 plugin-config-value:
   - oid4vci.host=0.0.0.0
   - oid4vci.port=8033

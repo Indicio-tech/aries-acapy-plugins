@@ -38,12 +38,8 @@ async def test_simple_oid4vc_flow():
     async with httpx.AsyncClient(
         base_url=CREDO_AGENT_URL, timeout=10.0
     ) as credo_client:
-        try:
-            credo_status = await credo_client.get("/health")
-            print(f"   Credo status: {credo_status.status_code}")
-        except Exception as e:
-            print(f"   Credo error: {e}")
-            return False
+        credo_status = await credo_client.get("/health")
+        print(f"   Credo status: {credo_status.status_code}")
 
         print("✅ All services are healthy!")
 
@@ -66,21 +62,13 @@ async def test_simple_oid4vc_flow():
 
 async def main():
     """Main test runner."""
-    try:
-        success = await test_simple_oid4vc_flow()
-        if success:
-            print("\n✅ Test completed successfully!")
-        else:
-            print("\n❌ Test failed!")
-            return 1
-    except Exception as e:
-        print(f"\n💥 Test crashed: {e}")
-        import traceback
-
-        traceback.print_exc()
+    success = await test_simple_oid4vc_flow()
+    if success:
+        print("\n✅ Test completed successfully!")
+        return 0
+    else:
+        print("\n❌ Test failed!")
         return 1
-
-    return 0
 
 
 if __name__ == "__main__":

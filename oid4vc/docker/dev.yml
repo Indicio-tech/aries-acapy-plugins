@@ -19,6 +19,9 @@ endpoint:
 # plugins
 plugin:
   - oid4vc
+  - sd_jwt_vc
+  # Temporarily disabled due to missing libisomdl_uniffi.so dependency
+  # - mso_mdoc
 
 # OID4VC plugin configuration - Use different port for OID4VCI server
 plugin-config-value:

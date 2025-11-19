@@ -188,32 +188,25 @@ async def test_oid4vci_server_endpoints():
 if __name__ == "__main__":
     # Allow running this test file directly for debugging
     import sys
-    import traceback
 
     async def run_all_tests():
-        try:
-            print("🚀 Starting dual endpoint compatibility tests...\n")
+        print("🚀 Starting dual endpoint compatibility tests...\n")
 
-            await test_acapy_services_health()
-            print()
+        await test_acapy_services_health()
+        print()
 
-            await test_dual_oid4vci_endpoints()
-            print()
+        await test_dual_oid4vci_endpoints()
+        print()
 
-            await test_credo_can_reach_underscore_endpoint()
-            print()
+        await test_credo_can_reach_underscore_endpoint()
+        print()
 
-            await test_oid4vci_server_endpoints()
-            print()
+        await test_oid4vci_server_endpoints()
+        print()
 
-            print(
-                "🎉 All tests passed! Dual endpoint compatibility is working correctly."
-            )
-
-        except Exception as e:
-            print(f"❌ Test failed: {e}")
-            traceback.print_exc()
-            sys.exit(1)
+        print(
+            "🎉 All tests passed! Dual endpoint compatibility is working correctly."
+        )
 
     if len(sys.argv) > 1 and sys.argv[1] == "run":
         asyncio.run(run_all_tests())
