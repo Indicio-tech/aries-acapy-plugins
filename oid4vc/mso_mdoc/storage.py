@@ -517,3 +517,33 @@ class MdocStorageManager:
             return None
 
         return None
+
+    async def get_certificate_for_key(
+        self, session: ProfileSession, key_id: str
+    ) -> Optional[str]:
+        """Retrieve certificate PEM associated with a key ID."""
+        try:
+            storage = self.get_storage(session)
+        except Exception as e:
+            LOGGER.warning(
+                "Storage not available for getting certificate for key %s: %s",
+                key_id,
+                e,
+            )
+            return None
+
+        try:
+            records = await storage.find_all_records(
+                type_filter=MDOC_CERT_RECORD_TYPE,
+                tag_query={"key_id": key_id},
+            )
+            if not records:
+                return None
+
+            # Assuming one certificate per key for now, or take the most recent
+            record = records[0]
+            data = json.loads(record.value)
+            return data["certificate_pem"]
+        except (StorageError, StorageNotFoundError) as e:
+            LOGGER.warning("Failed to retrieve certificate for key %s: %s", key_id, e)
+            return None

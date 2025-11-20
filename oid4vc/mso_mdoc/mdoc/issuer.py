@@ -20,6 +20,7 @@ credential format that follows the ISO 18013-5 mobile document structure.
 
 import logging
 import uuid
+import json
 from typing import Any, Dict, Mapping, Optional, Tuple
 
 from acapy_agent.core.profile import Profile
@@ -85,7 +86,11 @@ async def create_mdoc_credential(
 
 
 def isomdl_mdoc_sign(
-    jwk: dict, headers: Mapping[str, Any], payload: Mapping[str, Any]
+    jwk: dict,
+    headers: Mapping[str, Any],
+    payload: Mapping[str, Any],
+    iaca_cert_pem: str,
+    iaca_key_pem: str,
 ) -> str:
     """Create a signed mso_mdoc using isomdl-uniffi.
 
@@ -98,6 +103,16 @@ def isomdl_mdoc_sign(
     - ISO 18013-5 § 9.1.3.5: ECDSA P-256 signature algorithm
     - RFC 8152: COSE signing for MSO authentication
     - RFC 7517: JWK format for key material input
+
+    Args:
+        jwk: The signing key in JWK format
+        headers: Header parameters including doctype
+        payload: The credential data to sign
+        iaca_cert_pem: Issuer certificate in PEM format
+        iaca_key_pem: Issuer private key in PEM format
+
+    Returns:
+        CBOR-encoded mDoc as string
     """
     if not isinstance(headers, dict):
         raise ValueError("missing headers.")
@@ -106,10 +121,21 @@ def isomdl_mdoc_sign(
         raise ValueError("missing payload.")
 
     try:
-        # For now, use the test MDL generator
-        # TODO: Integrate with proper credential data conversion
-        holder_key = P256KeyPair()
-        mdoc = generate_test_mdl(holder_key)
+        # Convert payload to JSON string for Rust processing
+        mdl_items = json.dumps(payload)
+
+        # Convert JWK to string
+        holder_jwk = json.dumps(jwk)
+
+        # Create and sign mDoc using the new Rust function
+        # This handles CBOR encoding internally to avoid Python cbor2 issues
+        mdoc = Mdoc.create_and_sign_mdl(
+            mdl_items,
+            None,  # aamva_items - optional, currently not used
+            holder_jwk,
+            iaca_cert_pem,
+            iaca_key_pem,
+        )
 
         LOGGER.info("Generated mdoc with doctype: %s", mdoc.doctype())
 

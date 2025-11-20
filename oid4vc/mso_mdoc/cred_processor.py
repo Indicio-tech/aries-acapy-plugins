@@ -15,6 +15,7 @@ Key Protocol Compliance:
 import json
 import logging
 import re
+import ast
 from typing import Any, Dict, Optional
 
 from acapy_agent.admin.request_context import AdminRequestContext
@@ -26,6 +27,7 @@ from oid4vc.models.exchange import OID4VCIExchangeRecord
 from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.pop_result import PopResult
 
+from .key_generation import generate_ec_key_pair
 from .mdoc.issuer import isomdl_mdoc_sign
 from .storage import MdocStorageManager
 
@@ -77,8 +79,6 @@ async def resolve_signing_key_for_credential(
             return stored_key["jwk"]
 
         # If not found or storage unavailable, generate a transient keypair
-        from .key_generation import generate_ec_key_pair
-
         private_key_pem, public_key_pem, jwk = generate_ec_key_pair()
 
         # Persist the generated key
@@ -107,8 +107,6 @@ async def resolve_signing_key_for_credential(
         return stored_key["jwk"]
 
     # Generate a default key if none exists
-    from .key_generation import generate_ec_key_pair
-
     private_key_pem, public_key_pem, jwk = generate_ec_key_pair()
 
     key_metadata = {
@@ -247,33 +245,41 @@ class MsoMdocCredProcessor(Issuer):
 
         if verification_method:
             # Use verification method to resolve signing key
-            jwk = await resolve_signing_key_for_credential(
-                context.profile,
+            if "#" in verification_method:
+                _, key_id = verification_method.split("#", 1)
+            else:
+                key_id = verification_method
+
+            key_data = await storage_manager.get_signing_key(
                 session,
+                identifier=key_id,
                 verification_method=verification_method,
             )
-            LOGGER.info(
-                "Using signing key from verification method: %s",
-                verification_method,
-            )
-        else:
-            # Fall back to default signing key from storage
-            stored_key = await storage_manager.get_default_signing_key(session)
-            if stored_key and stored_key.get("jwk"):
-                jwk = stored_key["jwk"]
+
+            if key_data:
                 LOGGER.info(
-                    "Using stored default signing key: %s",
-                    stored_key["key_id"],
+                    "Using signing key from verification method: %s",
+                    verification_method,
                 )
-            else:
-                # Generate default key if none exists
-                jwk = await resolve_signing_key_for_credential(context.profile, session)
-                LOGGER.info("Generated new default signing key")
+                return key_data
 
-        if not jwk:
-            raise CredProcessorError("Failed to obtain signing key")
+        # Fall back to default signing key from storage
+        key_data = await storage_manager.get_default_signing_key(session)
+        if key_data:
+            LOGGER.info("Using default signing key")
+            return key_data
 
-        return jwk
+        # Generate new default key if none exists
+        await resolve_signing_key_for_credential(
+            context.profile, session
+        )
+        LOGGER.info("Generated new default signing key")
+
+        key_data = await storage_manager.get_default_signing_key(session)
+        if key_data:
+            return key_data
+
+        raise CredProcessorError("Failed to resolve signing key")
 
     async def issue(
         self,
@@ -320,9 +326,24 @@ class MsoMdocCredProcessor(Issuer):
 
             # Resolve signing key
             async with context.profile.session() as session:
-                jwk = await self._resolve_signing_key(
+                key_data = await self._resolve_signing_key(
                     context, session, verification_method
                 )
+                jwk = key_data.get("jwk")
+                key_id = key_data.get("key_id")
+                private_key_pem = key_data.get("metadata", {}).get("private_key_pem")
+
+                # Fetch certificate
+                storage_manager = MdocStorageManager(context.profile)
+                certificate_pem = await storage_manager.get_certificate_for_key(
+                    session, key_id
+                )
+
+            if not private_key_pem:
+                raise CredProcessorError("Private key PEM not found for signing key")
+
+            if not certificate_pem:
+                raise CredProcessorError("Certificate PEM not found for signing key")
 
             # Issue mDoc using isomdl-uniffi library with ISO 18013-5 compliance
             LOGGER.debug(
@@ -331,7 +352,9 @@ class MsoMdocCredProcessor(Issuer):
                 headers,
                 (list(payload.keys()) if isinstance(payload, dict) else type(payload)),
             )
-            mso_mdoc = isomdl_mdoc_sign(jwk, headers, payload)
+            mso_mdoc = isomdl_mdoc_sign(
+                jwk, headers, payload, certificate_pem, private_key_pem
+            )
 
             # Normalize mDoc result handling for robust string/bytes processing
             mso_mdoc = self._normalize_mdoc_result(mso_mdoc)
@@ -392,8 +415,6 @@ class MsoMdocCredProcessor(Issuer):
                 # Handle escaped quotes and other characters
                 try:
                     # Use literal_eval to safely parse escape sequences
-                    import ast
-
                     return ast.literal_eval(f"'{cleaned}'")
                 except (ValueError, SyntaxError):
                     # Fallback to simple string cleanup
@@ -402,8 +423,6 @@ class MsoMdocCredProcessor(Issuer):
             elif result.startswith('b"') and result.endswith('"'):
                 cleaned = result[2:-1]
                 try:
-                    import ast
-
                     return ast.literal_eval(f'"{cleaned}"')
                 except (ValueError, SyntaxError):
                     return cleaned
