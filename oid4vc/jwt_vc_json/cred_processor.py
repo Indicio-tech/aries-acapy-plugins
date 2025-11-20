@@ -12,6 +12,7 @@ from acapy_agent.wallet.util import bytes_to_b64
 from pydid import DIDUrl  # noqa: F401  (kept for backward compatibility if needed)
 
 from oid4vc.cred_processor import (
+    CredProcessorError,
     CredVerifier,
     Issuer,
     PresVerifier,
@@ -130,11 +131,16 @@ class JwtVcJsonCredProcessor(Issuer, CredVerifier, PresVerifier):
         self, supported: SupportedCredential, subject: dict
     ):
         """Validate the credential subject."""
-        pass
+        if not isinstance(subject, dict):
+            raise ValueError("Credential subject must be a dictionary")
 
     def validate_supported_credential(self, supported: SupportedCredential):
         """Validate a supported JWT VC JSON Credential."""
-        pass
+        if not supported.format_data:
+            raise ValueError("format_data is required for jwt_vc_json")
+
+        if not supported.format_data.get("types"):
+            raise ValueError("types is required in format_data for jwt_vc_json")
 
     async def verify(self, profile: Profile, jwt: str) -> VerifyResult:
         """Verify a credential or presentation."""

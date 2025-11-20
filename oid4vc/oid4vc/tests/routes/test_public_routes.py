@@ -64,7 +64,9 @@ async def test_issuer_metadata(context: AdminRequestContext, req: web.Request):
                     "MyCredential": {
                         "format": "jwt_vc_json",
                         "id": "MyCredential",
-                        "credential_definition": {"credentialSubject": {"name": "alice"}},
+                        "credential_definition": {
+                            "credentialSubject": {"name": "alice"}
+                        },
                     }
                 },
             }
@@ -248,7 +250,7 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
     mock_supported = MagicMock(spec=SupportedCredential)
     mock_supported.format = "jwt_vc_json"
     mock_supported.identifier = "cred_id"
-    mock_supported.format_data = {"some": "data"}
+    mock_supported.format_data = {"types": ["VerifiableCredential"]}
     mock_supported.to_issuer_metadata = MagicMock(return_value={})
     mock_supported.vc_additional_data = {}
     monkeypatch.setattr(
@@ -261,7 +263,8 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
     mock_pop.verified = True
     mock_pop.holder_kid = "did:example:123#key-1"
     monkeypatch.setattr(
-        "oid4vc.public_routes.handle_proof_of_posession", AsyncMock(return_value=mock_pop)
+        "oid4vc.public_routes.handle_proof_of_posession",
+        AsyncMock(return_value=mock_pop),
     )
 
     # Patch session context manager
@@ -277,7 +280,7 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
     # Prepare dummy request
     body = {
         "format": "jwt_vc_json",
-        "type": ["VerifiableCredential"],
+        "types": ["VerifiableCredential"],
         "proof": {"jwt": "header.payload.signature"},
     }
     req = dummy_request(json_data=body)

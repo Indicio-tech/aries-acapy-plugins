@@ -136,8 +136,9 @@ class CredentialIssuerMetadataSchema(OpenAPISchema):
         fields.Str(),
         required=False,
         metadata={
-            "description": "Array of strings that identify the OAuth 2.0 Authorization Servers "
-            "(as defined in [RFC8414]) the Credential Issuer relies on for authorization. OPTIONAL."
+            "description": "Array of strings that identify the OAuth 2.0 "
+            "Authorization Servers (as defined in [RFC8414]) the Credential "
+            "Issuer relies on for authorization. OPTIONAL."
         },
     )
     batch_credential_endpoint = fields.Str(
@@ -227,11 +228,12 @@ async def credential_issuer_metadata_deprecated(request: web.Request):
     # Add deprecation headers
     response.headers["Deprecation"] = "true"
     response.headers["Warning"] = (
-        '299 - "This endpoint is deprecated. Use /.well-known/openid-credential-issuer instead."'
+        '299 - "This endpoint is deprecated. '
+        'Use /.well-known/openid-credential-issuer instead."'
     )
-    response.headers["Sunset"] = (
-        "Thu, 31 Dec 2026 23:59:59 GMT"  # TODO: Set appropriate sunset date
-    )
+    response.headers[
+        "Sunset"
+    ] = "Thu, 31 Dec 2026 23:59:59 GMT"  # TODO: Set appropriate sunset date
 
     return response
 
@@ -546,7 +548,8 @@ async def handle_proof_of_posession(
     # OID4VCI 1.0 § 7.2.1.1: typ MUST be "openid4vci-proof+jwt"
     if headers.get("typ") != "openid4vci-proof+jwt":
         raise web.HTTPBadRequest(
-            reason="Invalid proof: typ must be 'openid4vci-proof+jwt' (OID4VCI 1.0 § 7.2.1.1)"
+            reason="Invalid proof: typ must be 'openid4vci-proof+jwt' "
+            "(OID4VCI 1.0 § 7.2.1.1)"
         )
 
     # OID4VCI 1.0 § 7.2.1.1: Key material identification
@@ -609,37 +612,39 @@ class IssueCredentialRequestSchema(OpenAPISchema):
     credential_identifier = fields.Str(
         required=False,
         metadata={
-            "description": "String identifying a Credential Configuration supported by the "
-            "Credential Issuer. REQUIRED if format parameter is not present.",
+            "description": "String identifying a Credential Configuration supported "
+            "by the Credential Issuer. REQUIRED if format parameter is not present.",
             "example": "UniversityDegreeCredential",
         },
     )
     format = fields.Str(
         required=False,
         metadata={
-            "description": "Format of the Credential to be issued. This parameter MUST NOT be used "
-            "if credential_identifier parameter is present.",
+            "description": "Format of the Credential to be issued. This parameter "
+            "MUST NOT be used if credential_identifier parameter is present.",
             "example": "mso_mdoc",
         },
     )
     doctype = fields.Str(
         required=False,
         metadata={
-            "description": "String identifying the credential type. REQUIRED when using mso_mdoc format.",
+            "description": "String identifying the credential type. REQUIRED when "
+            "using mso_mdoc format.",
             "example": "org.iso.18013.5.1.mDL",
         },
     )
     proof = fields.Dict(
         required=True,
         metadata={
-            "description": "JSON object containing the proof of possession of the cryptographic key "
-            "material the issued Credential shall be bound to."
+            "description": "JSON object containing the proof of possession of the "
+            "cryptographic key material the issued Credential shall be bound to."
         },
     )
     credential_response_encryption = fields.Dict(
         required=False,
         metadata={
-            "description": "Object containing information for encrypting the Credential Response. OPTIONAL."
+            "description": "Object containing information for encrypting the "
+            "Credential Response. OPTIONAL."
         },
     )
     type = fields.List(
@@ -655,14 +660,18 @@ async def issue_cred(request: web.Request):
     OpenID4VCI 1.0 § 7: Credential Request
     https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#section-7
 
-    This endpoint issues a credential as validated upon presentation of a valid Access Token.
-    The request MUST contain either a credential_identifier OR a format parameter, but not both.
+    This endpoint issues a credential as validated upon presentation of a valid
+    Access Token. The request MUST contain either a credential_identifier OR a
+    format parameter, but not both.
     """
     context: AdminRequestContext = request["context"]
     token_result = await check_token(context, request.headers.get("Authorization"))
     refresh_id = token_result.payload["sub"]
     body = await request.json()
     LOGGER.info(f"request: {body}")
+
+    credential_identifier = body.get("credential_identifier")
+    format_param = body.get("format")
 
     try:
         async with context.profile.session() as session:
@@ -685,7 +694,9 @@ async def issue_cred(request: web.Request):
         raise web.HTTPBadRequest(reason=err.roll_up) from err
 
     if not supported.format:
-        raise web.HTTPBadRequest(reason="SupportedCredential missing format identifier.")
+        raise web.HTTPBadRequest(
+            reason="SupportedCredential missing format identifier."
+        )
 
     if supported.format != body.get("format"):
         raise web.HTTPBadRequest(reason="Requested format does not match offer.")
@@ -711,7 +722,8 @@ async def issue_cred(request: web.Request):
     if not credential_identifier and not format_param:
         return web.json_response(
             {
-                "message": "Either credential_identifier or format parameter must be present"
+                "message": "Either credential_identifier or format parameter "
+                "must be present"
             },
             status=400,
         )

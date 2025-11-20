@@ -10,7 +10,6 @@ from acapy_agent.resolver.did_resolver import DIDResolver
 from acapy_agent.wallet.did_method import DIDMethods
 from acapy_agent.wallet.key_type import KeyTypes, P256
 
-from jwt_vc_json.cred_processor import JwtVcJsonCredProcessor
 from oid4vc.cred_processor import CredProcessors
 
 from .app_resources import AppResources
@@ -40,11 +39,10 @@ async def setup(context: InjectionContext):
     key_types = context.inject(KeyTypes)
     key_types.register(P256)
 
-    # Include jwt_vc_json by default
-    jwt_vc_json = JwtVcJsonCredProcessor()
-    processors = CredProcessors()
+    from jwt_vc_json.cred_processor import JwtVcJsonCredProcessor
 
-    # Include jwt_vc_json if available
+    # Include jwt_vc_json by default
+    processors = CredProcessors()
     jwt_vc_json = JwtVcJsonCredProcessor()
     processors.register_issuer("jwt_vc_json", jwt_vc_json)
     processors.register_issuer("jwt_vc", jwt_vc_json)

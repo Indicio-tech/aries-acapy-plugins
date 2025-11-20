@@ -57,6 +57,11 @@ def pop():
 
 
 @pytest.fixture
-def context():
+def profile():
+    return MagicMock()
+
+
+@pytest.fixture
+def context(profile):
     """Test AdminRequestContext."""
-    yield AdminRequestContext.test_context()
+    yield AdminRequestContext(profile)
