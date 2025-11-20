@@ -12,7 +12,6 @@ from acapy_agent.wallet.util import bytes_to_b64
 from pydid import DIDUrl  # noqa: F401  (kept for backward compatibility if needed)
 
 from oid4vc.cred_processor import (
-    CredProcessorError,
     CredVerifier,
     Issuer,
     PresVerifier,
@@ -24,6 +23,7 @@ from oid4vc.models.presentation import OID4VPPresentation
 from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.pop_result import PopResult
 from oid4vc.public_routes import retrieve_or_create_did_jwk, types_are_subset
+from oid4vc.status_handler import StatusHandler
 
 LOGGER = logging.getLogger(__name__)
 
@@ -86,6 +86,15 @@ class JwtVcJsonCredProcessor(Issuer, CredVerifier, PresVerifier):
                 "jti": f"urn:uuid:{cred_id}",
                 "sub": subject,
             }
+
+            status_handler = context.inject_or(StatusHandler)
+            if status_handler and (
+                credential_status := await status_handler.assign_status_entries(
+                    context, supported.supported_cred_id, ex_record.exchange_id
+                )
+            ):
+                payload["vc"]["credentialStatus"] = credential_status
+                LOGGER.debug("credential with status: %s", payload)
 
             try:
                 jws = await jwt_sign(

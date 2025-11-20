@@ -28,6 +28,7 @@ class SupportedCredential(BaseRecord):
         identifier: Optional[str] = None,
         cryptographic_binding_methods_supported: Optional[List[str]] = None,
         cryptographic_suites_supported: Optional[List[str]] = None,
+        proof_types_supported: Optional[Dict] = None,
         display: Optional[List[Dict]] = None,
         format_data: Optional[Dict] = None,
         vc_additional_data: Optional[Dict] = None,
@@ -46,8 +47,9 @@ class SupportedCredential(BaseRecord):
                 list of supported cryptographic binding methods.
             cryptographic_suites_supported (Optional[List[str]]): A list of
                 supported cryptographic suites.
+            proof_types_supported (Optional[Dict]): A dict of supported proof types.
             display (Optional[List[Dict]]): Display characteristics of the credential.
-            format_data (Optional[Dict]): Format sepcific attributes; e.g.
+            format_data (Optional[Dict]): Format specific attributes; e.g.
                 credentialSubject for jwt_vc_json
             vc_additional_data (Optional[Dict]): Additional data to include in the
                 Verifiable Credential.
@@ -66,6 +68,7 @@ class SupportedCredential(BaseRecord):
             cryptographic_binding_methods_supported
         )
         self.cryptographic_suites_supported = cryptographic_suites_supported
+        self.proof_types_supported = proof_types_supported
         self.display = display
         self.format_data = format_data
         self.vc_additional_data = vc_additional_data
@@ -85,6 +88,7 @@ class SupportedCredential(BaseRecord):
                 "identifier",
                 "cryptographic_binding_methods_supported",
                 "cryptographic_suites_supported",
+                "proof_types_supported",
                 "display",
                 "format_data",
                 "vc_additional_data",
@@ -101,30 +105,40 @@ class SupportedCredential(BaseRecord):
         """
         # Base credential configuration per OID4VCI 1.0 § 11.2.3
         issuer_metadata = {
-            "format": self.format,  # REQUIRED: Credential format identifier
+            prop: value
+            for prop in (
+                "format",
+                "cryptographic_binding_methods_supported",
+                "cryptographic_suites_supported",
+                "proof_types_supported",
+                "display",
+            )
+            if (value := getattr(self, prop)) is not None
         }
 
-        # Add optional cryptographic binding methods (OID4VCI 1.0 § 11.2.3.2)
-        if self.cryptographic_binding_methods_supported:
-            issuer_metadata["cryptographic_binding_methods_supported"] = (
-                self.cryptographic_binding_methods_supported
-            )
+        # Rename cryptographic_suites_supported to credential_signing_alg_values_supported
+        alg_supported = issuer_metadata.pop("cryptographic_suites_supported", None)
+        if alg_supported:
+            issuer_metadata["credential_signing_alg_values_supported"] = alg_supported
 
-        # Add optional cryptographic suites (OID4VCI 1.0 § 11.2.3.3)
-        if self.cryptographic_suites_supported:
-            issuer_metadata["cryptographic_suites_supported"] = (
-                self.cryptographic_suites_supported
-            )
+        issuer_metadata["id"] = self.identifier
 
-        # Add optional display properties (OID4VCI 1.0 § 11.2.3.1)
-        if self.display:
-            issuer_metadata["display"] = self.display
-
-        # OID4VCI 1.0 § E: Format-specific parameters
-        # Flatten the format specific metadata into the configuration object
+        # Handle format_data
         if self.format_data:
-            issuer_metadata.update(self.format_data)
+            if self.format in ("jwt_vc_json", "jwt_vc"):
+                # For jwt_vc_json, wrap in credential_definition
+                cred_def = self.format_data.copy()
+                context = cred_def.pop("context", None)
+                if context:
+                    cred_def["@context"] = context
 
+                # Filter None values
+                cred_def = {k: v for k, v in cred_def.items() if v is not None}
+
+                issuer_metadata["credential_definition"] = cred_def
+            else:
+                # For other formats (e.g. mso_mdoc), flatten
+                issuer_metadata.update(self.format_data)
         return issuer_metadata
 
 
@@ -149,6 +163,10 @@ class SupportedCredentialSchema(BaseRecordSchema):
     )
     cryptographic_suites_supported = fields.List(
         fields.Str(), metadata={"example": ["ES256K"]}
+    )
+    proof_types_supported = fields.Dict(
+        required=False,
+        metadata={"example": {"jwt": {"proof_signing_alg_values_supported": ["ES256"]}}},
     )
     display = fields.List(
         fields.Dict(),

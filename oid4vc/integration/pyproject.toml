@@ -10,13 +10,16 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "pytest>=8.4.2",
-    "pytest-asyncio>=0.26.0",
+    "pytest-asyncio>=1.2.0",
     "pytest-html>=4.1.1",
     "pytest-xdist>=3.6.0",
     "httpx>=0.28.1",
     "aiohttp>=3.9.5",
     "aries-askar>=0.4.3",
     "pydantic>=2.7.0",
+    "requests>=2.32.0",
+    "did-peer-4>=0.1.4",
+    "jsonrpc-api-proxy-client @ git+https://github.com/Indicio-tech/json-rpc-api-proxy.git@main#subdirectory=clients/python",
     "cryptography>=46.0.3",
     "cbor2>=5.4.3",
     # mso_mdoc dependencies

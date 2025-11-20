@@ -16,6 +16,7 @@ from acapy_agent.wallet.models.wallet_record import WalletRecord
 from aiohttp import web
 from aiohttp_apispec import setup_aiohttp_apispec, validation_middleware
 
+from .app_resources import AppResources
 from .public_routes import register as public_routes_register
 
 LOGGER = logging.getLogger(__name__)
@@ -130,7 +131,7 @@ class Oid4vciServer(BaseAdminServer):
             ]
         )
 
-        await public_routes_register(app, bool(self.multitenant_manager))
+        await public_routes_register(app, self.multitenant_manager, self.context)
 
         cors = aiohttp_cors.setup(
             app,
@@ -185,6 +186,7 @@ class Oid4vciServer(BaseAdminServer):
             LOGGER.info(
                 "OID4VCI server successfully started on %s:%s", self.host, self.port
             )
+            await AppResources.startup()
         except OSError as e:
             LOGGER.error(
                 "Failed to start OID4VCI server on %s:%s: %s", self.host, self.port, e
@@ -200,6 +202,7 @@ class Oid4vciServer(BaseAdminServer):
         if self.site:
             await self.site.stop()
             self.site = None
+        await AppResources.shutdown()
 
     async def redirect_handler(self, request: web.BaseRequest):
         """Perform redirect to documentation."""

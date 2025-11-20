@@ -2,7 +2,7 @@
 
 import json
 from dataclasses import dataclass
-from typing import Dict, List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional, Union, Any
 from urllib.parse import parse_qsl, urlparse
 
 from aiohttp import ClientSession
@@ -61,7 +61,7 @@ class IssuerMetadata:
 
     credential_endpoint: str
     token_endpoint: str
-    credentials_supported: List[dict]
+    credential_configurations_supported: dict[str, Any]
 
 
 @dataclass

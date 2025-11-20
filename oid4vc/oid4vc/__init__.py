@@ -8,15 +8,17 @@ from acapy_agent.core.profile import Profile
 from acapy_agent.core.util import SHUTDOWN_EVENT_PATTERN, STARTUP_EVENT_PATTERN
 from acapy_agent.resolver.did_resolver import DIDResolver
 from acapy_agent.wallet.did_method import DIDMethods
-from acapy_agent.wallet.key_type import KeyTypes
+from acapy_agent.wallet.key_type import KeyTypes, P256
 
 from jwt_vc_json.cred_processor import JwtVcJsonCredProcessor
 from oid4vc.cred_processor import CredProcessors
 
+from .app_resources import AppResources
 from .config import Config
-from .jwk import DID_JWK, P256
+from .jwk import DID_JWK
 from .jwk_resolver import JwkResolver
 from .oid4vci_server import Oid4vciServer
+from .status_handler import StatusHandler
 
 LOGGER = logging.getLogger(__name__)
 
@@ -38,7 +40,8 @@ async def setup(context: InjectionContext):
     key_types = context.inject(KeyTypes)
     key_types.register(P256)
 
-    # Setup credential processors
+    # Include jwt_vc_json by default
+    jwt_vc_json = JwtVcJsonCredProcessor()
     processors = CredProcessors()
 
     # Include jwt_vc_json if available
@@ -57,6 +60,9 @@ async def setup(context: InjectionContext):
 
     context.injector.bind_instance(CredProcessors, processors)
 
+    status_handler = StatusHandler(context)
+    context.injector.bind_instance(StatusHandler, status_handler)
+
 
 async def startup(profile: Profile, event: Event):
     """Startup event handler; start the OpenID4VCI server."""
@@ -72,6 +78,7 @@ async def startup(profile: Profile, event: Event):
         )
         profile.context.injector.bind_instance(Oid4vciServer, oid4vci)
         LOGGER.info("OID4VCI server instance created and bound")
+        await AppResources.startup(config)
     except Exception:
         LOGGER.exception("Unable to register OID4VCI server")
         raise
@@ -86,3 +93,4 @@ async def shutdown(profile, _event):
     """Teardown the plugin."""
     oid4vci = profile.inject(Oid4vciServer)
     await oid4vci.stop()
+    await AppResources.shutdown()

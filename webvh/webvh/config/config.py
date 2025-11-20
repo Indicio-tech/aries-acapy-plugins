@@ -1,6 +1,9 @@
 """Helper functions for managing agent or tenant configurations."""
 
+import copy
 import json
+
+from operator import itemgetter
 
 from acapy_agent.core.profile import Profile
 from acapy_agent.storage.base import BaseStorage
@@ -21,25 +24,70 @@ def _get_wallet_identifier(profile: Profile):
 
 async def get_plugin_config(profile: Profile):
     """Get the plugin settings."""
+    wallet_id = _get_wallet_identifier(profile)
     async with profile.session() as session:
         storage = session.inject(BaseStorage)
-        stored_config = None
+        stored_config_record = None
+
         try:
-            stored_config = await storage.get_record(
+            stored_config_record = await storage.get_record(
                 WebvhConfigRecord.RECORD_TYPE,
-                _get_wallet_identifier(profile),
+                wallet_id,
             )
         except StorageNotFoundError:
             pass
 
-    if stored_config:
-        return json.loads(stored_config.value)["config"]
-    return profile.settings.get("plugin_config", {}).get("did-webvh", {})
+    if stored_config_record:
+        return json.loads(stored_config_record.value)["config"]
+
+    return copy.deepcopy(profile.settings.get("plugin_config", {}).get("webvh", {}))
+
+
+async def set_config(profile: Profile, config: dict):
+    """Set the configuration."""
+    wallet_id = _get_wallet_identifier(profile)
+    async with profile.session() as session:
+        storage = session.inject(BaseStorage)
+
+        # Update
+        try:
+            stored_config_record = await storage.get_record(
+                WebvhConfigRecord.RECORD_TYPE, wallet_id
+            )
+            await storage.update_record(
+                stored_config_record,
+                value=json.dumps(
+                    WebvhConfigRecord(record_id=wallet_id, config=config).serialize()
+                ),
+                tags={},
+            )
+        # Add
+        except StorageNotFoundError:
+            await storage.add_record(
+                StorageRecord(
+                    type=WebvhConfigRecord.RECORD_TYPE,
+                    id=wallet_id,
+                    value=json.dumps(
+                        WebvhConfigRecord(record_id=wallet_id, config=config).serialize()
+                    ),
+                )
+            )
+    return
 
 
 async def is_controller(profile: Profile):
-    """Check if the current agent is the controller."""
-    return (await get_plugin_config(profile)).get("role") == "controller"
+    """Check if the current agent is a controller."""
+    return False if (await get_plugin_config(profile)).get("witness") else True
+
+
+async def is_witness(profile: Profile):
+    """Check if the current agent is a witness."""
+    return True if (await get_plugin_config(profile)).get("witness") else False
+
+
+async def notify_watchers(profile: Profile):
+    """Check if we should notify watchers."""
+    return (await get_plugin_config(profile)).get("notify_watchers", False)
 
 
 async def get_server_url(profile: Profile):
@@ -50,6 +98,16 @@ async def get_server_url(profile: Profile):
         raise ConfigurationError("Invalid configuration. Check server url is set.")
 
     return server_url
+
+
+async def get_server_domain(profile: Profile):
+    """Get the server domain."""
+    server_url = await get_server_url(profile)
+    """Replace %3A with : if domain is URL encoded."""
+    domain = server_url.split("://")[-1]
+    if "%3A" in domain:
+        domain = domain.replace("%3A", ":")
+    return domain
 
 
 async def get_witnesses(profile: Profile):
@@ -67,42 +125,9 @@ async def use_strict_ssl(profile: Profile):
     return (await get_plugin_config(profile)).get("strict_ssl", True)
 
 
-async def set_config(profile: Profile, config: dict):
-    """Set the configuration."""
-    async with profile.session() as session:
-        storage = session.inject(BaseStorage)
-        # Update
-        try:
-            stored_config_record = await storage.get_record(
-                WebvhConfigRecord.RECORD_TYPE, _get_wallet_identifier(profile)
-            )
-            if stored_config_record:
-                await storage.update_record(
-                    stored_config_record,
-                    value=json.dumps(
-                        WebvhConfigRecord(
-                            record_id=_get_wallet_identifier(profile), config=config
-                        ).serialize()
-                    ),
-                    tags={},
-                )
-        # Add
-        except StorageNotFoundError:
-            await storage.add_record(
-                StorageRecord(
-                    type=WebvhConfigRecord.RECORD_TYPE,
-                    id=_get_wallet_identifier(profile),
-                    value=json.dumps(
-                        WebvhConfigRecord(
-                            record_id=_get_wallet_identifier(profile), config=config
-                        ).serialize()
-                    ),
-                )
-            )
-
-
-async def add_scid_mapping(profile: Profile, scid: str, did: str):
+async def add_scid_mapping(profile: Profile, did: str):
     """Add a scid mapping."""
+    scid = itemgetter(2)(did.split(":"))
     async with profile.session() as session:
         storage = session.inject(BaseStorage)
         stored_config_record = await storage.get_record(

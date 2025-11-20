@@ -44,9 +44,8 @@ def plugin_settings():
             "status_list": {
                 "list_size": "131072",
                 "shard_size": "1024",
-                "base_url": "https://dev.lab.di.gov.on.ca",
-                "base_dir": "/tmp/aries/bitstring",
-                "path_template": "/tenants/{tenant_id}/{status_type}/status/{status_list_number}",
+                "public_uri": "https://status.example.com/tenants/{tenant_id}/status/{list_number}",
+                "file_path": "/tmp/bitstring/{tenant_id}/{list_number}",
             }
         }
     }
@@ -93,7 +92,7 @@ async def init(context: AdminRequestContext):
             method=WEB,
             key_type=ED25519,
             seed="testseed000000000000000000000001",
-            did="did:web:dev.lab.di.gov.on.ca",
+            did="did:web:example.com",
         )
     yield
 
@@ -105,9 +104,12 @@ def status_list_def():
         status_purpose="revocation",
         status_size=1,
         shard_size=1024,
+        list_type="ietf",
         list_size=131072,
         list_number="0",
         next_list_number="0",
+        issuer_did="did:web:example.com",
+        verification_method="did:web:example.com#z6Mkgg342Ycpuk263R9d8Aq6MUaxPn1DDeHyGo38EefXmgDL",
         id="definition_id",
         new_with_id=True,
     )
@@ -129,6 +131,8 @@ def status_list_def_msg():
         list_size=16,
         list_number="0",
         next_list_number="0",
+        issuer_did="did:web:example.com",
+        verification_method="did:web:example.com#z6Mkgg342Ycpuk263R9d8Aq6MUaxPn1DDeHyGo38EefXmgDL",
         id="definition_msg_id",
         new_with_id=True,
     )
