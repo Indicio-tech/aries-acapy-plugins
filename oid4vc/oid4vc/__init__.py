@@ -53,8 +53,27 @@ async def setup(context: InjectionContext):
     LOGGER.info("Registered jwt_vc_json credential processor")
 
     # Register mso_mdoc processor if available
-    # Note: MsoMdocCredProcessor registration moved to avoid circular import
-    # The mso_mdoc plugin will register itself via its own setup function
+    try:
+        from mso_mdoc.cred_processor import MsoMdocCredProcessor
+        from mso_mdoc.mdoc.verifier import FileTrustStore
+        import os
+
+        trust_store_path = os.getenv(
+            "OID4VC_MDOC_TRUST_ANCHORS_PATH", "/etc/acapy/mdoc/trust-anchors/"
+        )
+        trust_store = FileTrustStore(trust_store_path)
+
+        mso_mdoc = MsoMdocCredProcessor(trust_store=trust_store)
+        processors.register_issuer("mso_mdoc", mso_mdoc)
+        processors.register_cred_verifier("mso_mdoc", mso_mdoc)
+        processors.register_pres_verifier("mso_mdoc", mso_mdoc)
+        LOGGER.info("Registered mso_mdoc credential processor")
+    except ImportError:
+        LOGGER.warning(
+            "mso_mdoc plugin not found or dependencies missing, skipping registration"
+        )
+    except Exception as e:
+        LOGGER.error(f"Failed to register mso_mdoc processor: {e}")
 
     context.injector.bind_instance(CredProcessors, processors)
 
