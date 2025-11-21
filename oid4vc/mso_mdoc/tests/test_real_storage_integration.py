@@ -7,7 +7,7 @@ testing mock interfaces. Tests actual data persistence patterns.
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 # from ..models import MdocRecord  # Would normally import this
 

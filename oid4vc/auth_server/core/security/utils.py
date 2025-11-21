@@ -7,7 +7,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from authlib.jose import JsonWebKey, jwt
-
 from core.utils.json import safe_json_loads
 from tenant.config import settings
 

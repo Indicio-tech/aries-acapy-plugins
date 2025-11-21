@@ -2,6 +2,7 @@ from os import getenv
 
 import httpx
 import pytest_asyncio
+
 from credo_wrapper import CredoWrapper
 
 # Service endpoints from docker-compose.yml environment variables

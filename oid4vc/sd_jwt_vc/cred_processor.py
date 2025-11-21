@@ -17,14 +17,9 @@ from pydid import DIDUrl
 from sd_jwt.issuer import SDJWTIssuer, SDObj
 from sd_jwt.verifier import KB_DIGEST_KEY, SDJWTVerifier
 
-from oid4vc.cred_processor import (
-    CredProcessorError,
-    CredVerifier,
-    Issuer,
-    PresVerifier,
-    VerifyResult,
-)
 from oid4vc.config import Config
+from oid4vc.cred_processor import (CredProcessorError, CredVerifier, Issuer,
+                                   PresVerifier, VerifyResult)
 from oid4vc.jwt import jwt_sign, jwt_verify
 from oid4vc.models.exchange import OID4VCIExchangeRecord
 from oid4vc.models.presentation import OID4VPPresentation

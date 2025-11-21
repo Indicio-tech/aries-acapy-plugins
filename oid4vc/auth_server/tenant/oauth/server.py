@@ -3,14 +3,12 @@
 from typing import Any
 
 from authlib.oauth2.rfc6749 import AuthorizationServer
-from authlib.oauth2.rfc6749.errors import (
-    InvalidGrantError,
-    InvalidRequestError,
-)
-from fastapi import HTTPException as FastAPIHTTPException
-
+from authlib.oauth2.rfc6749.errors import (InvalidGrantError,
+                                           InvalidRequestError)
 from core.consts import OAuth2Flow
-from tenant.oauth.grants import PreAuthorizedCodeGrant, RotatingRefreshTokenGrant
+from fastapi import HTTPException as FastAPIHTTPException
+from tenant.oauth.grants import (PreAuthorizedCodeGrant,
+                                 RotatingRefreshTokenGrant)
 from tenant.oauth.integration.context import get_context
 from tenant.oauth.integration.server import CoreAuthorizationServer
 from tenant.services.token_service import TokenService

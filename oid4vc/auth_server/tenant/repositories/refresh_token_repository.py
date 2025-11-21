@@ -5,7 +5,6 @@ from typing import Union
 
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from tenant.models import RefreshToken
 
 

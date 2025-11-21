@@ -5,7 +5,8 @@ from typing import Optional, Pattern, Sequence, Text
 
 from acapy_agent.config.injection_context import InjectionContext
 from acapy_agent.core.profile import Profile
-from acapy_agent.resolver.base import BaseDIDResolver, ResolverError, ResolverType
+from acapy_agent.resolver.base import (BaseDIDResolver, ResolverError,
+                                       ResolverType)
 from acapy_agent.wallet.jwt import b64_to_dict
 
 

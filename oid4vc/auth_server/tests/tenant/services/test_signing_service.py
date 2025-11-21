@@ -1,7 +1,6 @@
 from types import SimpleNamespace
 
 import pytest
-
 import tenant.services.signing_service as signing_service
 
 

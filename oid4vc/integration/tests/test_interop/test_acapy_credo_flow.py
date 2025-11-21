@@ -7,7 +7,6 @@ Tests the complete flow:
 4. ACA-Py verifier validates presentation
 """
 
-from typing import Any, Dict
 
 import httpx
 import pytest

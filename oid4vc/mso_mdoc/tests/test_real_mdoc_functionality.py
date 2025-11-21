@@ -7,7 +7,6 @@ testing interfaces and mocked components. Migrated from .dev/_tests/
 import base64
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
 
 import pytest
 
@@ -26,8 +25,9 @@ try:
 except ImportError:
     ISOMDL_AVAILABLE = False
 
-from ..cred_processor import MsoMdocCredProcessor
-from ..mdoc import isomdl_mdoc_sign, parse_mdoc
+from ..key_generation import (generate_ec_key_pair,
+                              generate_self_signed_certificate)
+from ..mdoc import isomdl_mdoc_sign
 
 
 class TestRealMdocFunctionality:
@@ -274,8 +274,14 @@ class TestRealMdocFunctionality:
         }
 
         try:
+            # Generate keys and certificate for signing
+            private_pem, _, jwk = generate_ec_key_pair()
+            cert_pem = generate_self_signed_certificate(private_pem)
+
             # Attempt real signing
-            result = isomdl_mdoc_sign(json.dumps(sample_jwk), sample_headers, payload)
+            result = isomdl_mdoc_sign(
+                jwk, sample_headers, payload, cert_pem, private_pem
+            )
 
             # Verify we get a result
             assert result is not None

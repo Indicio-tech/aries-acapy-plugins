@@ -5,10 +5,10 @@ This can be run directly in the integration test container.
 """
 
 import asyncio
-import json
 
 import httpx
 import pytest
+
 from acapy_controller import Controller
 
 # Configuration

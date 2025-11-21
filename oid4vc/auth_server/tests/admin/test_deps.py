@@ -1,9 +1,8 @@
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-import pytest
-
 import admin.deps as admin_deps
+import pytest
 from core.db.session import DatabaseSessionManager, make_session_dependency
 
 

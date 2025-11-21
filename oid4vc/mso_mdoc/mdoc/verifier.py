@@ -1,164 +1,326 @@
-"""Operations supporting mso_mdoc verification using isomdl-uniffi.
+"""Mdoc Verifier implementation using isomdl-uniffi."""
 
-This module implements ISO/IEC 18013-5:2021 compliant mobile document verification
-using the isomdl-uniffi Rust library. It provides cryptographic verification
-of mobile security objects (MSO) and presentation response validation.
-
-Protocol Compliance:
-- OpenID4VCI 1.0 § E.1.1: mso_mdoc Credential Format
-  https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#appendix-E.1.1
-- ISO/IEC 18013-5:2021 § 9.1.4: MSO verification procedures
-- ISO/IEC 18013-5:2021 § 8.4: Presentation and verification protocols
-- RFC 8152: COSE signature verification
-- RFC 8949: CBOR decoding and validation
-
-The mso_mdoc format verification ensures that issued credentials conform to both
-OpenID4VCI 1.0 requirements and ISO 18013-5 mobile document standards.
-"""
-
+import base64
+import json
 import logging
-from typing import Any, Mapping
+import os
+from abc import abstractmethod
+from typing import Any, List, Optional, Protocol
 
-from acapy_agent.messaging.models.base import BaseModel, BaseModelSchema
-from isomdl_uniffi import AuthenticationStatus, Mdoc, handle_response
-from marshmallow import fields
+# Import isomdl_uniffi library directly
+import isomdl_uniffi
+from acapy_agent.core.profile import Profile
+from acapy_agent.protocols.present_proof.dif.pres_exch import \
+    PresentationDefinition
+
+from oid4vc.cred_processor import (CredVerifier, PresVerifeirError,
+                                   PresVerifier, VerifyResult)
+from oid4vc.models.presentation import OID4VPPresentation
+from oid4vc.models.presentation_definition import OID4VPPresDef
 
 LOGGER = logging.getLogger(__name__)
 
 
-class MdocVerifyResult(BaseModel):
-    """Result from verify."""
+class TrustStore(Protocol):
+    """Protocol for retrieving trust anchors."""
 
-    class Meta:
-        """MdocVerifyResult metadata."""
+    @abstractmethod
+    def get_trust_anchors(self) -> List[str]:
+        """Retrieve trust anchors as PEM strings."""
+        ...
 
-        schema_class = "MdocVerifyResultSchema"
+
+class FileTrustStore:
+    """Trust store implementation backed by a directory of PEM files."""
+
+    def __init__(self, path: str):
+        """Initialize the file trust store."""
+        self.path = path
+
+    def get_trust_anchors(self) -> List[str]:
+        """Retrieve trust anchors from the directory."""
+        anchors = []
+        if not os.path.isdir(self.path):
+            LOGGER.warning(f"Trust store path {self.path} is not a directory.")
+            return anchors
+
+        for filename in os.listdir(self.path):
+            if filename.endswith(".pem") or filename.endswith(".crt"):
+                try:
+                    with open(os.path.join(self.path, filename), "r") as f:
+                        anchors.append(f.read())
+                except Exception as e:
+                    LOGGER.warning(f"Failed to read trust anchor {filename}: {e}")
+        return anchors
+
+
+class MsoMdocCredVerifier(CredVerifier):
+    """Verifier for mso_mdoc credentials."""
+
+    def __init__(self, trust_store: Optional[TrustStore] = None):
+        """Initialize the credential verifier."""
+        self.trust_store = trust_store
+
+    async def verify_credential(
+        self,
+        profile: Profile,
+        credential: Any,
+    ) -> VerifyResult:
+        """Verify an mso_mdoc credential.
+
+        Args:
+            profile: The profile for context
+            credential: The credential to verify (bytes or hex string)
+
+        Returns:
+            VerifyResult: The verification result
+        """
+        try:
+            # Basic parsing check
+            mdoc = None
+            if isinstance(credential, str):
+                # isomdl usually works with hex strings for from_string
+                mdoc = isomdl_uniffi.Mdoc.from_string(credential)
+            elif isinstance(credential, bytes):
+                # Convert bytes to hex string for parsing
+                mdoc = isomdl_uniffi.Mdoc.from_string(credential.hex())
+            
+            if not mdoc:
+                return VerifyResult(
+                    verified=False, payload={"error": "Invalid credential format"}
+                )
+
+            # Currently isomdl-uniffi focuses on presentation verification (session based)
+            # and does not expose a standalone issuer signature verification method for
+            # Mdoc objects. Therefore, successful parsing implies structural validity
+            # (CBOR structure, MSO format). Full cryptographic verification of the
+            # issuer signature requires a presentation session or future library
+            # enhancements.
+            
+            return VerifyResult(
+                verified=True, 
+                payload={
+                    "status": "structurally_valid", 
+                    "doctype": mdoc.doctype(),
+                    "id": str(mdoc.id())
+                }
+            )
+
+        except Exception as e:
+            LOGGER.error(f"Failed to parse mdoc credential: {e}")
+            return VerifyResult(verified=False, payload={"error": str(e)})
+
+
+class MsoMdocPresVerifier(PresVerifier):
+    """Verifier for mso_mdoc presentations (OID4VP)."""
+
+    def __init__(self, trust_store: Optional[TrustStore] = None):
+        """Initialize the presentation verifier."""
+        self.trust_store = trust_store
+
+    async def verify_presentation(
+        self,
+        profile: Profile,
+        presentation: Any,
+        presentation_record: OID4VPPresentation,
+    ) -> VerifyResult:
+        """Verify an mso_mdoc presentation.
+
+        Args:
+            profile: The profile for context
+            presentation: The presentation data (bytes)
+            presentation_record: The presentation record containing request info
+
+        Returns:
+            VerifyResult: The verification result
+        """
+        try:
+            # 1. Prepare Trust Anchors
+            trust_anchors = (
+                self.trust_store.get_trust_anchors() if self.trust_store else []
+            )
+
+            # 2. Establish Session (Verifier side)
+            # We need the URI from the request? Or just a placeholder?
+            # establish_session takes (uri, requested_items, trust_anchor_registry)
+            # In OID4VP, the "uri" might be the mdoc-uri if using that flow,
+            # or it might be irrelevant for direct_post if we just want to verify
+            # the blob. However, isomdl-uniffi seems to enforce the session flow.
+
+            # Construct requested items from presentation_record (if available)
+            # The API expects dict[str, dict[str, dict[str, bool]]]
+            # -> {doctype: {namespace: {element: intent_to_retain}}}
+            requested_items = {}
+            if presentation_record and presentation_record.pres_def_id:
+                try:
+                    async with profile.session() as session:
+                        pres_def_entry = await OID4VPPresDef.retrieve_by_id(
+                            session,
+                            presentation_record.pres_def_id,
+                        )
+                        pres_def = PresentationDefinition.deserialize(
+                            pres_def_entry.pres_def
+                        )
+
+                        for descriptor in pres_def.input_descriptors:
+                            # Default to mDL doctype if not specified
+                            doctype = "org.iso.18013.5.1.mDL"
+                            if doctype not in requested_items:
+                                requested_items[doctype] = {}
+
+                            if descriptor.constraints:
+                                for field in descriptor.constraints.fields:
+                                    for path in field.path:
+                                        # Attempt to parse path like
+                                        # "$['org.iso.18013.5.1']['family_name']"
+                                        # This is a very basic parser and might need
+                                        # improvement
+                                        clean_path = (
+                                            path.replace("$", "")
+                                            .replace("[", "")
+                                            .replace("]", "")
+                                            .replace("'", "")
+                                            .replace('"', "")
+                                        )
+                                        parts = clean_path.split(".")
+                                        if len(parts) >= 2:
+                                            # Assuming namespace.element
+                                            # But path might be namespace.element
+                                            # Or it might be just element if namespace
+                                            # is implied?
+                                            # For mDL, it's usually namespace.element
+
+                                            # Let's try to split by last dot
+                                            namespace = ".".join(parts[:-1])
+                                            element = parts[-1]
+
+                                            if namespace not in requested_items[doctype]:
+                                                requested_items[doctype][namespace] = {}
+
+                                            requested_items[doctype][namespace][
+                                                element
+                                            ] = True
+                except Exception as e:
+                    LOGGER.warning(f"Could not retrieve presentation definition: {e}")
+
+            # We use a dummy URI as we are verifying a received response,
+            # not initiating a BLE/NFC session
+            session_data = isomdl_uniffi.establish_session(
+                "mdoc-openid4vp://", requested_items, trust_anchors
+            )
+
+            # 3. Handle Response
+            # presentation should be bytes. If it's a dict (from JSON),
+            # we might need to convert.
+            # OID4VP usually sends the device response as bytes
+            # (base64url encoded in JSON or raw)
+            response_bytes = presentation
+            if isinstance(presentation, str):
+                # Try to decode if it's base64
+                try:
+                    response_bytes = base64.urlsafe_b64decode(
+                        presentation + "=" * (-len(presentation) % 4)
+                    )
+                except (ValueError, TypeError):
+                    # Maybe it's hex?
+                    try:
+                        response_bytes = bytes.fromhex(presentation)
+                    except (ValueError, TypeError):
+                        pass
+
+            if not isinstance(response_bytes, bytes):
+                raise PresVerifeirError(
+                    "Presentation must be bytes or base64/hex string"
+                )
+
+            # 4. Handle Device Response
+            # We need to pass the session state and the response bytes
+            # handle_response returns
+            # (issuer_auth_status, device_auth_status, json_payload, errors)
+            # or a struct with these fields.
+            response_data = isomdl_uniffi.handle_response(
+                session_data.state, response_bytes
+            )
+
+            if (
+                response_data.issuer_authentication
+                == isomdl_uniffi.AuthenticationStatus.VALID
+                and response_data.device_authentication
+                == isomdl_uniffi.AuthenticationStatus.VALID
+            ):
+                verified = True
+            else:
+                verified = False
+
+            # 5. Extract Payload
+            # verified_response is dict[str, dict[str, MDocItem]]
+            # -> {namespace: {element: value}}
+            # We need to convert MDocItem to Python types
+            payload = {}
+            # We can use verified_response_as_json_string for easy conversion
+            json_payload = isomdl_uniffi.verified_response_as_json_string(response_data)
+            payload = json.loads(json_payload)
+
+            if not verified:
+                LOGGER.warning(
+                    "Mdoc verification failed. Issuer: %s, Device: %s, Errors: %s",
+                    response_data.issuer_authentication,
+                    response_data.device_authentication,
+                    response_data.errors,
+                )
+                return VerifyResult(
+                    verified=False,
+                    payload={
+                        "error": response_data.errors,
+                        "issuer_auth": str(response_data.issuer_authentication),
+                        "device_auth": str(response_data.device_authentication),
+                        "claims": payload,
+                    },
+                )
+
+            return VerifyResult(verified=True, payload=payload)
+
+        except Exception as e:
+            LOGGER.exception("Error verifying mdoc presentation")
+            return VerifyResult(verified=False, payload={"error": str(e)})
+class MdocVerifyResult:
+    """Result of mdoc verification."""
 
     def __init__(
-        self,
-        headers: Mapping[str, Any],
-        payload: Mapping[str, Any],
-        valid: bool,
-        kid: str,
+        self, verified: bool, payload: Optional[dict] = None, error: Optional[str] = None
     ):
-        """Initialize a MdocVerifyResult instance."""
-        self.headers = headers
+        """Initialize the verification result."""
+        self.verified = verified
         self.payload = payload
-        self.valid = valid
-        self.kid = kid
+        self.error = error
 
-
-class MdocVerifyResultSchema(BaseModelSchema):
-    """MdocVerifyResult schema."""
-
-    class Meta:
-        """MdocVerifyResult metadata."""
-
-        model_class = MdocVerifyResult
-
-    headers = fields.Dict(
-        metadata={"description": "Headers", "example": {}},
-        required=True,
-    )
-    payload = fields.Dict(
-        metadata={"description": "Payload", "example": {}},
-        required=True,
-    )
-    valid = fields.Boolean(
-        metadata={"description": "Valid", "example": True},
-        required=True,
-    )
-    kid = fields.Str(
-        metadata={"description": "key id", "example": "did:key:abc123"},
-        required=True,
-    )
-
-
-def mdoc_verify(mdoc_cbor: str, trust_anchors: list = None) -> MdocVerifyResult:
-    """Verify an mDoc using isomdl-uniffi.
-
-    Performs cryptographic verification of an ISO 18013-5 mobile document
-    including validation of the mobile security object (MSO) signature
-    and certificate chain verification if trust anchors are provided.
-
-    Protocol Compliance:
-    - ISO 18013-5 § 9.1.4: MSO signature verification procedures
-    - ISO 18013-5 § 7.2.4: Issuer authentication validation
-    - RFC 8152 § 4: COSE signature verification algorithms
-    - RFC 5280: X.509 certificate path validation (if trust_anchors provided)
-
-    Args:
-        mdoc_cbor: CBOR-encoded mDoc string (ISO 18013-5 § 8.3)
-        trust_anchors: Optional list of trust anchor certificates for validation
-
-    Returns:
-        MdocVerifyResult with verification details
-
-    Raises:
-        ValueError: If verification fails
-    """
-    try:
-        # Parse the mDoc from CBOR
-        mdoc = Mdoc.from_string(mdoc_cbor)
-
-        # Extract basic information
-        headers = {"doctype": mdoc.doctype(), "key_alias": mdoc.key_alias()}
-
-        # Extract payload (details)
-        payload = mdoc.details()
-
-        # For basic verification, we consider it valid if parsing succeeded
-        # More sophisticated verification would involve checking signatures
-        valid = True
-        kid = mdoc.key_alias()
-
-        LOGGER.info("Verified mDoc with doctype: %s, valid: %s", mdoc.doctype(), valid)
-
-        return MdocVerifyResult(headers=headers, payload=payload, valid=valid, kid=kid)
-
-    except Exception as ex:
-        LOGGER.error("Failed to verify mDoc: %s", ex)
-        return MdocVerifyResult(headers={}, payload={}, valid=False, kid="")
-
-
-def verify_presentation_response(
-    session_state: Any, response_data: bytes, trust_anchors: list = None
-) -> dict:
-    """Verify a presentation response using isomdl-uniffi.
-
-    Verifies a complete mDoc presentation response according to ISO 18013-5
-    presentation protocol. This includes both device authentication
-    (proving the holder controls the device key) and issuer authentication
-    (validating the MSO signature).
-
-    Protocol Compliance:
-    - ISO 18013-5 § 8.4.2: Presentation response verification
-    - ISO 18013-5 § 7.4.4: Device authentication verification
-    - ISO 18013-5 § 9.1.4: Issuer authentication validation
-    - ISO 18013-5 § 9.2.1: SessionTranscript for replay protection
-
-    Args:
-        session_state: Verifier session state from establish_session
-        response_data: Response bytes from holder (DeviceResponse per § 8.3.2.1.2.2)
-        trust_anchors: Optional trust anchor certificates for MSO validation
-
-    Returns:
-        Dict with verification results including authentication status
-
-    Raises:
-        ValueError: If verification fails
-    """
-    try:
-        result = handle_response(session_state, response_data)
-
+    def serialize(self):
+        """Serialize the result to a dictionary."""
         return {
-            "device_authentication": str(result.device_authentication),
-            "issuer_authentication": str(result.issuer_authentication),
-            "verified_data": result.verified_response,
-            "errors": result.errors if hasattr(result, "errors") else [],
-            "valid": result.device_authentication == AuthenticationStatus.VALID,
+            "verified": self.verified,
+            "payload": self.payload,
+            "error": self.error,
         }
 
-    except Exception as ex:
-        LOGGER.error("Failed to verify presentation response: %s", ex)
-        raise ValueError(f"Verification failed: {ex}") from ex
+
+def mdoc_verify(mso_mdoc: str) -> MdocVerifyResult:
+    """Verify an mso_mdoc credential.
+
+    Args:
+        mso_mdoc: The base64 encoded mdoc string.
+
+    Returns:
+        MdocVerifyResult: The verification result.
+    """
+    try:
+        # Basic parsing check using isomdl-uniffi
+        # This is a simplified verification for the standalone endpoint
+        isomdl_uniffi.Mdoc.from_string(mso_mdoc)
+        # If parsing succeeds, we consider it "verified" structurally for now
+        # Note: Full signature verification requires session context or
+        # specific trust anchor validation which is not yet fully exposed
+        # for standalone strings in the current bindings.
+        return MdocVerifyResult(verified=True, payload={"status": "parsed"})
+    except Exception as e:
+        return MdocVerifyResult(verified=False, error=str(e))
+

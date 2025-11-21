@@ -1,11 +1,8 @@
 """Authlib core AuthorizationServer adapter for FastAPI/Starlette."""
 
 from authlib.oauth2.rfc6749 import AuthorizationServer
-from authlib.oauth2.rfc6749.errors import (
-    InvalidRequestError,
-    OAuth2Error,
-    UnsupportedGrantTypeError,
-)
+from authlib.oauth2.rfc6749.errors import (InvalidRequestError, OAuth2Error,
+                                           UnsupportedGrantTypeError)
 from authlib.oauth2.rfc6749.requests import OAuth2Request
 
 NO_STORE = [("Cache-Control", "no-store"), ("Pragma", "no-cache")]

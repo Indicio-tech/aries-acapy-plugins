@@ -2,20 +2,15 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from aiohttp import web
-
 from acapy_agent.resolver.did_resolver import DIDResolver
+from aiohttp import web
 
 from oid4vc.cred_processor import CredProcessors
 from oid4vc.models.exchange import OID4VCIExchangeRecord
 from oid4vc.models.supported_cred import SupportedCredential
-from oid4vc.routes import (
-    _create_pre_auth_code,
-    _parse_cred_offer,
-    create_exchange,
-    credential_refresh,
-    exchange_create,
-)
+from oid4vc.routes import (_create_pre_auth_code, _parse_cred_offer,
+                           create_exchange, credential_refresh,
+                           exchange_create)
 
 
 @pytest.fixture

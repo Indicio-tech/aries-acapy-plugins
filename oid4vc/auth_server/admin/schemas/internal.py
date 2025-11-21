@@ -1,6 +1,7 @@
 """Schemas for signing JWTs for tenants."""
 
 from typing import Literal
+
 from pydantic import BaseModel
 
 

@@ -14,7 +14,7 @@ try:
     from structlog.contextvars import bind_contextvars, clear_contextvars
     from structlog.contextvars import get_contextvars as _get_ctxvars
     from structlog.processors import TimeStamper
-    from structlog.stdlib import ProcessorFormatter, ExtraAdder
+    from structlog.stdlib import ExtraAdder, ProcessorFormatter
 
     HAS_STRUCTLOG = True
 except Exception:  # pragma: no cover - optional dependency

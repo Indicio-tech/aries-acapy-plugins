@@ -1,14 +1,13 @@
 """Admin API for tenant management."""
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from admin.deps import get_db_session
 from admin.schemas.client import ClientIn, ClientOut
 from admin.schemas.tenant import KeyGenIn, KeyStatusIn, TenantIn, TenantOut
 from admin.security.bearer import require_admin_auth
 from admin.services.internal_service import get_tenant_jwks
 from admin.services.tenant_service import TenantService
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(dependencies=[Depends(require_admin_auth)])
 

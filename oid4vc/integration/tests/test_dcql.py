@@ -1,4 +1,5 @@
 import pytest
+
 from acapy_controller import Controller
 
 

@@ -6,11 +6,10 @@ ACA-Py Issues → Credo Receives → Credo Presents → ACA-Py Verifies
 
 import asyncio
 import os
-from typing import Any
 
 import httpx
-import pytest
 import pytest_asyncio
+
 from acapy_controller import Controller
 
 # Environment configuration

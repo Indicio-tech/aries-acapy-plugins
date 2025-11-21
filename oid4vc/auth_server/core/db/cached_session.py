@@ -4,7 +4,8 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import AsyncIterator
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (AsyncSession, async_sessionmaker,
+                                    create_async_engine)
 
 
 @lru_cache(maxsize=256)

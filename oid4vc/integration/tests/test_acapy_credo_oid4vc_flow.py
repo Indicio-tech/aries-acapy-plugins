@@ -147,7 +147,7 @@ async def test_acapy_oid4vp_presentation_verification_from_credo(
     pres_def_data = {
         "pres_def": presentation_definition
     }
-    
+
     pres_def_response = await acapy_verifier_admin.post(
         "/oid4vp/presentation-definition", json=pres_def_data
     )
@@ -294,7 +294,7 @@ async def test_full_acapy_credo_oid4vc_flow(
     pres_def_data = {
         "pres_def": presentation_definition
     }
-    
+
     pres_def_response = await acapy_verifier_admin.post(
         "/oid4vp/presentation-definition", json=pres_def_data
     )

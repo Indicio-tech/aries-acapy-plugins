@@ -3,7 +3,6 @@
 from authlib.oauth2.rfc6749.requests import BasicOAuth2Payload, OAuth2Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
-
 from tenant.oauth.integration.context import set_context
 
 

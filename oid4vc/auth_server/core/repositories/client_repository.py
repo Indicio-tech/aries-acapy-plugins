@@ -1,9 +1,8 @@
 """Repository for OAuth2/OIDC clients (issuer auth)."""
 
+from core.models import Client
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from core.models import Client
 
 
 class ClientRepository:

@@ -6,18 +6,17 @@ rather than just testing method existence.
 
 import json
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
 
 # Check for dependencies
 try:
-    import cbor2
+    import cbor2  # noqa: F401
 
     CBOR_AVAILABLE = True
 except ImportError:
     CBOR_AVAILABLE = False
 
 try:
-    import isomdl_uniffi
+    import isomdl_uniffi  # noqa: F401
 
     ISOMDL_AVAILABLE = True
 except ImportError:

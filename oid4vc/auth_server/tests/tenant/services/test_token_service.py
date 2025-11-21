@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from tenant.services import token_service
 
 

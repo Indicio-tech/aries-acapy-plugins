@@ -3,8 +3,8 @@ from typing import Any, cast
 
 import pytest
 from authlib.oauth2.rfc6749 import AuthorizationServer, OAuth2Request
-
-from tenant.oauth.grants import PreAuthorizedCodeGrant, RotatingRefreshTokenGrant
+from tenant.oauth.grants import (PreAuthorizedCodeGrant,
+                                 RotatingRefreshTokenGrant)
 
 
 class DummyServer(AuthorizationServer):

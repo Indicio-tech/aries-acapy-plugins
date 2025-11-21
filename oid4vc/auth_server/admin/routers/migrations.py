@@ -1,14 +1,13 @@
 """Router for tenant migrations."""
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from admin.deps import get_db_session
-from admin.security.bearer import require_admin_auth
 from admin.repositories.tenant_repository import TenantRepository
 from admin.schemas.migration import MigrationAction, MigrationRequest
+from admin.security.bearer import require_admin_auth
 from admin.services.alembic_service import run_tenant_migration
 from admin.utils.db_utils import resolve_tenant_urls
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(dependencies=[Depends(require_admin_auth)])
 

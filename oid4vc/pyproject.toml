@@ -19,7 +19,7 @@ dependencies = [
     "jsonschema>=4.23.0,<5.0.0",
     "jsonpath>=0.82.2,<1.0.0",
     "oscrypto @ git+https://github.com/wbond/oscrypto.git@1547f53",
-    "acapy-agent~=1.4.0",
+    "acapy-agent>=1.4.0rc0",
     "cryptography>=43.0.3",
     "cbor2>=5.4.3",
     # mso_mdoc dependencies
@@ -29,12 +29,11 @@ dependencies = [
     # sd_jwt dependencies  
     "jsonpointer>=3.0.0,<4.0.0",
     # isomdl-uniffi from GitHub (will be updated to releases once available)
-    # Temporarily commented for Docker builds - installed via wheel file instead
-    # "isomdl-uniffi @ git+https://github.com/Indicio-tech/isomdl-uniffi.git@feat/x509#subdirectory=python",
+    "isomdl-uniffi @ git+https://github.com/Indicio-tech/isomdl-uniffi.git@main#subdirectory=python",
 ]
 
 [project.optional-dependencies]
-aca-py = ["acapy-agent~=1.4.0"]
+aca-py = ["acapy-agent>=1.4.0rc0"]
 sd_jwt = ["jsonpointer>=3.0.0,<4.0.0"]
 
 [tool.uv.sources]

@@ -2,11 +2,10 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from admin.schemas.internal import JwtSignRequest
 from admin.services import signing_service
+from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class DummyScalarResult:

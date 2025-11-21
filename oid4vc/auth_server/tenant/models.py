@@ -3,18 +3,11 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import (
-    Boolean,
-    ForeignKey,
-    Integer,
-    Text,
-    UniqueConstraint,
-    func,
-)
+from core.models import Base
+from sqlalchemy import (Boolean, ForeignKey, Integer, Text, UniqueConstraint,
+                        func)
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from core.models import Base
 
 
 class Subject(Base):

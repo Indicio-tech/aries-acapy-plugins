@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from alembic import op
 
 revision = "0001_init_admin"

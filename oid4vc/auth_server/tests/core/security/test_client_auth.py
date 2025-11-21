@@ -4,12 +4,11 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from core.consts import ClientAuthMethod
+from core.security import client_auth
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBasicCredentials
 from starlette.requests import Request
-
-from core.consts import ClientAuthMethod
-from core.security import client_auth
 
 
 def make_request() -> Request:

@@ -2,7 +2,9 @@
 
 import json
 import logging
+import os
 import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 from urllib.parse import quote
 
@@ -12,46 +14,42 @@ from acapy_agent.askar.profile import AskarProfileSession
 from acapy_agent.core.profile import Profile
 from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
-from acapy_agent.messaging.valid import GENERIC_DID_EXAMPLE, GENERIC_DID_VALIDATE, Uri
+from acapy_agent.messaging.valid import (GENERIC_DID_EXAMPLE,
+                                         GENERIC_DID_VALIDATE, Uri)
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from acapy_agent.wallet.base import BaseWallet
-from acapy_agent.wallet.default_verification_key_strategy import (
-    BaseVerificationKeyStrategy,
-)
+from acapy_agent.wallet.default_verification_key_strategy import \
+    BaseVerificationKeyStrategy
 from acapy_agent.wallet.did_info import DIDInfo
 from acapy_agent.wallet.jwt import nym_to_did
-from acapy_agent.wallet.key_type import KeyTypes, P256
-from acapy_agent.wallet.util import bytes_to_b64
+from acapy_agent.wallet.key_type import P256, KeyTypes
+from acapy_agent.wallet.util import b64_to_bytes, bytes_to_b64
 from aiohttp import web
-from aiohttp_apispec import (
-    docs,
-    match_info_schema,
-    querystring_schema,
-    request_schema,
-    response_schema,
-)
+from aiohttp_apispec import (docs, match_info_schema, querystring_schema,
+                             request_schema, response_schema)
 from aries_askar import Key, KeyAlg
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.x509.oid import NameOID
 from marshmallow import fields
 from marshmallow.validate import OneOf
 
-
 from oid4vc.cred_processor import CredProcessors
 from oid4vc.jwk import DID_JWK
-from oid4vc.models.dcql_query import (
-    CredentialQuery,
-    CredentialQuerySchema,
-    CredentialSetQuerySchema,
-    DCQLQuery,
-    DCQLQuerySchema,
-)
-from oid4vc.models.presentation import OID4VPPresentation, OID4VPPresentationSchema
-from oid4vc.models.presentation_definition import OID4VPPresDef, OID4VPPresDefSchema
+from oid4vc.models.dcql_query import (CredentialQuery, CredentialQuerySchema,
+                                      CredentialSetQuerySchema, DCQLQuery,
+                                      DCQLQuerySchema)
+from oid4vc.models.presentation import (OID4VPPresentation,
+                                        OID4VPPresentationSchema)
+from oid4vc.models.presentation_definition import (OID4VPPresDef,
+                                                   OID4VPPresDefSchema)
 from oid4vc.models.request import OID4VPRequest, OID4VPRequestSchema
 
 from .app_resources import AppResources
 from .config import Config
 from .models.exchange import OID4VCIExchangeRecord, OID4VCIExchangeRecordSchema
-from .models.supported_cred import SupportedCredential, SupportedCredentialSchema
+from .models.supported_cred import (SupportedCredential,
+                                    SupportedCredentialSchema)
 from .utils import get_auth_header, get_tenant_subpath
 
 # OpenID4VCI 1.0 Final Specification
@@ -984,7 +982,7 @@ async def get_supported_credential_by_id(request: web.Request):
 
 
 class UpdateJwtSupportedCredentialResponseSchema(OpenAPISchema):
-    """Response schema for updating an OID4VP PresDef."""
+    """Response schema for updating a OID4VP PresDef."""
 
     supported_cred = fields.Dict(
         required=True,
@@ -1951,12 +1949,6 @@ async def create_did_jwk(request: web.Request):
 
 """X.509 certificate utilities."""
 
-from datetime import datetime, timedelta, timezone
-
-from cryptography import x509
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.x509.oid import NameOID
-
 try:
     from isomdl_wrapper import isomdl_uniffi
 except (ImportError, OSError):
@@ -1972,23 +1964,32 @@ except (ImportError, OSError):
 
 # Compatibility layer for removed dependencies
 class CoseKey:
+    """Compatibility layer for CoseKey."""
+
     def __init__(self, *args, **kwargs):
+        """Initialize CoseKey."""
         self.kty = None
 
     def encode(self):
+        """Encode key."""
         return b""
 
 
 class COSEKey:
+    """Compatibility layer for COSEKey."""
+
     @classmethod
     def from_bytes(cls, data):
+        """Create from bytes."""
         return cls()
 
     @property
     def key(self):
+        """Get key."""
         return self
 
     def public_key(self):
+        """Get public key."""
         # Return a dummy key for now
         from cryptography.hazmat.primitives.asymmetric import ec
 
@@ -1996,6 +1997,8 @@ class COSEKey:
 
 
 class KtyOKP:
+    """Compatibility layer for KtyOKP."""
+
     pass
 
 
@@ -2030,21 +2033,10 @@ def did_lookup_name(value: str) -> str:
     return value.split(":", 3)[2] if value.startswith("did:sov:") else value
 
 
-import os
-
-from acapy_agent.wallet.util import b64_to_bytes, bytes_to_b64
-
-
 @tenant_authentication
 async def get_cert(request: web.Request):
-    """ """
+    """Get certificate."""
     # Import our compatibility CoseKey
-    from datetime import datetime, timedelta, timezone
-
-    from cryptography import x509
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.x509.oid import NameOID
-
     try:
         from isomdl_wrapper import isomdl_uniffi
     except (ImportError, OSError):

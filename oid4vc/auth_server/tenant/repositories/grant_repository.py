@@ -4,7 +4,6 @@ from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from tenant.models import PreAuthCode
 
 

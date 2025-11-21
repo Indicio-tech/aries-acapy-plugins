@@ -2,9 +2,8 @@ from typing import cast
 
 import httpx
 import pytest
-from fastapi import HTTPException
-
 import tenant.deps as deps
+from fastapi import HTTPException
 
 
 def make_response(

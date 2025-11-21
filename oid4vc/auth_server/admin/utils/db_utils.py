@@ -3,11 +3,10 @@
 import re
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
-from sqlalchemy.engine import URL
-
 from admin.config import settings
 from admin.models import Tenant
 from admin.utils.crypto import decrypt_db_password
+from sqlalchemy.engine import URL
 
 
 def build_async_url(db: str, user: str, password: str) -> str:

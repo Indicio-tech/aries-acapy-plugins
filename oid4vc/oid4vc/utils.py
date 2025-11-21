@@ -8,6 +8,7 @@ from typing import Dict
 from acapy_agent.core.profile import Profile
 from acapy_agent.messaging.util import datetime_now
 from acapy_agent.wallet.util import b58_to_bytes, bytes_to_b64, str_to_b64
+
 from oid4vc.config import Config
 from oid4vc.jwt import jwt_sign
 

@@ -3,16 +3,13 @@
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
+from core.observability.observability import (RequestContextMiddleware,
+                                              setup_structlog_json)
+from core.utils.logging import get_logger
 from fastapi import Depends, FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from core.observability.observability import (
-    RequestContextMiddleware,
-    setup_structlog_json,
-)
-from core.utils.logging import get_logger
 from tenant.config import settings
 
 from .deps import get_db_session

@@ -1,10 +1,9 @@
 """Pre-authorized code issuance (per-tenant)."""
 
+from core.models import Client as AuthClient
 from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import ORJSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from core.models import Client as AuthClient
 from tenant.deps import get_db_session
 from tenant.schemas.grant import PreAuthGrantIn, PreAuthGrantOut
 from tenant.security.client_auth import client_auth

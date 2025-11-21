@@ -1,10 +1,10 @@
 """Data-access layer for tenants."""
 
 from typing import Sequence
-from sqlalchemy import select, update, delete
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from admin.models import Tenant
+from sqlalchemy import delete, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class TenantRepository:

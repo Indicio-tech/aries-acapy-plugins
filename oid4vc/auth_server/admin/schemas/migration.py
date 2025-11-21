@@ -1,6 +1,7 @@
 """Schemas for migrations."""
 
 from enum import Enum
+
 from pydantic import BaseModel
 
 

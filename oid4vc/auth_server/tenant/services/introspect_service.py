@@ -2,9 +2,8 @@
 
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from core.security.utils import utcnow
+from sqlalchemy.ext.asyncio import AsyncSession
 from tenant.repositories.access_token_repository import AccessTokenRepository
 
 

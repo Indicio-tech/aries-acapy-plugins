@@ -2,12 +2,9 @@
 
 from fastapi import APIRouter, Path, Request, Response
 from fastapi.responses import ORJSONResponse
-
 from tenant.config import settings
-from tenant.services.well_known_service import (
-    build_openid_configuration,
-    load_tenant_jwks,
-)
+from tenant.services.well_known_service import (build_openid_configuration,
+                                                load_tenant_jwks)
 
 router = APIRouter(prefix="/tenants/{uid}")
 

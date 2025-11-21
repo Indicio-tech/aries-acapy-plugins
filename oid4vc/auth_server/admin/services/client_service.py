@@ -2,14 +2,13 @@
 
 import uuid
 
-from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from admin.repositories.client_repository import ClientRepository
 from admin.schemas.client import ClientIn
 from core.consts import CLIENT_AUTH_METHODS, ClientAuthMethod
 from core.crypto.crypto import hash_secret_pbkdf2
 from core.models import Client
+from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class ClientService:

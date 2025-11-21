@@ -1,6 +1,5 @@
 """Tests for mDoc functionality using isomdl-uniffi integration."""
 
-import json
 from datetime import datetime, timezone
 
 import pytest
@@ -19,6 +18,8 @@ try:
 except ImportError:
     ISOMDL_AVAILABLE = False
 
+from ..key_generation import (generate_ec_key_pair,
+                              generate_self_signed_certificate)
 from ..mdoc import isomdl_mdoc_sign
 
 
@@ -155,9 +156,15 @@ class TestMdocFunctionality:
                 "issued_at": datetime.now(timezone.utc).isoformat(),
             }
 
+            # Generate keys and certificate for signing
+            private_pem, _, jwk = generate_ec_key_pair()
+            cert_pem = generate_self_signed_certificate(private_pem)
+
             # Test that the signing function exists and can be called
             # Note: This tests the interface, actual signing depends on proper key setup
-            result = isomdl_mdoc_sign(json.dumps(sample_jwk), sample_headers, payload)
+            result = isomdl_mdoc_sign(
+                jwk, sample_headers, payload, cert_pem, private_pem
+            )
 
             # Verify we get some result (string or bytes)
             assert result is not None

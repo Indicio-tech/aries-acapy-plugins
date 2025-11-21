@@ -3,7 +3,8 @@
 from typing import Any, List, Mapping, Optional, Union
 
 from acapy_agent.messaging.models.base import BaseModel, BaseModelSchema
-from acapy_agent.messaging.models.base_record import BaseRecord, BaseRecordSchema
+from acapy_agent.messaging.models.base_record import (BaseRecord,
+                                                      BaseRecordSchema)
 from marshmallow import ValidationError, fields, validates_schema
 
 ClaimsPath = List[str | int | None]
@@ -328,7 +329,9 @@ class DCQLQuery(BaseRecord):
         """Initialize a new DCQL Credential Query Record."""
         super().__init__(dcql_query_id, **kwargs)
 
-        self._credentials = [CredentialQuery.serde(cred) for cred in credentials] if credentials else []
+        self._credentials = (
+            [CredentialQuery.serde(cred) for cred in credentials] if credentials else []
+        )
         self._credential_set = (
             [CredentialSetQuery.serde(cred) for cred in credential_sets]
             if credential_sets

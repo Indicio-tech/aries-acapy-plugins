@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 import cbor2
 import isomdl_uniffi
 
+from ..key_generation import (generate_ec_key_pair,
+                              generate_self_signed_certificate)
 from ..mdoc import isomdl_mdoc_sign
 
 
@@ -169,14 +171,17 @@ class TestActualMdocIntegration:
 
         # Step 4: Test integration with our signing function
         try:
-            # Get public JWK for signing
-            public_jwk = key_pair.public_jwk()
+            # Generate keys and certificate for signing
+            private_pem, _, jwk = generate_ec_key_pair()
+            cert_pem = generate_self_signed_certificate(private_pem)
 
             # Create headers
             headers = {"alg": "ES256", "typ": "mdoc", "kid": "test-key-1"}
 
             # Attempt to sign (this might fail but tests the integration)
-            result = isomdl_mdoc_sign(public_jwk, headers, mdoc_payload)
+            result = isomdl_mdoc_sign(
+                jwk, headers, mdoc_payload, cert_pem, private_pem
+            )
 
             print(f"mDOC signing result: {type(result)}")
             assert result is not None
@@ -233,7 +238,7 @@ class TestActualMdocIntegration:
         assert cbor_decode_time < 2.0  # 100 decodings under 2 seconds
         assert keypair_time < 5.0  # 10 key pairs under 5 seconds
 
-        print(f"Performance results:")
+        print("Performance results:")
         print(f"  CBOR encoding (100x): {cbor_encode_time:.3f}s")
         print(f"  CBOR decoding (100x): {cbor_decode_time:.3f}s")
         print(f"  Key pair creation (10x): {keypair_time:.3f}s")
@@ -404,5 +409,5 @@ class TestActualMdocIntegration:
         print(f"Successfully encoded/decoded mDOC with {len(decoded_claims)} claims")
         print(f"Total CBOR size: {len(cbor_encoded)} bytes")
         print(
-            f"Data types verified: strings, integers, booleans, arrays, binary, nested objects"
+            "Data types verified: strings, integers, booleans, arrays, binary, nested objects"
         )

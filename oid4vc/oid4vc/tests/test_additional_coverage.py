@@ -4,18 +4,12 @@ import pytest
 from acapy_agent.core.profile import Profile
 
 from oid4vc.config import Config, ConfigError
-from oid4vc.pex import (
-    PexVerifyResult,
-    InputDescriptorMapping,
-    PresentationSubmission,
-    FilterEvaluator,
-    ConstraintFieldEvaluator,
-    DescriptorMatchFailed,
-)
+from oid4vc.cred_processor import CredProcessorError
+from oid4vc.models.dcql_query import DCQLQuery
 from oid4vc.models.exchange import OID4VCIExchangeRecord
 from oid4vc.models.supported_cred import SupportedCredential
-from oid4vc.models.dcql_query import DCQLQuery, CredentialQuery
-from oid4vc.cred_processor import CredProcessorError
+from oid4vc.pex import (FilterEvaluator, InputDescriptorMapping,
+                        PexVerifyResult, PresentationSubmission)
 
 
 class TestConfigClass:
@@ -623,7 +617,7 @@ class TestImportsAndConstants:
     def test_jwt_imports(self):
         """Test that JWT function imports work."""
         # These imports are already working since we use them in the module
-        from oid4vc.jwt import key_material_for_kid, jwt_sign, jwt_verify
+        from oid4vc.jwt import jwt_sign, jwt_verify, key_material_for_kid
         
         assert key_material_for_kid is not None
         assert jwt_sign is not None
@@ -914,7 +908,7 @@ class TestBasicFunctionality:
     def test_pex_verify_result_dataclass(self):
         """Test PexVerifyResult dataclass functionality."""
         from oid4vc.pex import PexVerifyResult
-        
+
         # Test default values
         result = PexVerifyResult()
         assert result.verified is False
@@ -955,8 +949,8 @@ class TestBasicFunctionality:
 
     def test_presentation_submission_model(self):
         """Test PresentationSubmission model."""
-        from oid4vc.pex import PresentationSubmission, InputDescriptorMapping
-        
+        from oid4vc.pex import InputDescriptorMapping, PresentationSubmission
+
         # Test empty submission
         submission = PresentationSubmission()
         assert submission.id is None
@@ -983,7 +977,6 @@ class TestBasicFunctionality:
 
     def test_cred_processor_error_exception(self):
         """Test CredProcessorError exception."""
-        from oid4vc.cred_processor import CredProcessorError
         
         error = CredProcessorError("Test error message")
         assert str(error) == "Test error message"
@@ -996,7 +989,7 @@ class TestModuleStructure:
     def test_module_has_expected_structure(self):
         """Test that the oid4vc module has expected structure."""
         import oid4vc
-        
+
         # Test that the module exists and has basic attributes
         assert hasattr(oid4vc, '__file__')
         
@@ -1005,7 +998,7 @@ class TestModuleStructure:
             import oid4vc.config
             import oid4vc.models
             import oid4vc.pex
-            
+
             # Basic smoke test - modules imported without errors
             assert True
         except ImportError as e:
@@ -1014,9 +1007,9 @@ class TestModuleStructure:
     def test_routes_modules_exist(self):
         """Test that route modules exist."""
         try:
-            import oid4vc.routes
             import oid4vc.public_routes
-            
+            import oid4vc.routes  # noqa: F401
+
             # Basic smoke test
             assert True
         except ImportError as e:
@@ -1025,12 +1018,12 @@ class TestModuleStructure:
     def test_model_submodules_exist(self):
         """Test that model submodules exist."""
         try:
+            import oid4vc.models.dcql_query
             import oid4vc.models.exchange
-            import oid4vc.models.supported_cred
             import oid4vc.models.presentation
             import oid4vc.models.request
-            import oid4vc.models.dcql_query
-            
+            import oid4vc.models.supported_cred  # noqa: F401
+
             # Basic smoke test
             assert True
         except ImportError as e:
@@ -1043,7 +1036,7 @@ class TestJWTFunctionality:
     def test_jwt_verify_result_creation(self):
         """Test JWTVerifyResult creation with real JWT data."""
         from oid4vc.jwt import JWTVerifyResult
-        
+
         # Realistic JWT headers and payload
         headers = {
             "alg": "EdDSA",
@@ -1085,7 +1078,7 @@ class TestJWTFunctionality:
     def test_jwt_verify_result_with_different_algorithms(self):
         """Test JWTVerifyResult with different JWT algorithms."""
         from oid4vc.jwt import JWTVerifyResult
-        
+
         # Test ES256 algorithm
         es256_headers = {
             "alg": "ES256",
@@ -1122,7 +1115,7 @@ class TestCredentialProcessorFunctionality:
     def test_verify_result_creation(self):
         """Test VerifyResult creation with realistic verification data."""
         from oid4vc.cred_processor import VerifyResult
-        
+
         # Test successful verification with credential payload
         credential_payload = {
             "@context": ["https://www.w3.org/2018/credentials/v1"],
@@ -1156,7 +1149,7 @@ class TestCredentialProcessorFunctionality:
     def test_verify_result_with_presentation_payload(self):
         """Test VerifyResult with presentation payload data."""
         from oid4vc.cred_processor import VerifyResult
-        
+
         # Test with verifiable presentation payload
         presentation_payload = {
             "@context": ["https://www.w3.org/2018/credentials/v1"],
@@ -1193,8 +1186,7 @@ class TestCredentialProcessorFunctionality:
 
     def test_cred_processor_error_creation(self):
         """Test CredProcessorError creation and inheritance."""
-        from oid4vc.cred_processor import CredProcessorError
-        
+
         # Test basic error creation
         error = CredProcessorError("Test credential processing error")
         assert str(error) == "Test credential processing error"
@@ -1279,7 +1271,7 @@ class TestAuthorizationRequestFunctionality:
     def test_oid4vp_request_creation(self):
         """Test OID4VPRequest creation with realistic parameters."""
         from oid4vc.models.request import OID4VPRequest
-        
+
         # Create realistic OID4VP request
         auth_request = OID4VPRequest(
             pres_def_id="university-degree-def",
@@ -1305,7 +1297,7 @@ class TestAuthorizationRequestFunctionality:
     def test_oid4vp_request_with_dcql_query(self):
         """Test OID4VPRequest with DCQL query parameters."""
         from oid4vc.models.request import OID4VPRequest
-        
+
         # Authorization request for credential presentation
         cred_auth_request = OID4VPRequest(
             dcql_query_id="employment-verification-123",
@@ -1329,7 +1321,7 @@ class TestJWKResolverFunctionality:
     def test_jwk_resolver_import(self):
         """Test JWK resolver can be imported and has expected functionality."""
         from oid4vc.jwk_resolver import JwkResolver
-        
+
         # Test that the class exists and can be referenced
         assert JwkResolver is not None
         
@@ -1409,7 +1401,7 @@ class TestPopResultFunctionality:
     def test_pop_result_import_and_structure(self):
         """Test PopResult can be imported and has expected structure."""
         from oid4vc.pop_result import PopResult
-        
+
         # Test that the class exists
         assert PopResult is not None
         
@@ -1539,7 +1531,7 @@ class TestPresentationDefinitionFunctionality:
     def test_presentation_definition_creation(self):
         """Test presentation definition creation with realistic requirements."""
         from oid4vc.models.presentation_definition import OID4VPPresDef
-        
+
         # Create a presentation definition with realistic data
         pres_def_data = {
             "id": "university-degree-verification",
@@ -1626,7 +1618,7 @@ class TestPublicRouteFunctionality:
     def test_dereference_cred_offer_functionality(self):
         """Test credential offer dereferencing with real data structures."""
         from oid4vc.public_routes import dereference_cred_offer
-        
+
         # Test the function exists and can be imported
         assert dereference_cred_offer is not None
         
@@ -1651,7 +1643,7 @@ class TestPublicRouteFunctionality:
     def test_credential_issuer_metadata_structure(self):
         """Test credential issuer metadata with real configuration data."""
         from oid4vc.public_routes import CredentialIssuerMetadataSchema
-        
+
         # Test realistic metadata structure
         metadata = {
             "credential_issuer": "https://university.example.edu",
@@ -1720,7 +1712,7 @@ class TestPublicRouteFunctionality:
     def test_proof_of_possession_handling(self):
         """Test proof of possession with realistic JWT data."""
         from oid4vc.public_routes import handle_proof_of_posession
-        
+
         # Test realistic proof of possession data
         realistic_pop_proof = {
             "proof_type": "jwt",
@@ -1743,7 +1735,7 @@ class TestPublicRouteFunctionality:
     def test_credential_issuance_workflow(self):
         """Test credential issuance with realistic data flow."""
         from oid4vc.public_routes import issue_cred
-        
+
         # Test realistic credential request
         credential_request = {
             "format": "jwt_vc_json",
@@ -1781,7 +1773,7 @@ class TestPublicRouteFunctionality:
     def test_oid4vp_request_handling(self):
         """Test OID4VP request handling with real presentation data."""
         from oid4vc.public_routes import get_request, post_response
-        
+
         # Test realistic presentation request data
         presentation_request = {
             "client_id": "https://verifier.example.com",
@@ -1845,7 +1837,7 @@ class TestPublicRouteFunctionality:
     def test_dcql_presentation_verification(self):
         """Test DCQL presentation verification with real query data."""
         from oid4vc.public_routes import verify_dcql_presentation
-        
+
         # Test realistic DCQL query
         dcql_query = {
             "credentials": [
@@ -1898,7 +1890,7 @@ class TestPublicRouteFunctionality:
     def test_presentation_definition_verification(self):
         """Test presentation definition verification with real constraint data."""
         from oid4vc.public_routes import verify_pres_def_presentation
-        
+
         # Test realistic presentation definition with constraints
         complex_presentation_definition = {
             "id": "financial_verification_pd",
@@ -1973,8 +1965,10 @@ class TestPublicRouteFunctionality:
 
     def test_did_jwk_operations(self):
         """Test DID JWK creation and retrieval operations."""
-        from oid4vc.public_routes import retrieve_or_create_did_jwk, _retrieve_default_did, _create_default_did
-        
+        from oid4vc.public_routes import (_create_default_did,
+                                          _retrieve_default_did,
+                                          retrieve_or_create_did_jwk)
+
         # Test functions exist
         assert retrieve_or_create_did_jwk is not None
         assert _retrieve_default_did is not None
@@ -2010,7 +2004,7 @@ class TestPublicRouteFunctionality:
     def test_token_validation_workflow(self):
         """Test token validation with realistic OAuth 2.0 flows."""
         from oid4vc.public_routes import check_token
-        
+
         # Test function exists
         assert check_token is not None
         
@@ -2057,8 +2051,9 @@ class TestPublicRouteHelperFunctions:
     def test_nonce_generation_and_validation(self):
         """Test nonce generation patterns used in public routes."""
         from secrets import token_urlsafe
+
         from oid4vc.public_routes import NONCE_BYTES
-        
+
         # Test nonce generation like in public routes
         nonce = token_urlsafe(NONCE_BYTES)
         
@@ -2073,9 +2068,10 @@ class TestPublicRouteHelperFunctions:
 
     def test_expires_in_calculation(self):
         """Test expiration time calculations."""
-        from oid4vc.public_routes import EXPIRES_IN
         import time
-        
+
+        from oid4vc.public_routes import EXPIRES_IN
+
         # Test expiration calculation
         current_time = int(time.time())
         expiration_time = current_time + EXPIRES_IN
@@ -2088,7 +2084,7 @@ class TestPublicRouteHelperFunctions:
     def test_grant_type_constants(self):
         """Test OAuth 2.0 grant type constants."""
         from oid4vc.public_routes import PRE_AUTHORIZED_CODE_GRANT_TYPE
-        
+
         # Validate grant type constant
         expected_grant_type = "urn:ietf:params:oauth:grant-type:pre-authorized_code"
         assert PRE_AUTHORIZED_CODE_GRANT_TYPE == expected_grant_type
@@ -2213,9 +2209,9 @@ class TestPublicRouteHelperFunctions:
 
     def test_url_encoding_patterns(self):
         """Test URL encoding patterns used in credential offers."""
-        from urllib.parse import quote
         import json
-        
+        from urllib.parse import quote
+
         # Test credential offer encoding
         cred_offer = {
             "credential_issuer": "https://university.example.edu",

@@ -9,15 +9,15 @@ from secrets import token_urlsafe
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
-from acapy_agent.config.injection_context import InjectionContext
+import cwt
 from acapy_agent.admin.request_context import AdminRequestContext
+from acapy_agent.config.injection_context import InjectionContext
 from acapy_agent.core.profile import Profile, ProfileSession
 from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
 from acapy_agent.messaging.util import datetime_now, datetime_to_str
-from acapy_agent.protocols.present_proof.dif.pres_exch import (
-    PresentationDefinition,
-)
+from acapy_agent.protocols.present_proof.dif.pres_exch import \
+    PresentationDefinition
 from acapy_agent.storage.base import BaseStorage, StorageRecord
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from acapy_agent.wallet.base import BaseWallet, WalletError
@@ -27,30 +27,23 @@ from acapy_agent.wallet.jwt import b64_to_dict
 from acapy_agent.wallet.key_type import ED25519
 from acapy_agent.wallet.util import b64_to_bytes, bytes_to_b64
 from aiohttp import web
-from aiohttp_apispec import (
-    docs,
-    form_schema,
-    match_info_schema,
-    querystring_schema,
-    request_schema,
-    response_schema,
-)
+from aiohttp_apispec import (docs, form_schema, match_info_schema,
+                             querystring_schema, request_schema,
+                             response_schema)
 from aries_askar import Key, KeyAlg
 from base58 import b58decode
 from marshmallow import fields, pre_load
 
 from oid4vc.dcql import DCQLQueryEvaluator
 from oid4vc.jwk import DID_JWK
-from oid4vc.jwt import jwt_sign, jwt_verify, key_material_for_kid, JWTVerifyResult
+from oid4vc.jwt import (JWTVerifyResult, jwt_sign, jwt_verify,
+                        key_material_for_kid)
 from oid4vc.models.dcql_query import DCQLQuery
 from oid4vc.models.presentation import OID4VPPresentation
 from oid4vc.models.presentation_definition import OID4VPPresDef
 from oid4vc.models.request import OID4VPRequest
-from oid4vc.pex import (
-    PexVerifyResult,
-    PresentationExchangeEvaluator,
-    PresentationSubmission,
-)
+from oid4vc.pex import (PexVerifyResult, PresentationExchangeEvaluator,
+                        PresentationSubmission)
 
 from .app_resources import AppResources
 from .config import Config
@@ -59,7 +52,8 @@ from .models.exchange import OID4VCIExchangeRecord
 from .models.nonce import Nonce
 from .models.supported_cred import SupportedCredential
 from .pop_result import PopResult
-from .routes import CredOfferQuerySchema, CredOfferResponseSchemaVal, _parse_cred_offer
+from .routes import (CredOfferQuerySchema, CredOfferResponseSchemaVal,
+                     _parse_cred_offer)
 from .status_handler import StatusHandler
 from .utils import get_auth_header, get_tenant_subpath
 
@@ -366,7 +360,7 @@ class GetTokenSchema(OpenAPISchema):
         return mutable
 
 
-@docs(tags=["oid4vc"], summary="Get credential issuance token")
+@docs(tags=["oid4vci"], summary="Get credential issuance token")
 @form_schema(GetTokenSchema())
 async def token(request: web.Request):
     """Token endpoint to exchange pre-authorized codes for access tokens.
@@ -539,9 +533,21 @@ async def handle_proof_of_posession(
     The Credential Request MAY contain a proof of possession of the key material
     the issued Credential shall be bound to. This is REQUIRED for mso_mdoc format.
     """
-    # OID4VCI 1.0 § 7.2.1.1: JWT proof type
-    if "jwt" not in proof:
-        raise web.HTTPBadRequest(reason="JWT proof is required for proof of possession")
+    # OID4VCI 1.0 § 7.2.1: Support both JWT and CWT proof types
+    if "jwt" in proof:
+        return await _handle_jwt_proof(profile, proof, c_nonce)
+    elif "cwt" in proof:
+        return await _handle_cwt_proof(profile, proof, c_nonce)
+    else:
+        raise web.HTTPBadRequest(
+            reason="JWT or CWT proof is required for proof of possession"
+        )
+
+
+async def _handle_jwt_proof(
+    profile: Profile, proof: Dict[str, Any], c_nonce: str | None = None
+):
+    """Handle JWT proof of possession."""
     encoded_headers, encoded_payload, encoded_signature = proof["jwt"].split(".", 3)
     headers = b64_to_dict(encoded_headers)
 
@@ -590,6 +596,89 @@ async def handle_proof_of_posession(
         verified,
         holder_kid=headers.get("kid"),
         holder_jwk=headers.get("jwk"),
+    )
+
+
+async def _handle_cwt_proof(
+    profile: Profile, proof: Dict[str, Any], c_nonce: str | None = None
+):
+    """Handle CWT proof of possession."""
+    encoded_cwt = proof.get("cwt")
+    if not encoded_cwt:
+        raise web.HTTPBadRequest(reason="Missing 'cwt' in proof")
+
+    try:
+        # Decode base64url
+        cwt_bytes = b64_to_bytes(encoded_cwt, urlsafe=True)
+    except Exception:
+        raise web.HTTPBadRequest(reason="Invalid base64 encoding for CWT")
+
+    try:
+        # Parse COSE message to get headers
+        msg = cwt.COSEMessage.loads(cwt_bytes)
+    except Exception as e:
+        raise web.HTTPBadRequest(reason=f"Invalid CWT format: {e}")
+
+    # Extract headers
+    # 4: kid, 1: alg
+    kid_bytes = msg.headers.get(4)
+    if not kid_bytes:
+        kid_bytes = msg.unprotected.get(4)
+    
+    if not kid_bytes:
+        raise web.HTTPBadRequest(reason="Missing 'kid' in CWT header")
+        
+    kid = kid_bytes.decode("utf-8") if isinstance(kid_bytes, bytes) else str(kid_bytes)
+
+    # Resolve key
+    try:
+        key = await key_material_for_kid(profile, kid)
+    except ValueError as exc:
+        raise web.HTTPBadRequest(reason="Invalid kid") from exc
+
+    # Convert key to COSEKey
+    try:
+        jwk = json.loads(key.get_jwk_public())
+        cose_key = cwt.COSEKey.from_jwk(jwk)
+        # Ensure kid is set in cose_key if not present
+        if not cose_key.kid:
+            cose_key.kid = kid_bytes if isinstance(kid_bytes, bytes) else kid.encode()
+    except Exception as e:
+        raise web.HTTPBadRequest(reason=f"Failed to convert key to COSEKey: {e}")
+
+    # Verify
+    try:
+        decoded = cwt.decode(cwt_bytes, keys=[cose_key])
+    except Exception as e:
+        raise web.HTTPBadRequest(reason=f"CWT verification failed: {e}")
+
+    # Check nonce
+    # OID4VCI: nonce is claim 10? Or string "nonce"?
+    # The spec says "nonce" (string) in JSON, but in CWT it's usually mapped.
+    # However, OID4VCI draft 13 says:
+    # "The CWT MUST contain the following claims: ... nonce (label: 10)"
+    nonce = decoded.get(10)
+    if not nonce:
+        # Fallback to string key if present (non-standard but possible)
+        nonce = decoded.get("nonce")
+        
+    if not nonce:
+        raise web.HTTPBadRequest(reason="Missing nonce in CWT")
+
+    if c_nonce:
+        if c_nonce != nonce:
+            raise web.HTTPBadRequest(reason="Invalid proof: wrong nonce.")
+    else:
+        redeemed = await Nonce.redeem_by_value(profile.session(), nonce)
+        if not redeemed:
+            raise web.HTTPBadRequest(reason="Invalid proof: wrong or used nonce.")
+
+    return PopResult(
+        headers=msg.headers,
+        payload=decoded,
+        verified=True,
+        holder_kid=kid,
+        holder_jwk=jwk,
     )
 
 
@@ -845,14 +934,13 @@ async def issue_cred(request: web.Request):
             except web.HTTPBadRequest as exc:
                 return web.json_response({"message": exc.reason}, status=400)
         elif "cwt" in proof_obj or proof_obj.get("proof_type") == "cwt":
-            # Accept CWT without parsing; downstream processor does not consume it yet
-            pop = _PopResult(
-                headers={},
-                payload={},
-                verified=True,
-                holder_kid=None,
-                holder_jwk=None,
-            )
+            # Strictly verify the CWT proof
+            try:
+                pop = await handle_proof_of_posession(
+                    context.profile, proof_obj, c_nonce
+                )
+            except web.HTTPBadRequest as exc:
+                return web.json_response({"message": exc.reason}, status=400)
         else:
             return web.json_response({"message": "Unsupported proof type"}, status=400)
     else:

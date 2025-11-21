@@ -12,22 +12,27 @@ Key Protocol Compliance:
 - RFC 8949 - Concise Binary Object Representation (CBOR)
 """
 
+import ast
 import json
 import logging
 import re
-import ast
+import uuid
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.core.profile import Profile, ProfileSession
 from acapy_agent.storage.error import StorageError
 
-from oid4vc.cred_processor import CredProcessorError, Issuer
+from oid4vc.cred_processor import (CredProcessorError, CredVerifier, Issuer,
+                                   PresVerifier)
 from oid4vc.models.exchange import OID4VCIExchangeRecord
+from oid4vc.models.presentation import OID4VPPresentation
 from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.pop_result import PopResult
 
-from .key_generation import generate_ec_key_pair
+from .key_generation import (generate_ec_key_pair,
+                             generate_self_signed_certificate)
 from .mdoc.issuer import isomdl_mdoc_sign
 from .storage import MdocStorageManager
 
@@ -53,11 +58,12 @@ async def resolve_signing_key_for_credential(
     - RFC 7518 § 3.4: ES256 signature algorithm
 
     Args:
-        profile: The profile for storage access
-        verification_method: Optional verification method URI
+        profile: The active profile
+        session: The active profile session
+        verification_method: Optional verification method identifier
 
     Returns:
-        JWK dictionary with private key component
+        Dictionary containing key information
     """
     storage_manager = MdocStorageManager(profile)
 
@@ -130,8 +136,12 @@ async def resolve_signing_key_for_credential(
     return jwk
 
 
-class MsoMdocCredProcessor(Issuer):
+class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
     """Credential processor class for mso_mdoc credential format."""
+
+    def __init__(self, trust_store: Optional[Any] = None):
+        """Initialize the processor."""
+        self.trust_store = trust_store
 
     def _validate_and_get_doctype(
         self, body: Dict[str, Any], supported: SupportedCredential
@@ -177,7 +187,8 @@ class MsoMdocCredProcessor(Issuer):
         # Validate doctype format (basic ISO format check)
         if not doctype or not isinstance(doctype, str):
             raise CredProcessorError(
-                f"Invalid doctype format: expected non-empty string, got {type(doctype).__name__}"
+                "Invalid doctype format: expected non-empty string, "
+                f"got {type(doctype).__name__}"
             )
 
         if not doctype.startswith("org.iso."):
@@ -202,7 +213,8 @@ class MsoMdocCredProcessor(Issuer):
             ex_record: Exchange record with credential issuance context
 
         Returns:
-            Serialized device key string (JWK JSON or key identifier), or None if unavailable
+            Serialized device key string (JWK JSON or key identifier),
+            or None if unavailable
 
         Raises:
             CredProcessorError: If device key format is invalid or unsupported
@@ -339,6 +351,30 @@ class MsoMdocCredProcessor(Issuer):
                     session, key_id
                 )
 
+                if not certificate_pem and private_key_pem:
+                    LOGGER.info(
+                        "Certificate not found for key %s, generating one", key_id
+                    )
+                    certificate_pem = generate_self_signed_certificate(private_key_pem)
+
+                    # Store the generated certificate
+                    cert_id = f"mdoc-cert-{uuid.uuid4().hex[:8]}"
+                    await storage_manager.store_certificate(
+                        session,
+                        cert_id=cert_id,
+                        certificate_pem=certificate_pem,
+                        key_id=key_id,
+                        metadata={
+                            "self_signed": True,
+                            "purpose": "mdoc_issuing",
+                            "generated_on_demand": True,
+                            "valid_from": datetime.now().isoformat(),
+                            "valid_to": (
+                                datetime.now() + timedelta(days=365)
+                            ).isoformat(),
+                        },
+                    )
+
             if not private_key_pem:
                 raise CredProcessorError("Private key PEM not found for signing key")
 
@@ -446,3 +482,28 @@ class MsoMdocCredProcessor(Issuer):
     def validate_supported_credential(self, supported: SupportedCredential):
         """Validate a supported MSO MDOC Credential."""
         return True
+
+    async def verify_credential(
+        self,
+        profile: Profile,
+        credential: Any,
+    ):
+        """Verify an mso_mdoc credential."""
+        from .mdoc.verifier import MsoMdocCredVerifier
+
+        verifier = MsoMdocCredVerifier(trust_store=self.trust_store)
+        return await verifier.verify_credential(profile, credential)
+
+    async def verify_presentation(
+        self,
+        profile: Profile,
+        presentation: Any,
+        presentation_record: "OID4VPPresentation",
+    ):
+        """Verify an mso_mdoc presentation."""
+        from .mdoc.verifier import MsoMdocPresVerifier
+
+        verifier = MsoMdocPresVerifier(trust_store=self.trust_store)
+        return await verifier.verify_presentation(
+            profile, presentation, presentation_record
+        )

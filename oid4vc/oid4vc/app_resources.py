@@ -1,8 +1,9 @@
 """App resources."""
 
-import logging
-import aiohttp
 import asyncio
+import logging
+
+import aiohttp
 
 from .config import Config
 

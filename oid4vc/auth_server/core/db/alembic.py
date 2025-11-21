@@ -2,9 +2,8 @@
 
 import os
 
-from sqlalchemy import MetaData, engine_from_config, pool, text
-
 from alembic import context
+from sqlalchemy import MetaData, engine_from_config, pool, text
 
 
 def _resolve_url_and_schema(default_schema: str) -> tuple[str, str]:
