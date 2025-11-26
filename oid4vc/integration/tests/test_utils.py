@@ -41,40 +41,40 @@ class OID4VCTestHelper:
                     "name": "University Degree",
                     "locale": "en-US",
                     "background_color": "#1e3a8a",
-                    "text_color": "#ffffff"
+                    "text_color": "#ffffff",
                 }
             ],
             "type": ["VerifiableCredential", "UniversityDegreeCredential"],
             "@context": [
                 "https://www.w3.org/2018/credentials/v1",
-                "https://www.w3.org/2018/credentials/examples/v1"
-            ]
+                "https://www.w3.org/2018/credentials/examples/v1",
+            ],
         }
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{TEST_CONFIG['admin_endpoint']}/oid4vci/credential-supported/create",
-                json=config
+                json=config,
             )
             response.raise_for_status()
             result = response.json()
             LOGGER.info("Credential setup response: %s", result)
             # Return the supported_cred_id, not the identifier
-            return result['supported_cred_id']
+            return result["supported_cred_id"]
 
     async def create_credential_offer(self, supported_cred_id: str) -> dict[str, Any]:
         """Create credential offer."""
         offer_data = {
             "supported_cred_id": supported_cred_id,
             "credential_subject": CREDENTIAL_SUBJECT_DATA,
-            "did": "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK"  # Test DID
+            "did": "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",  # Test DID
         }
 
         async with httpx.AsyncClient() as client:
             # First create the exchange
             response = await client.post(
                 f"{TEST_CONFIG['admin_endpoint']}/oid4vci/exchange/create",
-                json=offer_data
+                json=offer_data,
             )
             response.raise_for_status()
             exchange_data = response.json()
@@ -83,7 +83,7 @@ class OID4VCTestHelper:
             # Then generate the credential offer with code
             offer_response = await client.get(
                 f"{TEST_CONFIG['admin_endpoint']}/oid4vci/credential-offer",
-                params={"exchange_id": exchange_data["exchange_id"]}
+                params={"exchange_id": exchange_data["exchange_id"]},
             )
             offer_response.raise_for_status()
             offer_result = offer_response.json()
@@ -109,18 +109,18 @@ class OID4VCTestHelper:
             "cryptographic_binding_methods_supported": ["cose_key"],
             "cryptographic_suites_supported": ["ES256", "ES384", "ES512"],
             "display": MSO_MDOC_CREDENTIAL_CONFIG["display"],
-            "claims": MSO_MDOC_CREDENTIAL_CONFIG["claims"]
+            "claims": MSO_MDOC_CREDENTIAL_CONFIG["claims"],
         }
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{TEST_CONFIG['admin_endpoint']}/oid4vci/credential-supported/create",
-                json=config
+                json=config,
             )
             response.raise_for_status()
             result = response.json()
             LOGGER.info("mso_mdoc credential setup response: %s", result)
-            return result['supported_cred_id']
+            return result["supported_cred_id"]
 
     async def create_mdoc_credential_offer(
         self, supported_cred_id: str
@@ -142,20 +142,17 @@ class OID4VCTestHelper:
                     "issue_date": "2023-01-01",
                     "expiry_date": "2033-01-01",
                     "issuing_country": "US",
-                    "document_number": "12345678"
+                    "document_number": "12345678",
                 }
             },
-            "holder_binding": {
-                "method": "cose_key",
-                "key": holder_key.public_jwk()
-            }
+            "holder_binding": {"method": "cose_key", "key": holder_key.public_jwk()},
         }
 
         async with httpx.AsyncClient() as client:
             # Create the exchange
             response = await client.post(
                 f"{TEST_CONFIG['admin_endpoint']}/oid4vci/exchange/create",
-                json=offer_data
+                json=offer_data,
             )
             response.raise_for_status()
             exchange_data = response.json()
@@ -164,7 +161,7 @@ class OID4VCTestHelper:
             # Generate the credential offer
             offer_response = await client.get(
                 f"{TEST_CONFIG['admin_endpoint']}/oid4vci/credential-offer",
-                params={"exchange_id": exchange_data["exchange_id"]}
+                params={"exchange_id": exchange_data["exchange_id"]},
             )
             offer_response.raise_for_status()
             offer_result = offer_response.json()

@@ -5,7 +5,9 @@ from acapy_agent.core.profile import Profile
 from acapy_agent.resolver.did_resolver import DIDResolver
 from acapy_agent.utils.testing import create_test_profile
 from acapy_agent.wallet.default_verification_key_strategy import (
-    BaseVerificationKeyStrategy, DefaultVerificationKeyStrategy)
+    BaseVerificationKeyStrategy,
+    DefaultVerificationKeyStrategy,
+)
 from jwt_vc_json import JwtVcJsonCredProcessor
 from sd_jwt_vc.cred_processor import SdJwtCredIssueProcessor
 

@@ -18,6 +18,8 @@
     "@credo-ts/node": "^0.5.17",
     "@credo-ts/openid4vc": "^0.5.17",
     "@hyperledger/aries-askar-nodejs": "^0.2.3",
+    "@sphereon/did-auth-siop": "^0.6.3",
+    "@sphereon/pex": "^3.3.2",
     "express": "^4.21.1",
     "uuid": "^10.0.0"
   },

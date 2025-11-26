@@ -1,10 +1,14 @@
 """Core OID4VCI 1.0 compliance tests."""
 
+import base64
 import json
 import logging
+import time
 
 import httpx
 import pytest
+import pytest_asyncio
+from aries_askar import Key, KeyAlg
 
 from .test_config import TEST_CONFIG
 from .test_utils import OID4VCTestHelper
@@ -15,7 +19,7 @@ LOGGER = logging.getLogger(__name__)
 class TestOID4VCI10Compliance:
     """OID4VCI 1.0 compliance test suite."""
 
-    @pytest.fixture(scope="class")
+    @pytest_asyncio.fixture
     async def test_runner(self):
         """Setup test runner."""
         runner = OID4VCTestHelper()
@@ -30,14 +34,14 @@ class TestOID4VCI10Compliance:
             # Test .well-known endpoint
             response = await client.get(
                 f"{TEST_CONFIG['oid4vci_endpoint']}/.well-known/openid-credential-issuer",
-                timeout=30
+                timeout=30,
             )
 
             if response.status_code != 200:
                 LOGGER.error(
                     "Metadata endpoint failed: %s - %s",
                     response.status_code,
-                    response.text
+                    response.text,
                 )
 
             assert response.status_code == 200
@@ -56,12 +60,12 @@ class TestOID4VCI10Compliance:
             if "${AGENT_ENDPOINT" in credential_issuer:
                 LOGGER.warning(
                     "Environment variable not resolved in credential_issuer: %s",
-                    credential_issuer
+                    credential_issuer,
                 )
                 # Check if it contains the expected port/path structure
                 assert (
-                    ":8032" in credential_issuer or
-                    "localhost:8032" in credential_issuer
+                    ":8032" in credential_issuer
+                    or "localhost:8032" in credential_issuer
                 )
             else:
                 # In integration tests, endpoints might differ slightly due to docker networking
@@ -74,14 +78,14 @@ class TestOID4VCI10Compliance:
 
             # OID4VCI 1.0 § 11.2.3: credential_configurations_supported must be object
             configs = metadata["credential_configurations_supported"]
-            assert isinstance(configs, dict), (
-                "credential_configurations_supported must be object in OID4VCI 1.0"
-            )
+            assert isinstance(
+                configs, dict
+            ), "credential_configurations_supported must be object in OID4VCI 1.0"
 
             test_runner.test_results["metadata_compliance"] = {
                 "status": "PASS",
                 "metadata": metadata,
-                "validation": "OID4VCI 1.0 § 11.2 compliant"
+                "validation": "OID4VCI 1.0 § 11.2 compliant",
             }
 
     @pytest.mark.asyncio
@@ -105,34 +109,55 @@ class TestOID4VCI10Compliance:
                 f"{TEST_CONFIG['oid4vci_endpoint']}/token",
                 data={
                     "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
-                    "pre-authorized_code": pre_authorized_code
+                    "pre-authorized_code": pre_authorized_code,
                 },
-                headers={"Content-Type": "application/x-www-form-urlencoded"}
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
             assert token_response.status_code == 200
             token_data = token_response.json()
             access_token = token_data["access_token"]
+            c_nonce = token_data.get("c_nonce")
+
+            # Generate proof
+            key = Key.generate(KeyAlg.ED25519)
+            jwk = json.loads(key.get_jwk_public())
+
+            header = {"typ": "openid4vci-proof+jwt", "alg": "EdDSA", "jwk": jwk}
+
+            payload = {
+                "nonce": c_nonce,
+                "aud": f"{TEST_CONFIG['oid4vci_endpoint']}",
+                "iat": int(time.time()),
+            }
+
+            encoded_header = (
+                base64.urlsafe_b64encode(json.dumps(header).encode())
+                .decode()
+                .rstrip("=")
+            )
+            encoded_payload = (
+                base64.urlsafe_b64encode(json.dumps(payload).encode())
+                .decode()
+                .rstrip("=")
+            )
+
+            sig_input = f"{encoded_header}.{encoded_payload}".encode()
+            signature = key.sign_message(sig_input)
+            encoded_signature = base64.urlsafe_b64encode(signature).decode().rstrip("=")
+
+            proof_jwt = f"{encoded_header}.{encoded_payload}.{encoded_signature}"
 
             # Test credential request with credential_identifier (OID4VCI 1.0 format)
+            # Use a credential that maps to jwt_vc_json to avoid mso_mdoc dependency issues
             credential_request = {
-                "credential_identifier": "org.iso.18013.5.1.mDL",
-                "doctype": "org.iso.18013.5.1.mDL",
-                "proof": {
-                    "jwt": (
-                        "eyJ0eXAiOiJvcGVuaWQ0dmNpLXByb29mK2p3dCIsImFsZyI6IkVTMjU2Iiw"
-                        "iandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiZjgzT0ozRDJ4"
-                        "RjFCZzh2dWI5dExlMWdITXpWNzZlOFR1czl1UEh2UlZFVSIsInkiOiJ4X0ZF"
-                        "elJ1OW0zNkhMTl90dWU2NTlMTnBYVzZwQ3lTdGlrWWpLSVdJNWEwIn19."
-                        "eyJub25jZSI6InRlc3Rfbm9uY2UiLCJhdWQiOiJodHRwOi8vbG9jYWxob3N0"
-                        "OjgwMzEiLCJpYXQiOjE2OTg5NjAwMDB9.signature"
-                    )
-                }
+                "credential_identifier": "UniversityDegreeCredential",
+                "proof": {"jwt": proof_jwt},
             }
 
             cred_response = await client.post(
                 f"{TEST_CONFIG['oid4vci_endpoint']}/credential",
                 json=credential_request,
-                headers={"Authorization": f"Bearer {access_token}"}
+                headers={"Authorization": f"Bearer {access_token}"},
             )
 
             # Should succeed with OID4VCI 1.0 format
@@ -147,7 +172,7 @@ class TestOID4VCI10Compliance:
             test_runner.test_results["credential_request_identifier"] = {
                 "status": "PASS",
                 "response": cred_data,
-                "validation": "OID4VCI 1.0 § 7.2 credential_identifier compliant"
+                "validation": "OID4VCI 1.0 § 7.2 credential_identifier compliant",
             }
 
     @pytest.mark.asyncio
@@ -170,10 +195,10 @@ class TestOID4VCI10Compliance:
                 f"{TEST_CONFIG['oid4vci_endpoint']}/token",
                 data={
                     "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
-                    "pre-authorized_code": pre_authorized_code
+                    "pre-authorized_code": pre_authorized_code,
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
-                timeout=30
+                timeout=30,
             )
             try:
                 token_data = token_response.json()
@@ -187,13 +212,13 @@ class TestOID4VCI10Compliance:
             invalid_request = {
                 "credential_identifier": "org.iso.18013.5.1.mDL",
                 "format": "jwt_vc_json",  # Both present - violation of OID4VCI 1.0 § 7.2
-                "proof": {"jwt": "test_jwt"}
+                "proof": {"jwt": "test_jwt"},
             }
 
             response = await client.post(
                 f"{TEST_CONFIG['oid4vci_endpoint']}/credential",
                 json=invalid_request,
-                headers={"Authorization": f"Bearer {access_token}"}
+                headers={"Authorization": f"Bearer {access_token}"},
             )
 
             # Should fail with 400 Bad Request
@@ -210,14 +235,14 @@ class TestOID4VCI10Compliance:
             response2 = await client.post(
                 f"{TEST_CONFIG['oid4vci_endpoint']}/credential",
                 json=invalid_request2,
-                headers={"Authorization": f"Bearer {access_token}"}
+                headers={"Authorization": f"Bearer {access_token}"},
             )
 
             assert response2.status_code == 400
 
             test_runner.test_results["mutual_exclusion"] = {
                 "status": "PASS",
-                "validation": "OID4VCI 1.0 § 7.2 mutual exclusion enforced"
+                "validation": "OID4VCI 1.0 § 7.2 mutual exclusion enforced",
             }
 
     @pytest.mark.asyncio
@@ -240,9 +265,9 @@ class TestOID4VCI10Compliance:
                 f"{TEST_CONFIG['oid4vci_endpoint']}/token",
                 data={
                     "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
-                    "pre-authorized_code": pre_authorized_code
+                    "pre-authorized_code": pre_authorized_code,
                 },
-                headers={"Content-Type": "application/x-www-form-urlencoded"}
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
             try:
                 token_data = token_response.json()
@@ -260,13 +285,13 @@ class TestOID4VCI10Compliance:
                         "eyJ0eXAiOiJpbnZhbGlkIiwiYWxnIjoiRVMyNTYifQ."
                         "eyJub25jZSI6InRlc3QifQ.sig"
                     )
-                }
+                },
             }
 
             response = await client.post(
                 f"{TEST_CONFIG['oid4vci_endpoint']}/credential",
                 json=invalid_proof_request,
-                headers={"Authorization": f"Bearer {access_token}"}
+                headers={"Authorization": f"Bearer {access_token}"},
             )
 
             # Should fail due to wrong typ header
@@ -276,5 +301,5 @@ class TestOID4VCI10Compliance:
 
             test_runner.test_results["proof_of_possession"] = {
                 "status": "PASS",
-                "validation": "OID4VCI 1.0 § 7.2.1 proof validation enforced"
+                "validation": "OID4VCI 1.0 § 7.2.1 proof validation enforced",
             }

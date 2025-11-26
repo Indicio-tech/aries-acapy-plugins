@@ -16,8 +16,7 @@ from acapy_agent.core.profile import Profile, ProfileSession
 from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
 from acapy_agent.messaging.util import datetime_now, datetime_to_str
-from acapy_agent.protocols.present_proof.dif.pres_exch import \
-    PresentationDefinition
+from acapy_agent.protocols.present_proof.dif.pres_exch import PresentationDefinition
 from acapy_agent.storage.base import BaseStorage, StorageRecord
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from acapy_agent.wallet.base import BaseWallet, WalletError
@@ -27,23 +26,30 @@ from acapy_agent.wallet.jwt import b64_to_dict
 from acapy_agent.wallet.key_type import ED25519
 from acapy_agent.wallet.util import b64_to_bytes, bytes_to_b64
 from aiohttp import web
-from aiohttp_apispec import (docs, form_schema, match_info_schema,
-                             querystring_schema, request_schema,
-                             response_schema)
+from aiohttp_apispec import (
+    docs,
+    form_schema,
+    match_info_schema,
+    querystring_schema,
+    request_schema,
+    response_schema,
+)
 from aries_askar import Key, KeyAlg
 from base58 import b58decode
 from marshmallow import fields, pre_load
 
 from oid4vc.dcql import DCQLQueryEvaluator
 from oid4vc.jwk import DID_JWK
-from oid4vc.jwt import (JWTVerifyResult, jwt_sign, jwt_verify,
-                        key_material_for_kid)
+from oid4vc.jwt import JWTVerifyResult, jwt_sign, jwt_verify, key_material_for_kid
 from oid4vc.models.dcql_query import DCQLQuery
 from oid4vc.models.presentation import OID4VPPresentation
 from oid4vc.models.presentation_definition import OID4VPPresDef
 from oid4vc.models.request import OID4VPRequest
-from oid4vc.pex import (PexVerifyResult, PresentationExchangeEvaluator,
-                        PresentationSubmission)
+from oid4vc.pex import (
+    PexVerifyResult,
+    PresentationExchangeEvaluator,
+    PresentationSubmission,
+)
 
 from .app_resources import AppResources
 from .config import Config
@@ -52,8 +58,7 @@ from .models.exchange import OID4VCIExchangeRecord
 from .models.nonce import Nonce
 from .models.supported_cred import SupportedCredential
 from .pop_result import PopResult
-from .routes import (CredOfferQuerySchema, CredOfferResponseSchemaVal,
-                     _parse_cred_offer)
+from .routes import CredOfferQuerySchema, CredOfferResponseSchemaVal, _parse_cred_offer
 from .status_handler import StatusHandler
 from .utils import get_auth_header, get_tenant_subpath
 
@@ -182,11 +187,16 @@ async def credential_issuer_metadata(request: web.Request):
         wallet_id = request.match_info.get("wallet_id")
         subpath = f"/tenant/{wallet_id}" if wallet_id else ""
 
+        # Check for version in path
+        version_path = ""
+        if "/v1/" in request.path:
+            version_path = "/v1"
+
         # OID4VCI 1.0 § 11.2.1: credential_configurations_supported is now a JSON object
         # where keys are credential configuration identifiers
         metadata = {
-            "credential_issuer": f"{public_url}{subpath}",
-            "credential_endpoint": f"{public_url}{subpath}/credential",
+            "credential_issuer": f"{public_url}{subpath}{version_path}",
+            "credential_endpoint": f"{public_url}{subpath}{version_path}/credential",
         }
 
         if config.auth_server_url:
@@ -195,7 +205,9 @@ async def credential_issuer_metadata(request: web.Request):
                 f"{config.auth_server_url}{auth_tenant_subpath}"
             ]
 
-        metadata["notification_endpoint"] = f"{public_url}{subpath}/notification"
+        metadata[
+            "notification_endpoint"
+        ] = f"{public_url}{subpath}{version_path}/notification"
         metadata["credential_configurations_supported"] = {
             supported.identifier: supported.to_issuer_metadata()
             for supported in credentials_supported
@@ -522,6 +534,20 @@ async def check_token(
     return result
 
 
+async def deprecated_credential_issuer_metadata(request: web.Request):
+    """Deprecated endpoint for credential issuer metadata."""
+    response = await credential_issuer_metadata(request)
+    response.headers["Deprecation"] = "true"
+    response.headers["Warning"] = (
+        '299 - "This endpoint is deprecated. '
+        'Use /.well-known/openid-credential-issuer instead."'
+    )
+    response.headers[
+        "Sunset"
+    ] = "Thu, 31 Dec 2026 23:59:59 GMT"  # TODO: Set appropriate sunset date
+    return response
+
+
 async def handle_proof_of_posession(
     profile: Profile, proof: Dict[str, Any], c_nonce: str | None = None
 ):
@@ -548,7 +574,11 @@ async def _handle_jwt_proof(
     profile: Profile, proof: Dict[str, Any], c_nonce: str | None = None
 ):
     """Handle JWT proof of possession."""
-    encoded_headers, encoded_payload, encoded_signature = proof["jwt"].split(".", 3)
+    try:
+        encoded_headers, encoded_payload, encoded_signature = proof["jwt"].split(".", 3)
+    except ValueError:
+        raise web.HTTPBadRequest(reason="Invalid JWT format")
+
     headers = b64_to_dict(encoded_headers)
 
     # OID4VCI 1.0 § 7.2.1.1: typ MUST be "openid4vci-proof+jwt"
@@ -624,10 +654,10 @@ async def _handle_cwt_proof(
     kid_bytes = msg.headers.get(4)
     if not kid_bytes:
         kid_bytes = msg.unprotected.get(4)
-    
+
     if not kid_bytes:
         raise web.HTTPBadRequest(reason="Missing 'kid' in CWT header")
-        
+
     kid = kid_bytes.decode("utf-8") if isinstance(kid_bytes, bytes) else str(kid_bytes)
 
     # Resolve key
@@ -661,7 +691,7 @@ async def _handle_cwt_proof(
     if not nonce:
         # Fallback to string key if present (non-standard but possible)
         nonce = decoded.get("nonce")
-        
+
     if not nonce:
         raise web.HTTPBadRequest(reason="Missing nonce in CWT")
 
@@ -787,7 +817,7 @@ async def issue_cred(request: web.Request):
             reason="SupportedCredential missing format identifier."
         )
 
-    if supported.format != body.get("format"):
+    if format_param and supported.format != format_param:
         raise web.HTTPBadRequest(reason="Requested format does not match offer.")
 
     authorization_details = token_result.payload.get("authorization_details", None)
@@ -817,6 +847,12 @@ async def issue_cred(request: web.Request):
             status=400,
         )
 
+    if credential_identifier and format_param:
+        return web.json_response(
+            {"message": "credential_identifier and format are mutually exclusive"},
+            status=400,
+        )
+
     # Select the supported credential to issue based on the request, if possible.
     # If not found, fall back to the exchange's supported credential.
     async with context.profile.session() as session:
@@ -840,7 +876,6 @@ async def issue_cred(request: web.Request):
             except Exception:
                 selected_supported = supported
 
-    selected_supported = supported
     if not selected_supported.format:
         return web.json_response(
             {"message": "SupportedCredential missing format identifier"}, status=400
@@ -1122,6 +1157,16 @@ async def get_request(request: web.Request):
         else None
     )
     subpath = f"/tenant/{wallet_id}" if wallet_id else ""
+
+    version_path = ""
+    if "/v1/" in request.path:
+        version_path = "/v1"
+
+    response_uri = (
+        f"{config.endpoint}{subpath}{version_path}"
+        f"/oid4vp/response/{pres.presentation_id}"
+    )
+
     payload = {
         "iss": jwk.did,
         "sub": jwk.did,
@@ -1129,10 +1174,9 @@ async def get_request(request: web.Request):
         "nbf": now,
         "exp": now + 120,
         "jti": str(uuid.uuid4()),
-        "client_id": config.endpoint,
-        "response_uri": (
-            f"{config.endpoint}{subpath}/oid4vp/response/{pres.presentation_id}"
-        ),
+        "client_id": response_uri,
+        "client_id_scheme": "redirect_uri",
+        "response_uri": response_uri,
         "state": pres.presentation_id,
         "nonce": pres.nonce,
         "id_token_signing_alg_values_supported": ["ES256", "EdDSA"],
@@ -1381,6 +1425,11 @@ async def register(app: web.Application, multitenant: bool, context: InjectionCo
             credential_issuer_metadata,
             allow_head=False,
         ),
+        web.get(
+            f"{subpath}/.well-known/openid_credential_issuer",
+            deprecated_credential_issuer_metadata,
+            allow_head=False,
+        ),
         # TODO Add .well-known/did-configuration.json
         # Spec: https://identity.foundation/.well-known/resources/did-configuration/
         web.post(f"{subpath}/token", token),
@@ -1389,11 +1438,43 @@ async def register(app: web.Application, multitenant: bool, context: InjectionCo
         web.get(f"{subpath}/oid4vp/request/{{request_id}}", get_request),
         web.post(f"{subpath}/oid4vp/response/{{presentation_id}}", post_response),
     ]
+
+    # Add v1 routes
+    v1_subpath = f"{subpath}/v1"
+    routes.extend(
+        [
+            web.get(
+                f"{v1_subpath}/oid4vci/dereference-credential-offer",
+                dereference_cred_offer,
+                allow_head=False,
+            ),
+            web.get(
+                f"{v1_subpath}/.well-known/openid-credential-issuer",
+                credential_issuer_metadata,
+                allow_head=False,
+            ),
+            web.post(f"{v1_subpath}/token", token),
+            web.post(f"{v1_subpath}/notification", receive_notification),
+            web.post(f"{v1_subpath}/credential", issue_cred),
+            web.get(f"{v1_subpath}/oid4vp/request/{{request_id}}", get_request),
+            web.post(
+                f"{v1_subpath}/oid4vp/response/{{presentation_id}}", post_response
+            ),
+        ]
+    )
+
     # Conditionally add status route
     if context.inject_or(StatusHandler):
         routes.append(
             web.get(
                 f"{subpath}/status/{{list_number}}", get_status_list, allow_head=False
+            )
+        )
+        routes.append(
+            web.get(
+                f"{v1_subpath}/status/{{list_number}}",
+                get_status_list,
+                allow_head=False,
             )
         )
     # Add the routes to the application

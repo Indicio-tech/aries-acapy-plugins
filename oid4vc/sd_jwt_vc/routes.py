@@ -11,13 +11,11 @@ from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from aiohttp import web
-from aiohttp_apispec import (docs, match_info_schema, request_schema,
-                             response_schema)
+from aiohttp_apispec import docs, match_info_schema, request_schema, response_schema
 from marshmallow import fields
 
 from oid4vc.cred_processor import CredProcessors
-from oid4vc.models.supported_cred import (SupportedCredential,
-                                          SupportedCredentialSchema)
+from oid4vc.models.supported_cred import SupportedCredential, SupportedCredentialSchema
 from oid4vc.routes import supported_cred_is_unique
 
 LOGGER = logging.getLogger(__name__)
@@ -128,12 +126,14 @@ class SdJwtSupportedCredCreateReq(OpenAPISchema):
 @docs(
     tags=["oid4vci"],
     summary="Register a configuration for a supported SD-JWT VC credential",
-    description=dedent("""
+    description=dedent(
+        """
     This endpoint feeds into the Credential Issuer Metadata reported by the Issuer to its clients.
 
     See the SD-JWT VC profile for more details on these properties:
     https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-ID1.html#name-credential-issuer-metadata-6
-    """),  # noqa
+    """  # noqa: E501
+    ),
 )
 @request_schema(SdJwtSupportedCredCreateReq())
 @response_schema(SupportedCredentialSchema())
@@ -247,7 +247,9 @@ async def update_supported_credential_sd_jwt(request: web.Request):
     LOGGER.info(f"body: {body}")
     try:
         async with context.session() as session:
-            record = await SupportedCredential.retrieve_by_id(session, supported_cred_id)
+            record = await SupportedCredential.retrieve_by_id(
+                session, supported_cred_id
+            )
 
             assert isinstance(session, AskarProfileSession)
             record = await supported_cred_update_helper(record, body, session)

@@ -8,9 +8,13 @@ from aiohttp import web
 from oid4vc.cred_processor import CredProcessors
 from oid4vc.models.exchange import OID4VCIExchangeRecord
 from oid4vc.models.supported_cred import SupportedCredential
-from oid4vc.routes import (_create_pre_auth_code, _parse_cred_offer,
-                           create_exchange, credential_refresh,
-                           exchange_create)
+from oid4vc.routes import (
+    _create_pre_auth_code,
+    _parse_cred_offer,
+    create_exchange,
+    credential_refresh,
+    exchange_create,
+)
 
 
 @pytest.fixture
@@ -50,7 +54,9 @@ async def test_create_pre_auth_code(monkeypatch, profile, config):
     mock_response = MagicMock()
     mock_response.json = AsyncMock(return_value={"pre_authorized_code": "code123"})
     mock_client.post = AsyncMock(return_value=mock_response)
-    monkeypatch.setattr("oid4vc.routes.AppResources.get_http_client", lambda: mock_client)
+    monkeypatch.setattr(
+        "oid4vc.routes.AppResources.get_http_client", lambda: mock_client
+    )
     # Patch get_auth_header to return a dummy header
     monkeypatch.setattr(
         "oid4vc.routes.get_auth_header", AsyncMock(return_value="Bearer dummyheader")

@@ -44,4 +44,6 @@ async def test_oid4vci_well_known_endpoint():
         print("✅ OID4VCI metadata endpoint accessible:")
         print(f"   Issuer: {metadata['credential_issuer']}")
         if "credential_configurations_supported" in metadata:
-            print(f"   Supported configurations: {list(metadata['credential_configurations_supported'].keys())}")
+            print(
+                f"   Supported configurations: {list(metadata['credential_configurations_supported'].keys())}"
+            )

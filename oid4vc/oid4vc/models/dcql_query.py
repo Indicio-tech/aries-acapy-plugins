@@ -3,8 +3,7 @@
 from typing import Any, List, Mapping, Optional, Union
 
 from acapy_agent.messaging.models.base import BaseModel, BaseModelSchema
-from acapy_agent.messaging.models.base_record import (BaseRecord,
-                                                      BaseRecordSchema)
+from acapy_agent.messaging.models.base_record import BaseRecord, BaseRecordSchema
 from marshmallow import ValidationError, fields, validates_schema
 
 ClaimsPath = List[str | int | None]
@@ -314,7 +313,7 @@ class DCQLQuery(BaseRecord):
 
     RECORD_ID_NAME = "dcql_query_id"
     RECORD_TOPIC = "oid4vp"
-    RECORD_TYPE = "oid4vp"
+    RECORD_TYPE = "oid4vp_dcql_query"
 
     def __init__(
         self,

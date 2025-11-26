@@ -17,8 +17,7 @@ from datetime import datetime, timedelta
 
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.messaging.models.openapi import OpenAPISchema
-from acapy_agent.messaging.valid import (GENERIC_DID_EXAMPLE,
-                                         GENERIC_DID_VALIDATE, Uri)
+from acapy_agent.messaging.valid import GENERIC_DID_EXAMPLE, GENERIC_DID_VALIDATE, Uri
 from aiohttp import web
 from aiohttp_apispec import docs, request_schema, response_schema
 from marshmallow import fields

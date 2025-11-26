@@ -9,11 +9,15 @@ from typing import Any
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.core.profile import Profile
 from acapy_agent.wallet.util import bytes_to_b64
-from pydid import \
-    DIDUrl  # noqa: F401  (kept for backward compatibility if needed)
+from pydid import DIDUrl  # noqa: F401  (kept for backward compatibility if needed)
 
-from oid4vc.cred_processor import (CredProcessorError, CredVerifier, Issuer,
-                                   PresVerifier, VerifyResult)
+from oid4vc.cred_processor import (
+    CredProcessorError,
+    CredVerifier,
+    Issuer,
+    PresVerifier,
+    VerifyResult,
+)
 from oid4vc.jwt import jwt_sign, jwt_verify
 from oid4vc.models.exchange import OID4VCIExchangeRecord
 from oid4vc.models.presentation import OID4VPPresentation

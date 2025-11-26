@@ -2,8 +2,7 @@
 
 from typing import Dict, List, Optional
 
-from acapy_agent.messaging.models.base_record import (BaseRecord,
-                                                      BaseRecordSchema)
+from acapy_agent.messaging.models.base_record import BaseRecord, BaseRecordSchema
 from marshmallow import fields
 
 
@@ -167,7 +166,9 @@ class SupportedCredentialSchema(BaseRecordSchema):
     )
     proof_types_supported = fields.Dict(
         required=False,
-        metadata={"example": {"jwt": {"proof_signing_alg_values_supported": ["ES256"]}}},
+        metadata={
+            "example": {"jwt": {"proof_signing_alg_values_supported": ["ES256"]}}
+        },
     )
     display = fields.List(
         fields.Dict(),

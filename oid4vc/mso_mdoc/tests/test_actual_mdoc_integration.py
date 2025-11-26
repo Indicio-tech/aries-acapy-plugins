@@ -10,8 +10,7 @@ from datetime import datetime, timedelta, timezone
 import cbor2
 import isomdl_uniffi
 
-from ..key_generation import (generate_ec_key_pair,
-                              generate_self_signed_certificate)
+from ..key_generation import generate_ec_key_pair, generate_self_signed_certificate
 from ..mdoc import isomdl_mdoc_sign
 
 
@@ -179,9 +178,7 @@ class TestActualMdocIntegration:
             headers = {"alg": "ES256", "typ": "mdoc", "kid": "test-key-1"}
 
             # Attempt to sign (this might fail but tests the integration)
-            result = isomdl_mdoc_sign(
-                jwk, headers, mdoc_payload, cert_pem, private_pem
-            )
+            result = isomdl_mdoc_sign(jwk, headers, mdoc_payload, cert_pem, private_pem)
 
             print(f"mDOC signing result: {type(result)}")
             assert result is not None

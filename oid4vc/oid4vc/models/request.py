@@ -2,8 +2,7 @@
 
 from typing import Any, Dict, Optional
 
-from acapy_agent.messaging.models.base_record import (BaseRecord,
-                                                      BaseRecordSchema)
+from acapy_agent.messaging.models.base_record import BaseRecord, BaseRecordSchema
 from marshmallow import fields
 
 

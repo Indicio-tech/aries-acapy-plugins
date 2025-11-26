@@ -25,14 +25,14 @@ OID4VCI_TEST_DATA = {
                 "name": "University Degree",
                 "locale": "en-US",
                 "background_color": "#1e3a8a",
-                "text_color": "#ffffff"
+                "text_color": "#ffffff",
             }
         ],
         "type": ["VerifiableCredential", "UniversityDegreeCredential"],
         "@context": [
             "https://www.w3.org/2018/credentials/v1",
-            "https://www.w3.org/2018/credentials/examples/v1"
-        ]
+            "https://www.w3.org/2018/credentials/examples/v1",
+        ],
     },
     "credential_subject": {
         "given_name": "John",
@@ -42,15 +42,15 @@ OID4VCI_TEST_DATA = {
         "expiry_date": "2033-01-01",
         "issuing_country": "US",
         "issuing_authority": "DMV",
-        "document_number": "12345678"
+        "document_number": "12345678",
     },
     "test_jwk": {
         "kty": "EC",
         "crv": "P-256",
         "x": "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
         "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0",
-        "d": "jpsQnnGQmL-YBIffH1136cspYG6-0iY7X1fCE9-E9LI"
-    }
+        "d": "jpsQnnGQmL-YBIffH1136cspYG6-0iY7X1fCE9-E9LI",
+    },
 }
 
 # Test data for OID4VCI 1.0 compliance
@@ -66,17 +66,17 @@ SUPPORTED_CREDENTIAL_CONFIG = {
             "locale": "en-US",
             "logo": {
                 "url": "https://example.com/logo.png",
-                "alt_text": "University Logo"
+                "alt_text": "University Logo",
             },
             "background_color": "#1e3a8a",
-            "text_color": "#ffffff"
+            "text_color": "#ffffff",
         }
     ],
     "type": ["VerifiableCredential", "UniversityDegreeCredential"],
     "@context": [
         "https://www.w3.org/2018/credentials/v1",
-        "https://www.w3.org/2018/credentials/examples/v1"
-    ]
+        "https://www.w3.org/2018/credentials/examples/v1",
+    ],
 }
 
 CREDENTIAL_SUBJECT_DATA = {
@@ -92,9 +92,9 @@ CREDENTIAL_SUBJECT_DATA = {
         {
             "vehicle_category_code": "A",
             "issue_date": "2023-01-01",
-            "expiry_date": "2033-01-01"
+            "expiry_date": "2033-01-01",
         }
-    ]
+    ],
 }
 
 # mso_mdoc credential configuration for ISO 18013-5 Mobile Driver's License
@@ -109,51 +109,49 @@ MSO_MDOC_CREDENTIAL_CONFIG = {
         {
             "name": "Mobile Driver's License",
             "locale": "en-US",
-            "logo": {
-                "url": "https://example.com/mdl-logo.png",
-                "alt_text": "mDL Logo"
-            },
+            "logo": {"url": "https://example.com/mdl-logo.png", "alt_text": "mDL Logo"},
             "background_color": "#003f7f",
-            "text_color": "#ffffff"
+            "text_color": "#ffffff",
         }
     ],
     "claims": {
         "org.iso.18013.5.1": {
             "given_name": {
                 "mandatory": True,
-                "display": [{"name": "Given Name", "locale": "en-US"}]
+                "display": [{"name": "Given Name", "locale": "en-US"}],
             },
             "family_name": {
                 "mandatory": True,
-                "display": [{"name": "Family Name", "locale": "en-US"}]
+                "display": [{"name": "Family Name", "locale": "en-US"}],
             },
             "birth_date": {
                 "mandatory": True,
-                "display": [{"name": "Date of Birth", "locale": "en-US"}]
+                "display": [{"name": "Date of Birth", "locale": "en-US"}],
             },
             "issue_date": {
                 "mandatory": True,
-                "display": [{"name": "Issue Date", "locale": "en-US"}]
+                "display": [{"name": "Issue Date", "locale": "en-US"}],
             },
             "expiry_date": {
                 "mandatory": True,
-                "display": [{"name": "Expiry Date", "locale": "en-US"}]
+                "display": [{"name": "Expiry Date", "locale": "en-US"}],
             },
             "issuing_country": {
                 "mandatory": True,
-                "display": [{"name": "Issuing Country", "locale": "en-US"}]
+                "display": [{"name": "Issuing Country", "locale": "en-US"}],
             },
             "document_number": {
                 "mandatory": True,
-                "display": [{"name": "Document Number", "locale": "en-US"}]
-            }
+                "display": [{"name": "Document Number", "locale": "en-US"}],
+            },
         }
-    }
+    },
 }
 
 # Import mdoc capabilities
 try:
     import isomdl_uniffi as mdl
+
     MDOC_AVAILABLE = True
 except ImportError:
     MDOC_AVAILABLE = False
@@ -165,19 +163,16 @@ COMPLIANCE_REQUIREMENTS = {
         "required_fields": [
             "credential_issuer",
             "credential_endpoint",
-            "credential_configurations_supported"
+            "credential_configurations_supported",
         ],
         "format_requirements": {
             # Must be object in OID4VCI 1.0
             "credential_configurations_supported": "object"
-        }
+        },
     },
     "credential_request": {
         "mutual_exclusion": ["credential_identifier", "format"],
-        "required_proof_type": "openid4vci-proof+jwt"
+        "required_proof_type": "openid4vci-proof+jwt",
     },
-    "mso_mdoc": {
-        "required_parameters": ["doctype"],
-        "format": "mso_mdoc"
-    }
+    "mso_mdoc": {"required_parameters": ["doctype"], "format": "mso_mdoc"},
 }

@@ -70,7 +70,7 @@ class TestOID4VCMdocCompliance:
             test_runner.test_results["mdoc_metadata"] = {
                 "status": "PASS",
                 "mdoc_config": mdoc_config,
-                "validation": "mso_mdoc format supported in credential issuer metadata"
+                "validation": "mso_mdoc format supported in credential issuer metadata",
             }
 
     @pytest.mark.skipif(not MDOC_AVAILABLE, reason="isomdl_uniffi not available")
@@ -97,17 +97,17 @@ class TestOID4VCMdocCompliance:
                 f"{TEST_CONFIG['oid4vci_endpoint']}/token",
                 data={
                     "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
-                    "pre-authorized_code": pre_authorized_code
+                    "pre-authorized_code": pre_authorized_code,
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
-                timeout=30
+                timeout=30,
             )
 
             if token_response.status_code != 200:
                 LOGGER.error(
                     "Token request failed: %s - %s",
                     token_response.status_code,
-                    token_response.text
+                    token_response.text,
                 )
             assert token_response.status_code == 200
             token_data = token_response.json()
@@ -120,15 +120,15 @@ class TestOID4VCMdocCompliance:
                 "doctype": "org.iso.18013.5.1.mDL",
                 "proof": {
                     "proof_type": "cwt",
-                    "cwt": holder_key.sign(b"test_proof_data")
-                }
+                    "cwt": holder_key.sign(b"test_proof_data"),
+                },
             }
 
             # Request credential
             cred_response = await client.post(
                 f"{TEST_CONFIG['oid4vci_endpoint']}/credential",
                 json=credential_request,
-                headers={"Authorization": f"Bearer {access_token}"}
+                headers={"Authorization": f"Bearer {access_token}"},
             )
 
             assert cred_response.status_code == 200
@@ -141,14 +141,14 @@ class TestOID4VCMdocCompliance:
 
             # The credential should be a CBOR-encoded mso_mdoc
             mdoc_credential = cred_data["credential"]
-            assert isinstance(mdoc_credential, str), (
-                "mso_mdoc should be base64-encoded string"
-            )
+            assert isinstance(
+                mdoc_credential, str
+            ), "mso_mdoc should be base64-encoded string"
 
             test_runner.test_results["mdoc_credential_flow"] = {
                 "status": "PASS",
                 "response": cred_data,
-                "validation": "Complete mso_mdoc credential request flow successful"
+                "validation": "Complete mso_mdoc credential request flow successful",
             }
 
     @pytest.mark.skipif(not MDOC_AVAILABLE, reason="isomdl_uniffi not available")
@@ -186,7 +186,7 @@ class TestOID4VCMdocCompliance:
             "org.iso.18013.5.1": {
                 "given_name": True,
                 "family_name": True,
-                "birth_date": True
+                "birth_date": True,
             }
         }
 
@@ -215,7 +215,9 @@ class TestOID4VCMdocCompliance:
         )
 
         # Validate verification results
-        assert verification_result.device_authentication == mdl.AuthenticationStatus.VALID
+        assert (
+            verification_result.device_authentication == mdl.AuthenticationStatus.VALID
+        )
         assert verification_result.verified_response is not None
         assert len(verification_result.verified_response) > 0
 
@@ -225,7 +227,7 @@ class TestOID4VCMdocCompliance:
             "qr_code_length": len(qr_code),
             "verification_status": str(verification_result.device_authentication),
             "disclosed_attributes": list(verification_result.verified_response.keys()),
-            "validation": "Complete mdoc presentation workflow successful"
+            "validation": "Complete mdoc presentation workflow successful",
         }
 
     @pytest.mark.skipif(not MDOC_AVAILABLE, reason="isomdl_uniffi not available")
@@ -250,9 +252,9 @@ class TestOID4VCMdocCompliance:
                 f"{TEST_CONFIG['oid4vci_endpoint']}/token",
                 data={
                     "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
-                    "pre-authorized_code": pre_authorized_code
+                    "pre-authorized_code": pre_authorized_code,
                 },
-                headers={"Content-Type": "application/x-www-form-urlencoded"}
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
             token_data = token_response.json()
             access_token = token_data["access_token"]
@@ -261,16 +263,13 @@ class TestOID4VCMdocCompliance:
             credential_request = {
                 "credential_identifier": "org.iso.18013.5.1.mDL",
                 "doctype": "org.iso.18013.5.1.mDL",
-                "proof": {
-                    "proof_type": "cwt",
-                    "cwt": holder_key.sign(b"interop_test")
-                }
+                "proof": {"proof_type": "cwt", "cwt": holder_key.sign(b"interop_test")},
             }
 
             cred_response = await client.post(
                 f"{TEST_CONFIG['oid4vci_endpoint']}/credential",
                 json=credential_request,
-                headers={"Authorization": f"Bearer {access_token}"}
+                headers={"Authorization": f"Bearer {access_token}"},
             )
 
             assert cred_response.status_code == 200
@@ -291,10 +290,7 @@ class TestOID4VCMdocCompliance:
 
             # Test verification workflow
             requested_attributes = {
-                "org.iso.18013.5.1": {
-                    "given_name": True,
-                    "family_name": True
-                }
+                "org.iso.18013.5.1": {"given_name": True, "family_name": True}
             }
 
             reader_data = mdl.establish_session(qr_code, requested_attributes, None)
@@ -313,12 +309,11 @@ class TestOID4VCMdocCompliance:
 
             # Verify presentation
             verification_result = mdl.handle_response(
-                reader_data.state,
-                presentation_response
+                reader_data.state, presentation_response
             )
             assert (
-                verification_result.device_authentication ==
-                mdl.AuthenticationStatus.VALID
+                verification_result.device_authentication
+                == mdl.AuthenticationStatus.VALID
             )
 
             test_runner.test_results["oid4vc_mdoc_interoperability"] = {
@@ -330,5 +325,5 @@ class TestOID4VCMdocCompliance:
                 "validation": (
                     "OID4VC mso_mdoc issuance and mdoc presentation "
                     "interoperability successful"
-                )
+                ),
             }

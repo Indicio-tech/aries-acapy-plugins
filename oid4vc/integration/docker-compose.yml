@@ -95,7 +95,7 @@ services:
     command: [
       "sh", "-c",
       "echo 'Running essential OID4VC integration tests...' && \
-       uv run pytest tests/test_docker_connectivity.py tests/test_acapy_oid4vc_simple.py \
+       uv run pytest tests/ \
        --verbose \
        --tb=short \
        --junit-xml=test-results/junit-quick.xml \

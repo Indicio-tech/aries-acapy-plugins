@@ -14,19 +14,24 @@ from acapy_agent.askar.profile import AskarProfileSession
 from acapy_agent.core.profile import Profile
 from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
-from acapy_agent.messaging.valid import (GENERIC_DID_EXAMPLE,
-                                         GENERIC_DID_VALIDATE, Uri)
+from acapy_agent.messaging.valid import GENERIC_DID_EXAMPLE, GENERIC_DID_VALIDATE, Uri
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from acapy_agent.wallet.base import BaseWallet
-from acapy_agent.wallet.default_verification_key_strategy import \
-    BaseVerificationKeyStrategy
+from acapy_agent.wallet.default_verification_key_strategy import (
+    BaseVerificationKeyStrategy,
+)
 from acapy_agent.wallet.did_info import DIDInfo
 from acapy_agent.wallet.jwt import nym_to_did
 from acapy_agent.wallet.key_type import P256, KeyTypes
 from acapy_agent.wallet.util import b64_to_bytes, bytes_to_b64
 from aiohttp import web
-from aiohttp_apispec import (docs, match_info_schema, querystring_schema,
-                             request_schema, response_schema)
+from aiohttp_apispec import (
+    docs,
+    match_info_schema,
+    querystring_schema,
+    request_schema,
+    response_schema,
+)
 from aries_askar import Key, KeyAlg
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -36,20 +41,21 @@ from marshmallow.validate import OneOf
 
 from oid4vc.cred_processor import CredProcessors
 from oid4vc.jwk import DID_JWK
-from oid4vc.models.dcql_query import (CredentialQuery, CredentialQuerySchema,
-                                      CredentialSetQuerySchema, DCQLQuery,
-                                      DCQLQuerySchema)
-from oid4vc.models.presentation import (OID4VPPresentation,
-                                        OID4VPPresentationSchema)
-from oid4vc.models.presentation_definition import (OID4VPPresDef,
-                                                   OID4VPPresDefSchema)
+from oid4vc.models.dcql_query import (
+    CredentialQuery,
+    CredentialQuerySchema,
+    CredentialSetQuerySchema,
+    DCQLQuery,
+    DCQLQuerySchema,
+)
+from oid4vc.models.presentation import OID4VPPresentation, OID4VPPresentationSchema
+from oid4vc.models.presentation_definition import OID4VPPresDef, OID4VPPresDefSchema
 from oid4vc.models.request import OID4VPRequest, OID4VPRequestSchema
 
 from .app_resources import AppResources
 from .config import Config
 from .models.exchange import OID4VCIExchangeRecord, OID4VCIExchangeRecordSchema
-from .models.supported_cred import (SupportedCredential,
-                                    SupportedCredentialSchema)
+from .models.supported_cred import SupportedCredential, SupportedCredentialSchema
 from .utils import get_auth_header, get_tenant_subpath
 
 # OpenID4VCI 1.0 Final Specification
@@ -303,7 +309,9 @@ async def credential_refresh(request: web.Request):
                         raise web.HTTPBadRequest(reason="Offer exists; cannot refresh.")
                     else:
                         existing.state = OID4VCIExchangeRecord.STATE_SUPERCEDED
-                        await existing.save(session, reason="Superceded by new request.")
+                        await existing.save(
+                            session, reason="Superceded by new request."
+                        )
             except StorageNotFoundError:
                 pass
         record = await create_exchange(request, refresh_id)
@@ -587,7 +595,9 @@ class SupportedCredCreateRequestSchema(OpenAPISchema):
     )
     proof_types_supported = fields.Dict(
         required=False,
-        metadata={"example": {"jwt": {"proof_signing_alg_values_supported": ["ES256"]}}},
+        metadata={
+            "example": {"jwt": {"proof_signing_alg_values_supported": ["ES256"]}}
+        },
     )
     display = fields.List(
         fields.Dict(),
@@ -760,7 +770,9 @@ class JwtSupportedCredCreateRequestSchema(OpenAPISchema):
     )
     proof_types_supported = fields.Dict(
         required=False,
-        metadata={"example": {"jwt": {"proof_signing_alg_values_supported": ["ES256"]}}},
+        metadata={
+            "example": {"jwt": {"proof_signing_alg_values_supported": ["ES256"]}}
+        },
     )
     display = fields.List(
         fields.Dict(),

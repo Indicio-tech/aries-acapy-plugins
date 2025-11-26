@@ -4,11 +4,16 @@ from datetime import datetime
 from typing import Any, Dict, Optional, Union
 
 from acapy_agent.core.profile import ProfileSession
-from acapy_agent.messaging.models.base_record import (BaseExchangeRecord,
-                                                      BaseRecordSchema)
+from acapy_agent.messaging.models.base_record import (
+    BaseExchangeRecord,
+    BaseRecordSchema,
+)
 from acapy_agent.messaging.util import datetime_to_str
-from acapy_agent.messaging.valid import (ISO8601_DATETIME_EXAMPLE,
-                                         ISO8601_DATETIME_VALIDATE, Uri)
+from acapy_agent.messaging.valid import (
+    ISO8601_DATETIME_EXAMPLE,
+    ISO8601_DATETIME_VALIDATE,
+    Uri,
+)
 from marshmallow import fields
 from uuid_utils import uuid4
 

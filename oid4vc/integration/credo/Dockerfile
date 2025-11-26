@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y curl python3 make g++ git && rm -rf /va
 
 # Install dependencies
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm install
 
 # Copy source code and build
 COPY . .

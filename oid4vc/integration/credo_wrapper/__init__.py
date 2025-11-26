@@ -46,11 +46,17 @@ class CredoWrapper:
         response.raise_for_status()
         return response.json()
 
-    async def openid4vp_accept_request(self, request: str):
+    async def openid4vp_accept_request(
+        self, request: str, credentials: list[dict] = None
+    ):
         """Accept OpenID4VP presentation (authorization) request."""
+        payload = {"request_uri": request}
+        if credentials:
+            payload["credentials"] = credentials
+
         response = await self.client.post(
-            f"{self.base_url}/openid4vci/acceptAuthorizationRequest",
-            json={"request": request},
+            f"{self.base_url}/oid4vp/present",
+            json=payload,
         )
         response.raise_for_status()
         return response.json()

@@ -72,7 +72,5 @@ class AskarCryptoService(OID4VCICryptoService[AskarKey]):
                 "nonce": nonce,
             }
         )
-        signature = self.b64url(
-            key.key.sign_message(f"{headers}.{payload}".encode())
-        )
+        signature = self.b64url(key.key.sign_message(f"{headers}.{payload}".encode()))
         return {"proof_type": "jwt", "jwt": f"{headers}.{payload}.{signature}"}

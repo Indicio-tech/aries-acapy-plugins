@@ -1,11 +1,12 @@
 """Nonce record for replay prevention."""
 
 from acapy_agent.core.profile import ProfileSession
-from acapy_agent.messaging.models.base_record import (BaseRecord,
-                                                      BaseRecordSchema)
+from acapy_agent.messaging.models.base_record import BaseRecord, BaseRecordSchema
 from acapy_agent.messaging.util import datetime_now, str_to_datetime
-from acapy_agent.messaging.valid import (ISO8601_DATETIME_EXAMPLE,
-                                         ISO8601_DATETIME_VALIDATE)
+from acapy_agent.messaging.valid import (
+    ISO8601_DATETIME_EXAMPLE,
+    ISO8601_DATETIME_VALIDATE,
+)
 from marshmallow import fields
 
 

@@ -13,8 +13,12 @@ from aiohttp import web
 from oid4vc import public_routes as test_module
 from oid4vc.models.exchange import OID4VCIExchangeRecord
 from oid4vc.models.supported_cred import SupportedCredential
-from oid4vc.public_routes import (JWTVerifyResult, check_token, issue_cred,
-                                  receive_notification)
+from oid4vc.public_routes import (
+    JWTVerifyResult,
+    check_token,
+    issue_cred,
+    receive_notification,
+)
 
 
 @pytest.fixture

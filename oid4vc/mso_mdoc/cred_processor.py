@@ -24,15 +24,13 @@ from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.core.profile import Profile, ProfileSession
 from acapy_agent.storage.error import StorageError
 
-from oid4vc.cred_processor import (CredProcessorError, CredVerifier, Issuer,
-                                   PresVerifier)
+from oid4vc.cred_processor import CredProcessorError, CredVerifier, Issuer, PresVerifier
 from oid4vc.models.exchange import OID4VCIExchangeRecord
 from oid4vc.models.presentation import OID4VPPresentation
 from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.pop_result import PopResult
 
-from .key_generation import (generate_ec_key_pair,
-                             generate_self_signed_certificate)
+from .key_generation import generate_ec_key_pair, generate_self_signed_certificate
 from .mdoc.issuer import isomdl_mdoc_sign
 from .storage import MdocStorageManager
 
@@ -282,9 +280,7 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             return key_data
 
         # Generate new default key if none exists
-        await resolve_signing_key_for_credential(
-            context.profile, session
-        )
+        await resolve_signing_key_for_credential(context.profile, session)
         LOGGER.info("Generated new default signing key")
 
         key_data = await storage_manager.get_default_signing_key(session)

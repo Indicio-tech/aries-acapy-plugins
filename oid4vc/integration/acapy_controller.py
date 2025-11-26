@@ -33,6 +33,18 @@ class Controller:
             response.raise_for_status()
             return response.json()
 
+    async def delete(self, path: str, params: dict | None = None) -> dict[str, Any]:
+        """Make DELETE request to ACA-Py admin API."""
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"{self.base_url}{path}",
+                params=params,
+                headers=self.headers,
+                timeout=30.0,
+            )
+            response.raise_for_status()
+            return response.json()
+
     async def event_with_values(self, topic: str, **kwargs) -> dict[str, Any]:
         """Mock event waiting - simplified for testing."""
         # In real implementation, this would wait for webhooks

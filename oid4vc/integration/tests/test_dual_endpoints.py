@@ -23,7 +23,6 @@ async def test_dual_oid4vci_endpoints():
     acapy_oid4vci_base = "http://acapy-issuer:8022"
 
     async with httpx.AsyncClient() as client:
-
         # Test standard endpoint (with dash)
         print("🧪 Testing standard endpoint: /.well-known/openid-credential-issuer")
         standard_response = await client.get(
@@ -94,7 +93,6 @@ async def test_credo_can_reach_underscore_endpoint():
     acapy_oid4vci_base = "http://acapy-issuer:8022"
 
     async with httpx.AsyncClient() as client:
-
         print("🧪 Testing Credo-style endpoint discovery...")
 
         # Credo clients expect the underscore format
@@ -134,7 +132,6 @@ async def test_acapy_services_health():
     """Test that all ACA-Py services are healthy and ready for OID4VC operations."""
 
     async with httpx.AsyncClient() as client:
-
         # Test ACA-Py issuer
         print("🧪 Testing ACA-Py issuer health...")
         issuer_response = await client.get("http://acapy-issuer:8021/status/ready")
@@ -167,7 +164,6 @@ async def test_oid4vci_server_endpoints():
     acapy_oid4vci_base = "http://acapy-issuer:8022"
 
     async with httpx.AsyncClient() as client:
-
         print("🧪 Testing OID4VCI server endpoint availability...")
 
         # Test credential endpoint
@@ -204,9 +200,7 @@ if __name__ == "__main__":
         await test_oid4vci_server_endpoints()
         print()
 
-        print(
-            "🎉 All tests passed! Dual endpoint compatibility is working correctly."
-        )
+        print("🎉 All tests passed! Dual endpoint compatibility is working correctly.")
 
     if len(sys.argv) > 1 and sys.argv[1] == "run":
         asyncio.run(run_all_tests())

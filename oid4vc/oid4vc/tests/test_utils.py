@@ -7,7 +7,9 @@ from oid4vc.utils import get_auth_header, get_tenant_subpath
 
 def test_get_tenant_subpath(profile):
     profile.context.settings.set_value("multitenant.enabled", True)
-    assert get_tenant_subpath(profile) == "/tenants/538451fa-11ab-41de-b6e3-7ae3df7356d6"
+    assert (
+        get_tenant_subpath(profile) == "/tenants/538451fa-11ab-41de-b6e3-7ae3df7356d6"
+    )
 
 
 @pytest.mark.asyncio

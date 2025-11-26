@@ -9,6 +9,7 @@ This test covers the complete OID4VC flow:
 """
 
 import asyncio
+import uuid
 
 import pytest
 
@@ -35,63 +36,81 @@ async def test_acapy_oid4vci_credential_issuance_to_credo(
     """Test ACA-Py issuing credentials to Credo via OID4VCI."""
 
     # Step 1: Create a supported credential on ACA-Py issuer
+    random_suffix = str(uuid.uuid4())[:8]
     credential_supported = {
-        "id": "IdentityCredential",
+        "id": f"IdentityCredential_{random_suffix}",
         "format": "vc+sd-jwt",
         "scope": "IdentityCredential",
-        "cryptographic_binding_methods_supported": ["did:key"],
-        "cryptographic_suites_supported": ["EdDSA"],
-        "credential_definition": {
-            "type": ["VerifiableCredential", "IdentityCredential"],
-            "credentialSubject": {
+        "format_data": {
+            "cryptographic_binding_methods_supported": ["did:key"],
+            "cryptographic_suites_supported": ["EdDSA"],
+            "vct": "IdentityCredential",
+            "claims": {
                 "given_name": {"mandatory": True},
                 "family_name": {"mandatory": True},
                 "email": {"mandatory": False},
                 "birth_date": {"mandatory": False},
             },
+            "display": [
+                {
+                    "name": "Identity Credential",
+                    "locale": "en-US",
+                    "description": "A basic identity credential",
+                }
+            ],
         },
-        "display": [
-            {
-                "name": "Identity Credential",
-                "locale": "en-US",
-                "description": "A basic identity credential",
-            }
-        ],
+        "vc_additional_data": {
+            "sd_list": ["/given_name", "/family_name", "/email", "/birth_date"]
+        },
     }
 
     # Register the credential type with ACA-Py issuer
     credential_config_response = await acapy_issuer_admin.post(
         "/oid4vci/credential-supported/create", json=credential_supported
     )
-    assert "credential_configuration_id" in credential_config_response
-    config_id = credential_config_response["credential_configuration_id"]
+    assert "supported_cred_id" in credential_config_response
+    config_id = credential_config_response["supported_cred_id"]
+
+    # Create a DID for the issuer
+    did_response = await acapy_issuer_admin.post(
+        "/wallet/did/create", json={"method": "key", "options": {"key_type": "ed25519"}}
+    )
+    issuer_did = did_response["result"]["did"]
 
     # Step 2: Create credential offer
-    offer_request = {
-        "credential_configuration_id": config_id,
-        "grants": {
-            "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
-                "pre-authorized_code": True,
-                "user_pin_required": False,
-            }
+    exchange_request = {
+        "supported_cred_id": config_id,
+        "credential_subject": {
+            "given_name": "John",
+            "family_name": "Doe",
+            "email": "john.doe@example.com",
+            "birth_date": "1990-01-01",
         },
+        "did": issuer_did,
     }
 
-    offer_response = await acapy_issuer_admin.post(
-        "/oid4vci/create-offer", json=offer_request
+    exchange_response = await acapy_issuer_admin.post(
+        "/oid4vci/exchange/create", json=exchange_request
+    )
+    exchange_id = exchange_response["exchange_id"]
+
+    offer_response = await acapy_issuer_admin.get(
+        "/oid4vci/credential-offer", params={"exchange_id": exchange_id}
     )
     assert "credential_offer_uri" in offer_response
     credential_offer_uri = offer_response["credential_offer_uri"]
 
     # Step 3: Credo accepts the credential offer
     accept_offer_request = {
-        "credential_offer_uri": credential_offer_uri,
+        "credential_offer": credential_offer_uri,
         "holder_did_method": "key",
     }
 
     response = await credo_client.post(
         "/oid4vci/accept-offer", json=accept_offer_request
     )
+    if response.status_code != 200:
+        print(f"Credo accept-offer failed: {response.text}")
     assert response.status_code == 200
     credential_result = response.json()
 
@@ -144,9 +163,7 @@ async def test_acapy_oid4vp_presentation_verification_from_credo(
     }
 
     # Step 2: Create presentation definition first
-    pres_def_data = {
-        "pres_def": presentation_definition
-    }
+    pres_def_data = {"pres_def": presentation_definition}
 
     pres_def_response = await acapy_verifier_admin.post(
         "/oid4vp/presentation-definition", json=pres_def_data
@@ -158,10 +175,8 @@ async def test_acapy_oid4vp_presentation_verification_from_credo(
     presentation_request_data = {
         "pres_def_id": pres_def_id,
         "vp_formats": {
-            "vc+sd-jwt": {
-                "sd-jwt_alg_values": ["EdDSA", "ES256K", "ES256"]
-            }
-        }
+            "vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256K", "ES256"]}
+        },
     }
 
     presentation_request = await acapy_verifier_admin.post(
@@ -186,68 +201,86 @@ async def test_full_acapy_credo_oid4vc_flow(
     """Test complete OID4VC flow: ACA-Py issues → Credo receives → Credo presents → ACA-Py verifies."""
 
     # Step 1: Setup credential configuration on ACA-Py issuer
+    random_suffix = str(uuid.uuid4())[:8]
     credential_supported = {
-        "id": "UniversityDegreeCredential",
+        "id": f"TestCredential_{random_suffix}",
         "format": "vc+sd-jwt",
         "scope": "UniversityDegree",
-        "cryptographic_binding_methods_supported": ["did:key"],
-        "cryptographic_suites_supported": ["EdDSA"],
-        "credential_definition": {
-            "type": ["VerifiableCredential", "UniversityDegreeCredential"],
-            "credentialSubject": {
+        "format_data": {
+            "cryptographic_binding_methods_supported": ["did:key"],
+            "cryptographic_suites_supported": ["EdDSA"],
+            "vct": "UniversityDegreeCredential",
+            "claims": {
                 "given_name": {"mandatory": True},
                 "family_name": {"mandatory": True},
                 "degree": {"mandatory": True},
                 "university": {"mandatory": True},
                 "graduation_date": {"mandatory": False},
             },
+            "display": [
+                {
+                    "name": "University Degree",
+                    "locale": "en-US",
+                    "description": "A university degree credential",
+                }
+            ],
         },
-        "display": [
-            {
-                "name": "University Degree",
-                "locale": "en-US",
-                "description": "A university degree credential",
-            }
-        ],
+        "vc_additional_data": {
+            "sd_list": [
+                "/given_name",
+                "/family_name",
+                "/degree",
+                "/university",
+                "/graduation_date",
+            ]
+        },
     }
 
     credential_config_response = await acapy_issuer_admin.post(
         "/oid4vci/credential-supported/create", json=credential_supported
     )
-    config_id = credential_config_response["credential_configuration_id"]
+    config_id = credential_config_response["supported_cred_id"]
+
+    # Create a DID for the issuer
+    did_response = await acapy_issuer_admin.post(
+        "/wallet/did/create", json={"method": "key", "options": {"key_type": "ed25519"}}
+    )
+    issuer_did = did_response["result"]["did"]
 
     # Step 2: Create pre-authorized credential offer
-    offer_request = {
-        "credential_configuration_id": config_id,
-        "credential_data": {
+    exchange_request = {
+        "supported_cred_id": config_id,
+        "credential_subject": {
             "given_name": "Alice",
             "family_name": "Smith",
             "degree": "Bachelor of Computer Science",
             "university": "Example University",
             "graduation_date": "2023-05-15",
         },
-        "grants": {
-            "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
-                "pre-authorized_code": True,
-                "user_pin_required": False,
-            }
-        },
+        "did": issuer_did,
     }
 
-    offer_response = await acapy_issuer_admin.post(
-        "/oid4vci/create-offer", json=offer_request
+    exchange_response = await acapy_issuer_admin.post(
+        "/oid4vci/exchange/create", json=exchange_request
+    )
+    exchange_id = exchange_response["exchange_id"]
+
+    offer_response = await acapy_issuer_admin.get(
+        "/oid4vci/credential-offer", params={"exchange_id": exchange_id}
     )
     credential_offer_uri = offer_response["credential_offer_uri"]
 
     # Step 3: Credo accepts credential offer and receives credential
     accept_offer_request = {
-        "credential_offer_uri": credential_offer_uri,
+        "credential_offer": credential_offer_uri,
         "holder_did_method": "key",
     }
 
     credential_response = await credo_client.post(
         "/oid4vci/accept-offer", json=accept_offer_request
     )
+    if credential_response.status_code != 200:
+        print(f"Credo accept-offer failed: {credential_response.text}")
     assert credential_response.status_code == 200
     credential_result = credential_response.json()
 
@@ -291,9 +324,7 @@ async def test_full_acapy_credo_oid4vc_flow(
     }
 
     # Create presentation definition first
-    pres_def_data = {
-        "pres_def": presentation_definition
-    }
+    pres_def_data = {"pres_def": presentation_definition}
 
     pres_def_response = await acapy_verifier_admin.post(
         "/oid4vp/presentation-definition", json=pres_def_data
@@ -304,10 +335,8 @@ async def test_full_acapy_credo_oid4vc_flow(
     presentation_request_data = {
         "pres_def_id": pres_def_id,
         "vp_formats": {
-            "vc+sd-jwt": {
-                "sd-jwt_alg_values": ["EdDSA", "ES256K", "ES256"]
-            }
-        }
+            "vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256K", "ES256"]}
+        },
     }
 
     presentation_request = await acapy_verifier_admin.post(

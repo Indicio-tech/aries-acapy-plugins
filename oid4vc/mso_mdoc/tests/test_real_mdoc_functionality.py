@@ -25,8 +25,7 @@ try:
 except ImportError:
     ISOMDL_AVAILABLE = False
 
-from ..key_generation import (generate_ec_key_pair,
-                              generate_self_signed_certificate)
+from ..key_generation import generate_ec_key_pair, generate_self_signed_certificate
 from ..mdoc import isomdl_mdoc_sign
 
 

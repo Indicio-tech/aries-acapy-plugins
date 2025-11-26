@@ -10,7 +10,9 @@ def record():
         format="jwt_vc_json",
         identifier="MyCredential",
         cryptographic_suites_supported=["EdDSA"],
-        proof_types_supported={"jwt": {"proof_signing_alg_values_supported": ["ES256"]}},
+        proof_types_supported={
+            "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
+        },
         format_data={
             "credentialSubject": {"name": "alice"},
             "type": ["VerifiableCredential", "UniversityDegreeCredential"],

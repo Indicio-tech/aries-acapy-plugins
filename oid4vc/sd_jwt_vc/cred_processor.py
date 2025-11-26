@@ -18,8 +18,13 @@ from sd_jwt.issuer import SDJWTIssuer, SDObj
 from sd_jwt.verifier import KB_DIGEST_KEY, SDJWTVerifier
 
 from oid4vc.config import Config
-from oid4vc.cred_processor import (CredProcessorError, CredVerifier, Issuer,
-                                   PresVerifier, VerifyResult)
+from oid4vc.cred_processor import (
+    CredProcessorError,
+    CredVerifier,
+    Issuer,
+    PresVerifier,
+    VerifyResult,
+)
 from oid4vc.jwt import jwt_sign, jwt_verify
 from oid4vc.models.exchange import OID4VCIExchangeRecord
 from oid4vc.models.presentation import OID4VPPresentation
@@ -73,7 +78,7 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
         sd_list = supported.vc_additional_data.get("sd_list") or []
         assert isinstance(sd_list, list)
 
-        if body.get("vct") != supported.format_data.get("vct"):
+        if body.get("vct") and body.get("vct") != supported.format_data.get("vct"):
             raise CredProcessorError("Requested vct does not match offer.")
 
         current_time = int(time.time())
@@ -125,7 +130,9 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
         except SDJWTError as error:
             raise CredProcessorError("Could not sign SD-JWT VC") from error
 
-    def validate_credential_subject(self, supported: SupportedCredential, subject: dict):
+    def validate_credential_subject(
+        self, supported: SupportedCredential, subject: dict
+    ):
         """Validate the credential subject."""
         vc_additional = supported.vc_additional_data
         assert vc_additional
