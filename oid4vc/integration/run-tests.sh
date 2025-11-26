@@ -38,6 +38,16 @@ cleanup() {
     print_success "Cleanup complete"
 }
 
+# Function to purge docker resources
+purge() {
+    cleanup
+    print_info "Purging all unused Docker resources (images, containers, networks, volumes)..."
+    print_warning "This will remove all stopped containers, all networks not used by at least one container, all dangling images, and all build cache."
+    
+    docker system prune -a --volumes -f
+    print_success "Docker purge complete"
+}
+
 # Function to check Docker is running
 check_docker() {
     if ! docker info >/dev/null 2>&1; then
@@ -59,6 +69,7 @@ show_usage() {
     echo "  test <name>    Run specific test file in dev environment"
     echo "  logs <service> Show logs for specific service"
     echo "  clean          Clean up all containers and volumes"
+    echo "  purge          Deep clean (prune) all unused Docker resources"
     echo "  status         Show status of running services"
     echo ""
     echo "Examples:"
@@ -68,6 +79,7 @@ show_usage() {
     echo "  $0 test test_docker_connectivity   # Run specific test"
     echo "  $0 logs credo-agent                # Show Credo agent logs"
     echo "  $0 clean                           # Clean up everything"
+    echo "  $0 purge                           # Deep clean to free space"
     echo ""
 }
 
@@ -213,6 +225,9 @@ main() {
             ;;
         "clean")
             cleanup
+            ;;
+        "purge")
+            purge
             ;;
         "status")
             show_status
