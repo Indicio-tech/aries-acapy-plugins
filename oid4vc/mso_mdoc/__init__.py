@@ -5,11 +5,11 @@ import os
 
 from acapy_agent.config.injection_context import InjectionContext
 from acapy_agent.core.profile import Profile
+
 from mso_mdoc.cred_processor import MsoMdocCredProcessor
 from mso_mdoc.key_generation import generate_default_keys_and_certs
 from mso_mdoc.mdoc.verifier import FileTrustStore
 from mso_mdoc.storage import MdocStorageManager
-
 from oid4vc.cred_processor import CredProcessors
 
 LOGGER = logging.getLogger(__name__)

@@ -3,8 +3,10 @@
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from core.observability.observability import (RequestContextMiddleware,
-                                              setup_structlog_json)
+from core.observability.observability import (
+    RequestContextMiddleware,
+    setup_structlog_json,
+)
 from core.utils.logging import get_logger
 from fastapi import Depends, FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware

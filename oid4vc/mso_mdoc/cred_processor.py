@@ -13,6 +13,7 @@ Key Protocol Compliance:
 """
 
 import ast
+import base64
 import json
 import logging
 import re
@@ -330,14 +331,13 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
 
             # Get payload and verification method
             verification_method = ex_record.verification_method
-            payload = ex_record.credential_subject
+            payload = self._prepare_payload(ex_record.credential_subject, doctype)
 
             # Resolve signing key
             async with context.profile.session() as session:
                 key_data = await self._resolve_signing_key(
                     context, session, verification_method
                 )
-                jwk = key_data.get("jwk")
                 key_id = key_data.get("key_id")
                 private_key_pem = key_data.get("metadata", {}).get("private_key_pem")
 
@@ -377,15 +377,24 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             if not certificate_pem:
                 raise CredProcessorError("Certificate PEM not found for signing key")
 
+            if not pop.holder_jwk:
+                raise CredProcessorError("Holder JWK not found in proof of possession")
+
+            # Clean up JWK for isomdl (remove extra fields like kid, alg, use)
+            # isomdl seems to reject alg and use fields in the holder JWK
+            holder_jwk_clean = {
+                k: v for k, v in pop.holder_jwk.items() if k in ["kty", "crv", "x", "y"]
+            }
+
             # Issue mDoc using isomdl-uniffi library with ISO 18013-5 compliance
             LOGGER.debug(
-                "Issuing mso_mdoc with jwk=%s headers=%s payload_keys=%s",
-                "<redacted>" if jwk else None,
+                "Issuing mso_mdoc with holder_jwk=%s headers=%s payload_keys=%s",
+                holder_jwk_clean,
                 headers,
                 (list(payload.keys()) if isinstance(payload, dict) else type(payload)),
             )
             mso_mdoc = isomdl_mdoc_sign(
-                jwk, headers, payload, certificate_pem, private_key_pem
+                holder_jwk_clean, headers, payload, certificate_pem, private_key_pem
             )
 
             # Normalize mDoc result handling for robust string/bytes processing
@@ -406,6 +415,39 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             ) from ex
 
         return mso_mdoc
+
+    def _prepare_payload(
+        self, payload: Dict[str, Any], doctype: str = None
+    ) -> Dict[str, Any]:
+        """Prepare payload for mDoc issuance.
+
+        Ensures required fields are present and binary data is correctly encoded.
+        """
+        prepared = payload.copy()
+
+        # Flatten doctype dictionary if present
+        # The Rust struct expects a flat dictionary with all fields
+        if doctype and doctype in prepared:
+            doctype_claims = prepared.pop(doctype)
+            if isinstance(doctype_claims, dict):
+                prepared.update(doctype_claims)
+
+        # Encode portrait if present
+        if "portrait" in prepared:
+            portrait = prepared["portrait"]
+            if isinstance(portrait, bytes):
+                prepared["portrait"] = base64.b64encode(portrait).decode("utf-8")
+            elif isinstance(portrait, list):
+                # Handle list of integers (byte array representation)
+                try:
+                    prepared["portrait"] = base64.b64encode(bytes(portrait)).decode(
+                        "utf-8"
+                    )
+                except Exception:
+                    # If conversion fails, leave as is
+                    pass
+
+        return prepared
 
     def _normalize_mdoc_result(self, result: Any) -> str:
         """Normalize mDoc result handling for robust string/bytes processing.

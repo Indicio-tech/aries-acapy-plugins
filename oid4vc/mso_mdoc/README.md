@@ -173,6 +173,7 @@ Enable debug logging for detailed operation information:
 
 ```python
 import logging
+
 logging.getLogger("mso_mdoc").setLevel(logging.DEBUG)
 ```
 

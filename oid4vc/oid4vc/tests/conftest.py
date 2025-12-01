@@ -8,12 +8,12 @@ from acapy_agent.wallet.default_verification_key_strategy import (
     BaseVerificationKeyStrategy,
     DefaultVerificationKeyStrategy,
 )
-from jwt_vc_json import JwtVcJsonCredProcessor
-from sd_jwt_vc.cred_processor import SdJwtCredIssueProcessor
 
+from jwt_vc_json import JwtVcJsonCredProcessor
 from oid4vc.config import Config
 from oid4vc.cred_processor import CredProcessors
 from oid4vc.jwk_resolver import JwkResolver
+from sd_jwt_vc.cred_processor import SdJwtCredIssueProcessor
 
 
 @pytest.fixture

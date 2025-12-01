@@ -85,7 +85,9 @@ class ClientService:
         if not row:
             raise HTTPException(status_code=404, detail="client_not_found")
         values = {
-            k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None
+            k: v
+            for k, v in data.model_dump(exclude_unset=True).items()
+            if v is not None
         }
         changed = await self.repo.update_values(row.id, values)
         await self.session.commit()

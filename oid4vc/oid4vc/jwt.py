@@ -1,9 +1,10 @@
-"""JWT Methods."""
-
+"""JWT utilities."""
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional
 
 from acapy_agent.core.profile import Profile
+from acapy_agent.resolver.base import ResolverError
 from acapy_agent.resolver.did_resolver import DIDResolver, DIDUrl
 from acapy_agent.wallet.base import BaseWallet
 from acapy_agent.wallet.jwt import (
@@ -15,9 +16,11 @@ from acapy_agent.wallet.jwt import (
     did_lookup_name,
     nym_to_did,
 )
-from acapy_agent.wallet.key_type import ED25519, P256
+from acapy_agent.wallet.key_type import ED25519, P256, KeyTypes
 from acapy_agent.wallet.util import b58_to_bytes, bytes_to_b64
 from aries_askar import Key, KeyAlg
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -38,25 +41,82 @@ class JWTVerifyResult:
 
 async def key_material_for_kid(profile: Profile, kid: str):
     """Resolve key material for a kid."""
-    DIDUrl(kid)
+    try:
+        LOGGER.info("Resolving key material for kid: %s", kid)
+        # DIDUrl(kid) # This line seems useless and might be causing issues
 
-    resolver = profile.inject(DIDResolver)
-    vm = await resolver.dereference_verification_method(profile, kid)
-    if vm.type == "JsonWebKey2020" and vm.public_key_jwk:
-        return Key.from_jwk(vm.public_key_jwk)
-    if vm.type == "Ed25519VerificationKey2018" and vm.public_key_base58:
-        key_bytes = b58_to_bytes(vm.public_key_base58)
-        return Key.from_public_bytes(KeyAlg.ED25519, key_bytes)
-    if vm.type == "Ed25519VerificationKey2020" and vm.public_key_multibase:
-        key_bytes = b58_to_bytes(vm.public_key_multibase[1:])
-        if len(key_bytes) == 32:
-            pass
-        elif len(key_bytes) == 34:
-            # Trim off the multicodec header, if present
-            key_bytes = key_bytes[2:]
-        return Key.from_public_bytes(KeyAlg.ED25519, key_bytes)
+        resolver = profile.inject(DIDResolver)
+        vm = None
+        try:
+            vm = await resolver.dereference_verification_method(profile, kid)
+        except (ValueError, ResolverError):
+            # If kid is a DID, try to resolve it and get the first verification method
+            LOGGER.info(
+                "dereference_verification_method failed for %s, trying to resolve as DID",
+                kid,
+            )
+            try:
+                did_doc_dict = await resolver.resolve(profile, kid)
+                # We assume the first verification method is the one we want
+                # if no fragment is provided.
+                # This is a heuristic for did:key where the kid is often just the DID
+                if did_doc_dict:
+                    import pydid
 
-    raise ValueError("Unsupported verification method type")
+                    did_doc = pydid.deserialize_document(did_doc_dict)
+                    if did_doc.verification_method:
+                        vm = did_doc.verification_method[0]
+            except Exception as e:
+                LOGGER.warning("Failed to resolve DID %s: %s", kid, e)
+
+        LOGGER.info("Dereferenced VM: %s", vm)
+        if not vm:
+            raise ValueError(f"Could not dereference verification method: {kid}")
+
+        LOGGER.info("VM Type: %s", vm.type)
+
+        if vm.type == "JsonWebKey2020" and vm.public_key_jwk:
+            return Key.from_jwk(vm.public_key_jwk)
+        if vm.type == "Ed25519VerificationKey2018" and vm.public_key_base58:
+            key_bytes = b58_to_bytes(vm.public_key_base58)
+            return Key.from_public_bytes(KeyAlg.ED25519, key_bytes)
+        if vm.type == "Ed25519VerificationKey2020" and vm.public_key_multibase:
+            key_bytes = b58_to_bytes(vm.public_key_multibase[1:])
+            if len(key_bytes) == 32:
+                pass
+            elif len(key_bytes) == 34:
+                # Trim off the multicodec header, if present
+                key_bytes = key_bytes[2:]
+            return Key.from_public_bytes(KeyAlg.ED25519, key_bytes)
+
+        if vm.type == "Multikey" and vm.public_key_multibase:
+            LOGGER.info("Processing Multikey: %s", vm.public_key_multibase)
+            key_bytes = b58_to_bytes(vm.public_key_multibase[1:])
+            key_types = KeyTypes()
+            key_type = key_types.from_prefixed_bytes(key_bytes)
+            if not key_type:
+                LOGGER.error("Unknown key type in Multikey")
+                raise ValueError("Unknown key type in Multikey")
+
+            LOGGER.info("Detected key type: %s", key_type.key_type)
+            prefix_len = len(key_type.multicodec_prefix)
+            key_bytes = key_bytes[prefix_len:]
+
+            if key_type == P256:
+                return Key.from_public_bytes(KeyAlg.P256, key_bytes)
+            elif key_type == ED25519:
+                return Key.from_public_bytes(KeyAlg.ED25519, key_bytes)
+            else:
+                LOGGER.error("Unsupported key type in Multikey: %s", key_type.key_type)
+                raise ValueError(
+                    f"Unsupported key type in Multikey: {key_type.key_type}"
+                )
+
+        LOGGER.error("Unsupported verification method type: %s", vm.type)
+        raise ValueError("Unsupported verification method type")
+    except Exception as e:
+        LOGGER.error("Error in key_material_for_kid: %s", e, exc_info=True)
+        raise
 
 
 async def jwt_sign(

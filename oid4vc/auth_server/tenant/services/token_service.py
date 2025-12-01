@@ -3,8 +3,13 @@
 import secrets
 from typing import Any
 
-from core.security.utils import (compute_access_exp, compute_refresh_exp,
-                                 hash_token, new_refresh_token, utcnow)
+from core.security.utils import (
+    compute_access_exp,
+    compute_refresh_exp,
+    hash_token,
+    new_refresh_token,
+    utcnow,
+)
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from tenant.config import settings

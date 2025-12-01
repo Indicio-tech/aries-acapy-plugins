@@ -175,17 +175,24 @@ async def request_uri(acapy_verifier: httpx.AsyncClient) -> str:
     """Create a presentation request URI."""
     # Create presentation definition
     pres_def = {
-        "id": f"pres-def-{uuid.uuid4()}",
+        "id": str(uuid.uuid4()),
         "input_descriptors": [
             {
                 "id": "test_descriptor",
                 "name": "Test Descriptor",
                 "purpose": "Testing",
+                "format": {
+                    "jwt_vc_json": {"alg": ["EdDSA", "ES256"]},
+                    "jwt_vc": {"alg": ["EdDSA", "ES256"]},
+                },
                 "constraints": {
                     "fields": [
                         {
-                            "path": ["$.credentialSubject.name"],
-                            "filter": {"type": "string"},
+                            "path": ["$.vc.type", "$.type"],
+                            "filter": {
+                                "type": "array",
+                                "contains": {"const": "TestCredential"},
+                            },
                         }
                     ]
                 },
@@ -202,7 +209,12 @@ async def request_uri(acapy_verifier: httpx.AsyncClient) -> str:
     # Create request
     request_body = {
         "pres_def_id": pres_def_id,
-        "vp_formats": {"jwt_vp_json": {"alg": ["ES256"]}},
+        "vp_formats": {
+            "jwt_vp_json": {"alg": ["ES256", "ES256K", "EdDSA"]},
+            "jwt_vc_json": {"alg": ["ES256", "ES256K", "EdDSA"]},
+            "jwt_vc": {"alg": ["ES256", "ES256K", "EdDSA"]},
+            "jwt_vp": {"alg": ["ES256", "ES256K", "EdDSA"]},
+        },
     }
 
     response = await acapy_verifier.post("/oid4vp/request", json=request_body)
@@ -214,7 +226,7 @@ async def request_uri(acapy_verifier: httpx.AsyncClient) -> str:
 async def sdjwt_request_uri(acapy_verifier: httpx.AsyncClient) -> str:
     """Create an SD-JWT presentation request URI."""
     pres_def = {
-        "id": f"sdjwt-pres-def-{uuid.uuid4()}",
+        "id": str(uuid.uuid4()),
         "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256"]}},
         "input_descriptors": [
             {

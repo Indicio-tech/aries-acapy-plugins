@@ -1,3 +1,24 @@
+FROM python:3.12-slim-bookworm AS isomdl-build
+WORKDIR /build
+RUN apt-get update && apt-get install -y curl git build-essential
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+ARG ISOMDL_BRANCH=main
+RUN git clone https://github.com/Indicio-tech/isomdl-uniffi.git
+WORKDIR /build/isomdl-uniffi
+RUN git checkout ${ISOMDL_BRANCH}
+
+# Ensure build script is executable
+RUN chmod +x python/precommit/build-bindings.sh
+
+WORKDIR /build/isomdl-uniffi/python
+# Create package directory and __init__.py to ensure find_packages() works
+RUN mkdir -p isomdl_uniffi && \
+    echo "try:\n    from .isomdl_uniffi import *\nexcept ImportError:\n    pass" > isomdl_uniffi/__init__.py
+RUN pip install build wheel setuptools
+RUN python setup.py bdist_wheel || { echo "Build failed"; ls -R /build/isomdl-uniffi; exit 1; }
+
 FROM python:3.12-slim-bookworm
 WORKDIR /usr/src/app
 
@@ -9,6 +30,9 @@ RUN chmod +x /wait
 # Install system dependencies
 RUN apt-get update && apt-get install -y curl jq git && apt-get clean
 
+# Clone ACA-Py to /usr/acapy to satisfy ../../acapy path dependency
+RUN git clone https://github.com/openwallet-foundation/acapy.git /usr/acapy
+
 # install uv
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:$PATH"
@@ -16,6 +40,14 @@ ENV PATH="/root/.local/bin:$PATH"
 # Setup project
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen
+
+# Install isomdl-uniffi from builder stage
+COPY --from=isomdl-build /build/isomdl-uniffi/python/dist/*.whl /tmp/
+# Install into the virtual environment created by uv sync
+RUN uv pip install /tmp/*.whl --python .venv
+
+# Install acapy-agent from cloned source
+RUN uv pip install -e /usr/acapy --python .venv
 
 # Copy integration test components
 COPY tests/ tests/

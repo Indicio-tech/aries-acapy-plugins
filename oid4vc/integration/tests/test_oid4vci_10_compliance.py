@@ -96,7 +96,9 @@ class TestOID4VCI10Compliance:
         )
 
         # Setup supported credential
-        supported_cred_id = await test_runner.setup_supported_credential()
+        supported_cred_result = await test_runner.setup_supported_credential()
+        supported_cred_id = supported_cred_result["supported_cred_id"]
+        credential_identifier = supported_cred_result["identifier"]
         offer_data = await test_runner.create_credential_offer(supported_cred_id)
 
         # Get access token
@@ -150,7 +152,7 @@ class TestOID4VCI10Compliance:
             # Test credential request with credential_identifier (OID4VCI 1.0 format)
             # Use a credential that maps to jwt_vc_json to avoid mso_mdoc dependency issues
             credential_request = {
-                "credential_identifier": "UniversityDegreeCredential",
+                "credential_identifier": credential_identifier,
                 "proof": {"jwt": proof_jwt},
             }
 
@@ -181,7 +183,8 @@ class TestOID4VCI10Compliance:
         LOGGER.info("Testing credential_identifier and format mutual exclusion...")
 
         # Setup
-        supported_cred_id = await test_runner.setup_supported_credential()
+        supported_cred_result = await test_runner.setup_supported_credential()
+        supported_cred_id = supported_cred_result["supported_cred_id"]
         offer_data = await test_runner.create_credential_offer(supported_cred_id)
 
         # Extract pre-authorized code from credential offer
@@ -251,7 +254,8 @@ class TestOID4VCI10Compliance:
         LOGGER.info("Testing OID4VCI 1.0 proof of possession...")
 
         # Setup
-        supported_cred_id = await test_runner.setup_supported_credential()
+        supported_cred_result = await test_runner.setup_supported_credential()
+        supported_cred_id = supported_cred_result["supported_cred_id"]
         offer_data = await test_runner.create_credential_offer(supported_cred_id)
 
         # Extract pre-authorized code from credential offer
@@ -279,7 +283,9 @@ class TestOID4VCI10Compliance:
 
             # Test with invalid proof type
             invalid_proof_request = {
-                "credential_identifier": "org.iso.18013.5.1.mDL",
+                "credential_identifier": offer_data["credential_offer"][
+                    "credential_configuration_ids"
+                ][0],
                 "proof": {
                     "jwt": (
                         "eyJ0eXAiOiJpbnZhbGlkIiwiYWxnIjoiRVMyNTYifQ."

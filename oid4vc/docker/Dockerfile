@@ -1,8 +1,32 @@
+FROM python:3.12-slim-bookworm AS isomdl-build
+WORKDIR /build
+RUN apt-get update && apt-get install -y curl git build-essential
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+ARG ISOMDL_BRANCH=feature/oid4vp-stateless-verification
+RUN git clone https://github.com/Indicio-tech/isomdl-uniffi.git
+WORKDIR /build/isomdl-uniffi
+RUN git checkout ${ISOMDL_BRANCH}
+
+# Ensure build script is executable
+RUN chmod +x python/precommit/build-bindings.sh
+
+WORKDIR /build/isomdl-uniffi/python
+# Create package directory and __init__.py to ensure find_packages() works
+RUN mkdir -p isomdl_uniffi && \
+    echo "try:\n    from .isomdl_uniffi import *\nexcept ImportError:\n    pass" > isomdl_uniffi/__init__.py
+RUN pip install build wheel setuptools
+RUN python setup.py bdist_wheel || { echo "Build failed"; ls -R /build/isomdl-uniffi; exit 1; }
+RUN ls -R /build/isomdl-uniffi/python/dist
+
 FROM python:3.12-slim-bookworm AS base
 WORKDIR /usr/src/app
 
-# Install dependencies including git
-RUN apt-get update && apt-get install -y curl jq git && apt-get clean
+# Install dependencies including git and rust
+RUN apt-get update && apt-get install -y curl jq git build-essential && apt-get clean
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Accept build argument for ACA-Py tag
 ARG ACAPY_TAG=main
@@ -27,9 +51,9 @@ COPY jwt_vc_json/ jwt_vc_json/
 COPY mso_mdoc/ mso_mdoc/
 COPY sd_jwt_vc/ sd_jwt_vc/
 
-# Copy and install isomdl-uniffi wheel (temporary solution until repo is public)
-COPY docker/isomdl_uniffi-0.1.0-py3-none-any.whl ./
-RUN pip install isomdl_uniffi-0.1.0-py3-none-any.whl --no-cache-dir
+# Install isomdl-uniffi from builder stage
+COPY --from=isomdl-build /build/isomdl-uniffi/python/dist/*.whl /tmp/
+RUN pip install /tmp/*.whl
 
 # Install the plugin (isomdl-uniffi will be skipped since already installed)
 RUN pip install -e . --no-cache-dir

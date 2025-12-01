@@ -1,10 +1,14 @@
 """OID4VC integration tests with mso_mdoc format (ISO 18013-5)."""
 
+import base64
 import logging
+import time
 import uuid
 
+import cbor2
 import httpx
 import pytest
+from cbor2 import CBORTag
 
 from .test_config import MDOC_AVAILABLE, TEST_CONFIG, mdl
 from .test_utils import OID4VCTestHelper
@@ -12,11 +16,12 @@ from .test_utils import OID4VCTestHelper
 LOGGER = logging.getLogger(__name__)
 
 
+@pytest.mark.mdoc
 class TestOID4VCMdocCompliance:
     """Test OID4VC integration with mso_mdoc format (ISO 18013-5)."""
 
     @pytest.fixture(scope="class")
-    async def test_runner(self):
+    def test_runner(self):
         """Setup test runner."""
         runner = OID4VCTestHelper()
         yield runner
@@ -80,11 +85,12 @@ class TestOID4VCMdocCompliance:
         LOGGER.info("Testing complete mso_mdoc credential request flow...")
 
         # Setup mdoc credential
-        supported_cred_id = await test_runner.setup_mdoc_credential()
-        offer_data = await test_runner.create_mdoc_credential_offer(supported_cred_id)
+        supported_cred = await test_runner.setup_mdoc_credential()
+        offer_data = await test_runner.create_mdoc_credential_offer(supported_cred)
 
         # Extract holder key for proof generation
         holder_key = offer_data["holder_key"]
+        holder_did = offer_data["did"]
 
         # Get access token using pre-authorized code flow
         grants = offer_data["credential_offer"]["grants"]
@@ -112,15 +118,48 @@ class TestOID4VCMdocCompliance:
             assert token_response.status_code == 200
             token_data = token_response.json()
             access_token = token_data["access_token"]
+            c_nonce = token_data.get("c_nonce")
+
+            # Create CWT proof
+            # COSE_Sign1: [protected, unprotected, payload, signature]
+            # Protected header: {1: -7} (Alg: ES256) -> b'\xa1\x01\x26'
+            protected_header = {1: -7}
+            protected_header_bytes = cbor2.dumps(protected_header)
+
+            claims = {
+                "aud": TEST_CONFIG["oid4vci_endpoint"],
+                "iat": int(time.time()),
+            }
+            if c_nonce:
+                claims["nonce"] = c_nonce
+
+            payload_bytes = cbor2.dumps(claims)
+
+            # Sig_structure: ['Signature1', protected, external_aad, payload]
+            sig_structure = ["Signature1", protected_header_bytes, b"", payload_bytes]
+            sig_structure_bytes = cbor2.dumps(sig_structure)
+
+            signature = holder_key.sign(sig_structure_bytes)
+
+            # Construct COSE_Sign1
+            unprotected_header = {4: holder_did.encode()}
+            cose_sign1 = [
+                protected_header_bytes,
+                unprotected_header,
+                payload_bytes,
+                signature,
+            ]
+            cwt_bytes = cbor2.dumps(CBORTag(18, cose_sign1))
+            cwt_proof = base64.urlsafe_b64encode(cwt_bytes).decode().rstrip("=")
 
             # Create mdoc credential request
             # For mso_mdoc, we use credential_identifier (OID4VCI 1.0 style)
             credential_request = {
-                "credential_identifier": "org.iso.18013.5.1.mDL",
+                "credential_identifier": supported_cred["id"],
                 "doctype": "org.iso.18013.5.1.mDL",
                 "proof": {
                     "proof_type": "cwt",
-                    "cwt": holder_key.sign(b"test_proof_data"),
+                    "cwt": cwt_proof,
                 },
             }
 
@@ -237,9 +276,10 @@ class TestOID4VCMdocCompliance:
         LOGGER.info("Testing OID4VC-to-mdoc interoperability...")
 
         # Phase 1: Issue credential via OID4VC
-        supported_cred_id = await test_runner.setup_mdoc_credential()
-        offer_data = await test_runner.create_mdoc_credential_offer(supported_cred_id)
+        supported_cred = await test_runner.setup_mdoc_credential()
+        offer_data = await test_runner.create_mdoc_credential_offer(supported_cred)
         holder_key = offer_data["holder_key"]
+        holder_did = offer_data["did"]
 
         # Get credential via OID4VC flow
         grants = offer_data["credential_offer"]["grants"]
@@ -258,12 +298,44 @@ class TestOID4VCMdocCompliance:
             )
             token_data = token_response.json()
             access_token = token_data["access_token"]
+            c_nonce = token_data.get("c_nonce")
+
+            # Create CWT proof
+            protected_header = {1: -7}
+            protected_header_bytes = cbor2.dumps(protected_header)
+
+            claims = {
+                "aud": TEST_CONFIG["oid4vci_endpoint"],
+                "iat": int(time.time()),
+            }
+            if c_nonce:
+                claims["nonce"] = c_nonce
+
+            payload_bytes = cbor2.dumps(claims)
+
+            sig_structure = ["Signature1", protected_header_bytes, b"", payload_bytes]
+            sig_structure_bytes = cbor2.dumps(sig_structure)
+
+            signature = holder_key.sign(sig_structure_bytes)
+
+            unprotected_header = {4: holder_did.encode()}
+            cose_sign1 = [
+                protected_header_bytes,
+                unprotected_header,
+                payload_bytes,
+                signature,
+            ]
+            cwt_bytes = cbor2.dumps(CBORTag(18, cose_sign1))
+            cwt_proof = base64.urlsafe_b64encode(cwt_bytes).decode().rstrip("=")
 
             # Request mso_mdoc credential
             credential_request = {
-                "credential_identifier": "org.iso.18013.5.1.mDL",
+                "credential_identifier": supported_cred["id"],
                 "doctype": "org.iso.18013.5.1.mDL",
-                "proof": {"proof_type": "cwt", "cwt": holder_key.sign(b"interop_test")},
+                "proof": {
+                    "proof_type": "cwt",
+                    "cwt": cwt_proof,
+                },
             }
 
             cred_response = await client.post(

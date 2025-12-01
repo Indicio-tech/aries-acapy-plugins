@@ -651,7 +651,7 @@ async def _handle_cwt_proof(
 
     # Extract headers
     # 4: kid, 1: alg
-    kid_bytes = msg.headers.get(4)
+    kid_bytes = msg.protected.get(4)
     if not kid_bytes:
         kid_bytes = msg.unprotected.get(4)
 
@@ -669,10 +669,10 @@ async def _handle_cwt_proof(
     # Convert key to COSEKey
     try:
         jwk = json.loads(key.get_jwk_public())
+        # Ensure kid is set in JWK so it propagates to COSEKey
+        if "kid" not in jwk:
+            jwk["kid"] = kid
         cose_key = cwt.COSEKey.from_jwk(jwk)
-        # Ensure kid is set in cose_key if not present
-        if not cose_key.kid:
-            cose_key.kid = kid_bytes if isinstance(kid_bytes, bytes) else kid.encode()
     except Exception as e:
         raise web.HTTPBadRequest(reason=f"Failed to convert key to COSEKey: {e}")
 
@@ -703,8 +703,15 @@ async def _handle_cwt_proof(
         if not redeemed:
             raise web.HTTPBadRequest(reason="Invalid proof: wrong or used nonce.")
 
+    # Combine protected and unprotected headers
+    headers = {}
+    if msg.protected:
+        headers.update(msg.protected)
+    if msg.unprotected:
+        headers.update(msg.unprotected)
+
     return PopResult(
-        headers=msg.headers,
+        headers=headers,
         payload=decoded,
         verified=True,
         holder_kid=kid,
@@ -813,11 +820,15 @@ async def issue_cred(request: web.Request):
         raise web.HTTPBadRequest(reason=err.roll_up) from err
 
     if not supported.format:
+        LOGGER.error("SupportedCredential missing format identifier.")
         raise web.HTTPBadRequest(
             reason="SupportedCredential missing format identifier."
         )
 
     if format_param and supported.format != format_param:
+        LOGGER.error(
+            f"Requested format {format_param} does not match offer {supported.format}."
+        )
         raise web.HTTPBadRequest(reason="Requested format does not match offer.")
 
     authorization_details = token_result.payload.get("authorization_details", None)
@@ -828,17 +839,20 @@ async def issue_cred(request: web.Request):
             for ad in authorization_details
         )
         if not found:
+            LOGGER.error(f"{supported.identifier} is not authorized by the token.")
             raise web.HTTPBadRequest(
                 reason=f"{supported.identifier} is not authorized by the token."
             )
 
     c_nonce = token_result.payload.get("c_nonce") or ex_record.nonce
     if c_nonce is None:
+        LOGGER.error("Invalid exchange; no offer created for this request")
         raise web.HTTPBadRequest(
             reason="Invalid exchange; no offer created for this request"
         )
 
     if not credential_identifier and not format_param:
+        LOGGER.error("Either credential_identifier or format parameter must be present")
         return web.json_response(
             {
                 "message": "Either credential_identifier or format parameter "
@@ -848,6 +862,7 @@ async def issue_cred(request: web.Request):
         )
 
     if credential_identifier and format_param:
+        LOGGER.error("credential_identifier and format are mutually exclusive")
         return web.json_response(
             {"message": "credential_identifier and format are mutually exclusive"},
             status=400,
@@ -866,20 +881,36 @@ async def issue_cred(request: web.Request):
                     selected_supported = matches[0]
             except Exception:
                 selected_supported = supported
-        elif format_param:
-            try:
-                matches = await SupportedCredential.query(
-                    session, tag_filter={"format": format_param}
-                )
-                if matches:
-                    selected_supported = matches[0]
-            except Exception:
-                selected_supported = supported
+        # elif format_param:
+        #     try:
+        #         matches = await SupportedCredential.query(
+        #             session, tag_filter={"format": format_param}
+        #         )
+        #         if matches:
+        #             selected_supported = matches[0]
+        #     except Exception:
+        #         selected_supported = supported
 
     if not selected_supported.format:
+        LOGGER.error("Supported credential has no format")
         return web.json_response(
-            {"message": "SupportedCredential missing format identifier"}, status=400
+            {"message": "Supported credential has no format"}, status=500
         )
+
+    if credential_identifier:
+        if credential_identifier != selected_supported.identifier:
+            LOGGER.error(
+                f"Requested credential_identifier {credential_identifier} "
+                f"does not match offered credential {selected_supported.identifier}"
+            )
+            return web.json_response(
+                {
+                    "error": "invalid_request",
+                    "message": f"Requested credential_identifier {credential_identifier} "
+                    f"does not match offered credential {selected_supported.identifier}",
+                },
+                status=400,
+            )
 
     if c_nonce is None:
         return web.json_response(
@@ -956,6 +987,7 @@ async def issue_cred(request: web.Request):
     if selected_supported.format == "mso_mdoc":
         # Require a proof object for mso_mdoc
         if not isinstance(proof_obj, dict):
+            LOGGER.error("proof is required for mso_mdoc")
             return web.json_response(
                 {"message": "proof is required for mso_mdoc"}, status=400
             )
@@ -967,6 +999,7 @@ async def issue_cred(request: web.Request):
                     context.profile, proof_obj, c_nonce
                 )
             except web.HTTPBadRequest as exc:
+                LOGGER.error(f"Proof verification failed (mso_mdoc/jwt): {exc.reason}")
                 return web.json_response({"message": exc.reason}, status=400)
         elif "cwt" in proof_obj or proof_obj.get("proof_type") == "cwt":
             # Strictly verify the CWT proof
@@ -975,8 +1008,10 @@ async def issue_cred(request: web.Request):
                     context.profile, proof_obj, c_nonce
                 )
             except web.HTTPBadRequest as exc:
+                LOGGER.error(f"Proof verification failed (mso_mdoc/cwt): {exc.reason}")
                 return web.json_response({"message": exc.reason}, status=400)
         else:
+            LOGGER.error("Unsupported proof type")
             return web.json_response({"message": "Unsupported proof type"}, status=400)
     else:
         # jwt_vc_json and other formats: proof is optional.
@@ -987,6 +1022,7 @@ async def issue_cred(request: web.Request):
                     context.profile, proof_obj, c_nonce
                 )
             except web.HTTPBadRequest as exc:
+                LOGGER.error(f"Proof verification failed (jwt_vc_json): {exc.reason}")
                 return web.json_response({"message": exc.reason}, status=400)
         # If no proof or no holder key material, fall back to using the exchange's
         # verification method
@@ -1008,6 +1044,7 @@ async def issue_cred(request: web.Request):
         )
     except CredProcessorError as e:
         # Ensure the underlying error text is returned for debugging
+        LOGGER.error(f"Credential processing failed: {e}")
         return web.json_response({"message": str(e)}, status=400)
     except Exception as e:  # Ensure JSON error body for unexpected failures
         LOGGER.exception("Unexpected error during credential issuance")
@@ -1029,6 +1066,7 @@ async def issue_cred(request: web.Request):
     if is_offer:
         cred_response["refresh_id"] = ex_record.refresh_id
 
+    LOGGER.info(f"Sending credential response: {cred_response}")
     return web.json_response(cred_response)
 
 
@@ -1174,26 +1212,30 @@ async def get_request(request: web.Request):
         "nbf": now,
         "exp": now + 120,
         "jti": str(uuid.uuid4()),
-        "client_id": response_uri,
-        "client_id_scheme": "redirect_uri",
+        "client_id": jwk.did,
+        "client_id_scheme": "did",
         "response_uri": response_uri,
         "state": pres.presentation_id,
         "nonce": pres.nonce,
-        "id_token_signing_alg_values_supported": ["ES256", "EdDSA"],
-        "request_object_signing_alg_values_supported": ["ES256", "EdDSA"],
-        "response_types_supported": ["id_token", "vp_token"],
-        "scopes_supported": ["openid", "vp_token"],
-        "subject_types_supported": ["pairwise"],
-        "subject_syntax_types_supported": ["urn:ietf:params:oauth:jwk-thumbprint"],
-        "vp_formats": record.vp_formats,
+        "client_metadata": {
+            "id_token_signing_alg_values_supported": ["ES256", "EdDSA"],
+            "request_object_signing_alg_values_supported": ["ES256", "EdDSA"],
+            "response_types_supported": ["id_token", "vp_token"],
+            "scopes_supported": ["openid"],
+            "subject_types_supported": ["pairwise"],
+            "subject_syntax_types_supported": ["urn:ietf:params:oauth:jwk-thumbprint"],
+            "vp_formats": record.vp_formats,
+        },
         "response_type": "vp_token",
         "response_mode": "direct_post",
-        "scope": "vp_token",
+        "scope": "openid vp_token",
     }
     if pres_def is not None:
         payload["presentation_definition"] = pres_def.pres_def
     if dcql_query is not None:
         payload["dcql_query"] = dcql_query.record_value
+
+    LOGGER.error(f"DEBUG: Generated JWT payload: {payload}")
 
     headers = {
         "kid": f"{jwk.did}#0",

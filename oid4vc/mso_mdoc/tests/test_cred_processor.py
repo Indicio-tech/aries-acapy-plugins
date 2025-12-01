@@ -22,7 +22,7 @@ class TestMsoMdocCredProcessor:
         """Mock supported credential."""
         supported = MagicMock(spec=SupportedCredential)
         supported.format = "mso_mdoc"
-        supported.doctype = "org.iso.18013.5.1.mDL"
+        supported.format_data = {"doctype": "org.iso.18013.5.1.mDL"}
         return supported
 
     @pytest.fixture
@@ -55,7 +55,21 @@ class TestMsoMdocCredProcessor:
         # which would require proper key setup and storage
 
         # Create mock context and exchange record
-        mock_context = AsyncMock()
+        mock_context = MagicMock()
+        mock_session = AsyncMock()
+
+        # Fix: inject is synchronous and should return a mock storage
+        mock_storage = MagicMock()
+        # find_all_records is awaited, so it must be async
+        mock_storage.find_all_records = AsyncMock(return_value=[])
+        # get_record is also awaited
+        mock_storage.get_record = AsyncMock(return_value=None)
+
+        mock_session.inject = MagicMock(return_value=mock_storage)
+
+        mock_context.profile.session.return_value = mock_session
+        mock_session.__aenter__.return_value = mock_session
+
         mock_exchange_record = MagicMock()
         mock_pop_result = MagicMock()
         mock_pop_result.holder_jwk = None
@@ -64,6 +78,8 @@ class TestMsoMdocCredProcessor:
         # Test that the method signature is correct
         # We expect this to fail at runtime due to missing setup,
         # but the interface should be correct
+        from oid4vc.cred_processor import CredProcessorError
+
         try:
             await cred_processor.issue(
                 body=sample_body,
@@ -72,7 +88,7 @@ class TestMsoMdocCredProcessor:
                 ex_record=mock_exchange_record,
                 pop=mock_pop_result,
             )
-        except (AttributeError, TypeError, ValueError):
+        except (AttributeError, TypeError, ValueError, CredProcessorError):
             # Expected - we're testing interface, not full functionality
             pass
 
@@ -98,3 +114,71 @@ class TestMsoMdocCredProcessor:
         # Verify error class is available
         assert CredProcessorError is not None
         assert issubclass(CredProcessorError, Exception)
+
+    @pytest.mark.asyncio
+    async def test_issue_calls_signer_correctly(
+        self, cred_processor, sample_body, mock_supported_credential
+    ):
+        """Test that issue method correctly prepares data and calls signer."""
+        from unittest.mock import patch
+
+        from oid4vc.models.exchange import OID4VCIExchangeRecord
+        from oid4vc.pop_result import PopResult
+
+        # Mock dependencies
+        mock_context = MagicMock()
+        mock_session = AsyncMock()
+        mock_context.profile.session.return_value = mock_session
+        mock_session.__aenter__.return_value = mock_session
+
+        # Mock storage manager
+        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockStorage:
+            mock_storage = MockStorage.return_value
+            # Mock key resolution
+            mock_storage.get_default_signing_key = AsyncMock(
+                return_value={
+                    "jwk": {"kty": "EC", "crv": "P-256", "x": "test", "y": "test"},
+                    "key_id": "test-key",
+                    "metadata": {"private_key_pem": "test-priv-key"},
+                }
+            )
+            mock_storage.get_certificate_for_key = AsyncMock(return_value="test-cert")
+
+            # Mock signer
+            with patch("mso_mdoc.cred_processor.isomdl_mdoc_sign") as mock_sign:
+                mock_sign.return_value = "mock_credential_string"
+
+                # Setup input
+                ex_record = MagicMock(spec=OID4VCIExchangeRecord)
+                ex_record.verification_method = None
+                ex_record.credential_subject = sample_body
+
+                pop = MagicMock(spec=PopResult)
+                pop.holder_jwk = {
+                    "kty": "EC",
+                    "crv": "P-256",
+                    "x": "holder",
+                    "y": "holder",
+                }
+                pop.holder_kid = None
+
+                # Call issue
+                result = await cred_processor.issue(
+                    body={"doctype": "org.iso.18013.5.1.mDL"},
+                    supported=mock_supported_credential,
+                    ex_record=ex_record,
+                    pop=pop,
+                    context=mock_context,
+                )
+
+                # Verify result
+                assert result == "mock_credential_string"
+
+                # Verify signer was called with correct arguments
+                mock_sign.assert_called_once()
+                call_args = mock_sign.call_args
+                assert call_args[0][0] == pop.holder_jwk  # holder_jwk
+                assert call_args[0][1]["doctype"] == "org.iso.18013.5.1.mDL"  # headers
+                assert call_args[0][2] == sample_body  # payload
+                assert call_args[0][3] == "test-cert"  # cert
+                assert call_args[0][4] == "test-priv-key"  # priv key

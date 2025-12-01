@@ -21,6 +21,10 @@ services:
     platform:
       linux/amd64
     image: oid4vc
+    networks:
+      default:
+        aliases:
+          - issuer.com
     build: 
       dockerfile: docker/Dockerfile
       context: ..
@@ -29,16 +33,14 @@ services:
       - "3001:3001"
       - "8081:8081"
     volumes:
-      - ../docker/entrypoint.sh:/entrypoint.sh:ro,z
       - ../oid4vc:/usr/src/app/oid4vc:z
     environment:
       RUST_LOG: warn
       OID4VCI_HOST: 0.0.0.0
       OID4VCI_PORT: 8081
-      OID4VCI_ENDPOINT: "http://issuer:8081"
+      OID4VCI_ENDPOINT: "http://issuer.com:8081"
       TUNNEL_ENDPOINT: "http://ngrok:4040"
-    entrypoint: >
-      /bin/sh -c '/entrypoint.sh aca-py "$$@"' --
+    entrypoint: aca-py
     command: >
       start
         --inbound-transport http 0.0.0.0 3000
@@ -63,23 +65,20 @@ services:
       interval: 7s
       timeout: 5s
       retries: 5
-    depends_on:
-      ngrok:
-        condition: service_healthy
 
   credo:
     image: credo-json-rpc
     build: credo
     ports:
-      - "3020:3000"
+      - "3020:3020"
     environment:
       AFJ_MESSAGE_PORT: 3001
       AFJ_ENDPOINT: "http://credo:3001"
     volumes:
       - ./credo/index.ts:/usr/src/app/index.ts:z
     healthcheck:
-      test: nc -z 0.0.0.0 3000
-      start_period: 1s
+      test: curl -f http://localhost:3020/health || exit 1
+      start_period: 5s
       interval: 3s
       timeout: 5s
       retries: 5
@@ -95,9 +94,9 @@ services:
       - ./tests:/usr/src/app/tests:z
       - ./isomdl_wrapper:/usr/src/app/integration/isomdl_wrapper:z
     environment:
-      ISSUER_ADMIN_ENDPOINT: http://issuer:3001
-      CREDO_HOST: credo
-      CREDO_PORT: 3000
+      CREDO_AGENT_URL: http://credo:3020
+      ACAPY_ISSUER_ADMIN_URL: http://issuer:3001
+      ACAPY_VERIFIER_ADMIN_URL: http://issuer:3001
     command: -m interop
     depends_on:
       issuer:

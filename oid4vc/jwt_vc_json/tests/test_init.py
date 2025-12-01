@@ -1,4 +1,5 @@
 import pytest
+
 from jwt_vc_json.cred_processor import JwtVcJsonCredProcessor
 
 

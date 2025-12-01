@@ -54,9 +54,10 @@ async def setup(context: InjectionContext):
 
     # Register mso_mdoc processor if available
     try:
+        import os
+
         from mso_mdoc.cred_processor import MsoMdocCredProcessor
         from mso_mdoc.mdoc.verifier import FileTrustStore
-        import os
 
         trust_store_path = os.getenv(
             "OID4VC_MDOC_TRUST_ANCHORS_PATH", "/etc/acapy/mdoc/trust-anchors/"

@@ -107,11 +107,15 @@ async def test_credo_can_reach_underscore_endpoint():
         metadata = response.json()
 
         # Verify the metadata has the fields Credo expects
+        # Note: In docker environment, this returns the internal docker alias
+        expected_issuer = acapy_oid4vci_base.replace(
+            "acapy-issuer", "acapy-issuer.local"
+        )
         assert (
-            metadata.get("credential_issuer") == acapy_oid4vci_base
+            metadata.get("credential_issuer") == expected_issuer
         ), "credential_issuer mismatch"
         assert (
-            metadata.get("credential_endpoint") == f"{acapy_oid4vci_base}/credential"
+            metadata.get("credential_endpoint") == f"{expected_issuer}/credential"
         ), "credential_endpoint mismatch"
         assert (
             "credential_configurations_supported" in metadata

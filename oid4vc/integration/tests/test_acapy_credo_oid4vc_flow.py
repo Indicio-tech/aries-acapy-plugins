@@ -133,7 +133,7 @@ async def test_acapy_oid4vp_presentation_verification_from_credo(
 
     # Step 1: Create presentation definition for SD-JWT credential
     presentation_definition = {
-        "id": "identity-credential-presentation",
+        "id": str(uuid.uuid4()),
         "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256"]}},
         "input_descriptors": [
             {
@@ -174,9 +174,7 @@ async def test_acapy_oid4vp_presentation_verification_from_credo(
     # Step 3: ACA-Py creates presentation request
     presentation_request_data = {
         "pres_def_id": pres_def_id,
-        "vp_formats": {
-            "vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256K", "ES256"]}
-        },
+        "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256"]}},
     }
 
     presentation_request = await acapy_verifier_admin.post(
@@ -290,7 +288,7 @@ async def test_full_acapy_credo_oid4vc_flow(
 
     # Step 4: ACA-Py verifier creates presentation request
     presentation_definition = {
-        "id": "university-degree-presentation",
+        "id": str(uuid.uuid4()),
         "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256"]}},
         "input_descriptors": [
             {
@@ -299,23 +297,26 @@ async def test_full_acapy_credo_oid4vc_flow(
                 "constraints": {
                     "fields": [
                         {
-                            "path": ["$.type"],
+                            "path": ["$.vct", "$.type"],
                             "filter": {
-                                "type": "array",
-                                "contains": {"const": "UniversityDegreeCredential"},
+                                "type": "string",
+                                "const": "UniversityDegreeCredential",
                             },
                         },
                         {
-                            "path": ["$.credentialSubject.given_name"],
-                            "intent_to_retain": False,
+                            "path": ["$.given_name", "$.credentialSubject.given_name"],
                         },
                         {
-                            "path": ["$.credentialSubject.family_name"],
-                            "intent_to_retain": False,
+                            "path": [
+                                "$.family_name",
+                                "$.credentialSubject.family_name",
+                            ],
                         },
                         {
-                            "path": ["$.credentialSubject.degree"],
-                            "intent_to_retain": False,
+                            "path": ["$.degree", "$.credentialSubject.degree"],
+                        },
+                        {
+                            "path": ["$.university", "$.credentialSubject.university"],
                         },
                     ]
                 },
@@ -334,15 +335,14 @@ async def test_full_acapy_credo_oid4vc_flow(
 
     presentation_request_data = {
         "pres_def_id": pres_def_id,
-        "vp_formats": {
-            "vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256K", "ES256"]}
-        },
+        "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256"]}},
     }
 
     presentation_request = await acapy_verifier_admin.post(
         "/oid4vp/request", json=presentation_request_data
     )
     request_uri = presentation_request["request_uri"]
+    presentation_id = presentation_request["presentation"]["presentation_id"]
 
     # Step 5: Credo presents credential to ACA-Py verifier
     present_request = {"request_uri": request_uri, "credentials": [received_credential]}
@@ -355,19 +355,31 @@ async def test_full_acapy_credo_oid4vc_flow(
 
     # Step 6: Verify presentation was successful
     assert "presentation_submission" in presentation_result
-    assert presentation_result.get("status") == "success"
+    assert presentation_result.get("success") is True
 
     # Step 7: Check that ACA-Py received and validated the presentation
-    # Wait a moment for processing
-    await asyncio.sleep(2)
+    # Poll for presentation status
+    max_retries = 10
+    retry_interval = 1.0
 
-    # Get presentation records from ACA-Py verifier
-    presentations = await acapy_verifier_admin.get("/oid4vp/presentations")
-    assert len(presentations) > 0
+    presentation_valid = False
+    latest_presentation = None
 
-    # Find our presentation
-    latest_presentation = presentations[0]  # Assuming most recent
-    assert latest_presentation.get("state") == "presentation-valid"
+    for _ in range(max_retries):
+        # Get specific presentation record from ACA-Py verifier
+        latest_presentation = await acapy_verifier_admin.get(
+            f"/oid4vp/presentation/{presentation_id}"
+        )
+
+        if latest_presentation.get("state") == "presentation-valid":
+            presentation_valid = True
+            break
+
+        await asyncio.sleep(retry_interval)
+
+    assert (
+        presentation_valid
+    ), f"Presentation validation failed. Final state: {latest_presentation.get('state') if latest_presentation else 'None'}"
 
     print("✅ Full OID4VC flow completed successfully!")
     print(f"   - ACA-Py issued credential: {config_id}")

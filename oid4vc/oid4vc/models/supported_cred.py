@@ -132,6 +132,11 @@ class SupportedCredential(BaseRecord):
                 if context:
                     cred_def["@context"] = context
 
+                # OID4VCI 1.0 §11.2.3: For jwt_vc_json, the field is "type"
+                # (singular) not "types". Rename "types" to "type" if present
+                if "types" in cred_def:
+                    cred_def["type"] = cred_def.pop("types")
+
                 # Filter None values
                 cred_def = {k: v for k, v in cred_def.items() if v is not None}
 

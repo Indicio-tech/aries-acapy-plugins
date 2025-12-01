@@ -3,8 +3,7 @@
 from typing import Sequence
 
 from core.models import Client
-from core.repositories.client_repository import \
-    ClientRepository as BaseClientRepository
+from core.repositories.client_repository import ClientRepository as BaseClientRepository
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 

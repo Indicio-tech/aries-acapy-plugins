@@ -13,15 +13,12 @@ services:
       - "3000:3000"
       - "3001:3001"
       - "8082:8082"
-    volumes:
-      - ../docker/entrypoint.sh:/entrypoint.sh:ro,z
     environment:
       RUST_LOG: warn
       TUNNEL_ENDPOINT: http://ngrok:4040
       OID4VCI_HOST: 0.0.0.0
       OID4VCI_PORT: 8082
-    entrypoint: >
-      /bin/sh -c '/entrypoint.sh aca-py "$$@"' --
+    entrypoint: aca-py
     command: >
       start
         --inbound-transport http 0.0.0.0 3000

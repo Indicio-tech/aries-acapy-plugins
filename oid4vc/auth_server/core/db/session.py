@@ -3,8 +3,13 @@
 import contextlib
 from typing import AsyncIterator, Callable
 
-from sqlalchemy.ext.asyncio import (AsyncConnection, AsyncEngine, AsyncSession,
-                                    async_sessionmaker, create_async_engine)
+from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 
 class DatabaseSessionManager:

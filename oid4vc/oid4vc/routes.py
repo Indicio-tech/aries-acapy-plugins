@@ -729,6 +729,29 @@ async def supported_credential_create(request: web.Request):
         if derived_format_data:
             body["format_data"] = derived_format_data
 
+    # For jwt_vc_json with format_data, ensure vc_additional_data has required fields
+    # The JWT VC JSON credential must include @context and type in the vc claim
+    if body.get("format") == "jwt_vc_json" and body.get("format_data"):
+        if "vc_additional_data" not in body:
+            body["vc_additional_data"] = {}
+        # Copy type/types from format_data to vc_additional_data if not already set
+        if "type" not in body["vc_additional_data"]:
+            if "type" in format_data:
+                body["vc_additional_data"]["type"] = format_data["type"]
+            elif "types" in format_data:
+                body["vc_additional_data"]["type"] = format_data["types"]
+        # Copy @context from format_data to vc_additional_data if not already set
+        if "@context" not in body["vc_additional_data"]:
+            if "context" in format_data:
+                body["vc_additional_data"]["@context"] = format_data["context"]
+            elif "@context" in format_data:
+                body["vc_additional_data"]["@context"] = format_data["@context"]
+            else:
+                # Provide default W3C VC context if none specified
+                body["vc_additional_data"]["@context"] = [
+                    "https://www.w3.org/2018/credentials/v1"
+                ]
+
     # Filter to only allowed fields
     filtered_body = {k: v for k, v in body.items() if k in allowed_fields}
 

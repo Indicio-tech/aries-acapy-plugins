@@ -5,6 +5,15 @@ from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
+from oid4vc.models.presentation import OID4VPPresentation
+
+from ..mdoc.verifier import (
+    FileTrustStore,
+    MsoMdocCredVerifier,
+    MsoMdocPresVerifier,
+    VerifyResult,
+)
+
 # Mock acapy_agent and dependencies before importing module under test
 sys.modules["pydid"] = MagicMock()
 sys.modules["acapy_agent"] = MagicMock()
@@ -13,15 +22,6 @@ sys.modules["acapy_agent.core.profile"] = MagicMock()
 
 # Mock isomdl_uniffi since it's a native extension
 sys.modules["isomdl_uniffi"] = MagicMock()
-
-from oid4vc.models.presentation import OID4VPPresentation  # noqa: E402
-
-from ..mdoc.verifier import (  # noqa: E402
-    FileTrustStore,
-    MsoMdocCredVerifier,  # noqa: E402
-    MsoMdocPresVerifier,
-    VerifyResult,
-)
 
 
 @pytest.fixture(autouse=True)
@@ -100,6 +100,7 @@ class TestMsoMdocPresVerifier:
         pres.presentation_submission.descriptor_map = [
             MagicMock(path="$.vp_token", format="mso_mdoc")
         ]
+        pres.nonce = "test_nonce"
         return pres
 
     @pytest.mark.asyncio
@@ -109,46 +110,23 @@ class TestMsoMdocPresVerifier:
         presentation_data = "mock_presentation_data"
 
         with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl, patch(
-            "mso_mdoc.mdoc.verifier.OID4VPPresDef"
-        ) as mock_pres_def_cls, patch(
-            "mso_mdoc.mdoc.verifier.PresentationDefinition"
-        ) as mock_pd_cls:
-            # Setup PresDef
-            mock_pres_def_entry = MagicMock()
-            mock_pres_def_entry.pres_def = {"input_descriptors": []}
-            mock_pres_def_cls.retrieve_by_id.return_value = mock_pres_def_entry
-
-            mock_pd = MagicMock()
-            mock_pd.input_descriptors = []
-            mock_pd_cls.deserialize.return_value = mock_pd
+            "mso_mdoc.mdoc.verifier.Config"
+        ) as mock_config:
+            mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
 
             # Setup Enum constants
             mock_isomdl.AuthenticationStatus.VALID = "VALID"
 
-            # Mock SessionManager
-            mock_session_manager = MagicMock()
-            mock_isomdl.SessionManager.return_value = mock_session_manager
-
-            # Mock DeviceResponse
-            mock_device_response = MagicMock()
-            mock_isomdl.DeviceResponse.from_cbor_encoded_device_response.return_value = (
-                mock_device_response
-            )
-
-            # Mock handle_response result using a plain class
-            class MockResponseData:
-                pass
-
-            mock_response_data = MockResponseData()
+            # Mock verify_oid4vp_response result
+            mock_response_data = MagicMock()
             mock_response_data.issuer_authentication = "VALID"
             mock_response_data.device_authentication = "VALID"
-            mock_response_data.json_payload = '{"data": "verified"}'
             mock_response_data.errors = []
+            mock_response_data.verified_response_as_json.return_value = {
+                "data": "verified"
+            }
 
-            mock_isomdl.handle_response.return_value = mock_response_data
-            mock_isomdl.verified_response_as_json_string.return_value = (
-                '{"data": "verified"}'
-            )
+            mock_isomdl.verify_oid4vp_response.return_value = mock_response_data
 
             result = await verifier.verify_presentation(
                 profile, presentation_data, mock_presentation
@@ -158,10 +136,8 @@ class TestMsoMdocPresVerifier:
             assert result.verified is True
             assert result.payload == {"data": "verified"}
 
-            mock_isomdl.handle_response.assert_called_once()
-            mock_isomdl.verified_response_as_json_string.assert_called_once_with(
-                mock_response_data
-            )
+            mock_isomdl.verify_oid4vp_response.assert_called_once()
+            mock_response_data.verified_response_as_json.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_verify_presentation_failure(self, verifier, mock_presentation):
@@ -170,42 +146,22 @@ class TestMsoMdocPresVerifier:
         presentation_data = "mock_presentation_data"
 
         with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl, patch(
-            "mso_mdoc.mdoc.verifier.OID4VPPresDef"
-        ) as mock_pres_def_cls, patch(
-            "mso_mdoc.mdoc.verifier.PresentationDefinition"
-        ) as mock_pd_cls:
-            # Setup PresDef
-            mock_pres_def_entry = MagicMock()
-            mock_pres_def_entry.pres_def = {"input_descriptors": []}
-            mock_pres_def_cls.retrieve_by_id.return_value = mock_pres_def_entry
-
-            mock_pd = MagicMock()
-            mock_pd.input_descriptors = []
-            mock_pd_cls.deserialize.return_value = mock_pd
+            "mso_mdoc.mdoc.verifier.Config"
+        ) as mock_config:
+            mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
 
             # Setup Enum constants
             mock_isomdl.AuthenticationStatus.VALID = "VALID"
             mock_isomdl.AuthenticationStatus.INVALID = "INVALID"
 
-            mock_session_manager = MagicMock()
-            mock_isomdl.SessionManager.return_value = mock_session_manager
-
-            mock_device_response = MagicMock()
-            mock_isomdl.DeviceResponse.from_cbor_encoded_device_response.return_value = (
-                mock_device_response
-            )
-
-            # Mock handle_response failure
-            class MockResponseData:
-                pass
-
-            mock_response_data = MockResponseData()
+            # Mock verify_oid4vp_response failure
+            mock_response_data = MagicMock()
             mock_response_data.issuer_authentication = "INVALID"
             mock_response_data.device_authentication = "VALID"
             mock_response_data.errors = ["Issuer auth failed"]
+            mock_response_data.verified_response_as_json.return_value = {}
 
-            mock_isomdl.handle_response.return_value = mock_response_data
-            mock_isomdl.verified_response_as_json_string.return_value = "{}"
+            mock_isomdl.verify_oid4vp_response.return_value = mock_response_data
 
             result = await verifier.verify_presentation(
                 profile, presentation_data, mock_presentation
@@ -221,20 +177,11 @@ class TestMsoMdocPresVerifier:
         presentation_data = "mock_presentation_data"
 
         with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl, patch(
-            "mso_mdoc.mdoc.verifier.OID4VPPresDef"
-        ) as mock_pres_def_cls, patch(
-            "mso_mdoc.mdoc.verifier.PresentationDefinition"
-        ) as mock_pd_cls:
-            # Setup PresDef
-            mock_pres_def_entry = MagicMock()
-            mock_pres_def_entry.pres_def = {"input_descriptors": []}
-            mock_pres_def_cls.retrieve_by_id.return_value = mock_pres_def_entry
+            "mso_mdoc.mdoc.verifier.Config"
+        ) as mock_config:
+            mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
 
-            mock_pd = MagicMock()
-            mock_pd.input_descriptors = []
-            mock_pd_cls.deserialize.return_value = mock_pd
-
-            mock_isomdl.establish_session.side_effect = Exception("Native error")
+            mock_isomdl.verify_oid4vp_response.side_effect = Exception("Native error")
 
             result = await verifier.verify_presentation(
                 profile, presentation_data, mock_presentation

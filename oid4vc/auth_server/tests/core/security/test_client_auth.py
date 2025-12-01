@@ -132,13 +132,17 @@ async def test_load_jwks_uri_failure_returns_none(monkeypatch):
 
 
 def test_validate_jwt_alg_success(monkeypatch):
-    monkeypatch.setattr(client_auth, "jwt_header_unverified", lambda _: {"alg": "RS256"})
+    monkeypatch.setattr(
+        client_auth, "jwt_header_unverified", lambda _: {"alg": "RS256"}
+    )
 
     client_auth._validate_jwt_alg("token", "RS256")
 
 
 def test_validate_jwt_alg_failure(monkeypatch):
-    monkeypatch.setattr(client_auth, "jwt_header_unverified", lambda _: {"alg": "HS256"})
+    monkeypatch.setattr(
+        client_auth, "jwt_header_unverified", lambda _: {"alg": "HS256"}
+    )
 
     with pytest.raises(HTTPException) as exc_info:
         client_auth._validate_jwt_alg("token", "RS256")
@@ -337,7 +341,9 @@ async def test_authenticate_shared_key_jwt_sub_mismatch(monkeypatch):
 
 def test_authenticate_client_secret_basic_success(monkeypatch):
     client = fake_client(client_secret="stored-hash")
-    monkeypatch.setattr(client_auth, "verify_secret_pbkdf2", lambda _token, _stored: True)
+    monkeypatch.setattr(
+        client_auth, "verify_secret_pbkdf2", lambda _token, _stored: True
+    )
 
     client_auth._authenticate_client_secret_basic(client, "provided")
 
@@ -406,7 +412,9 @@ async def test_base_client_auth_client_secret_basic_success(
 
     stub_client_repo(lambda cid: client if cid == "client-1" else None)
     monkeypatch.setattr(
-        client_auth, "verify_secret_pbkdf2", lambda token, stored: token == "clear-secret"
+        client_auth,
+        "verify_secret_pbkdf2",
+        lambda token, stored: token == "clear-secret",
     )
 
     result = await client_auth.base_client_auth(
@@ -435,7 +443,9 @@ async def test_base_client_auth_client_secret_basic_invalid_secret(
     )
 
     stub_client_repo(lambda cid: client if cid == "client-1" else None)
-    monkeypatch.setattr(client_auth, "verify_secret_pbkdf2", lambda token, stored: False)
+    monkeypatch.setattr(
+        client_auth, "verify_secret_pbkdf2", lambda token, stored: False
+    )
 
     with pytest.raises(HTTPException) as exc_info:
         await client_auth.base_client_auth(

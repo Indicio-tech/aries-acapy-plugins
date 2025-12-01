@@ -3,12 +3,10 @@
 from typing import Any
 
 from authlib.oauth2.rfc6749 import AuthorizationServer
-from authlib.oauth2.rfc6749.errors import (InvalidGrantError,
-                                           InvalidRequestError)
+from authlib.oauth2.rfc6749.errors import InvalidGrantError, InvalidRequestError
 from core.consts import OAuth2Flow
 from fastapi import HTTPException as FastAPIHTTPException
-from tenant.oauth.grants import (PreAuthorizedCodeGrant,
-                                 RotatingRefreshTokenGrant)
+from tenant.oauth.grants import PreAuthorizedCodeGrant, RotatingRefreshTokenGrant
 from tenant.oauth.integration.context import get_context
 from tenant.oauth.integration.server import CoreAuthorizationServer
 from tenant.services.token_service import TokenService
@@ -69,7 +67,9 @@ def get_authorization_server() -> AuthorizationServer:
                 if response_meta.get("c_nonce"):
                     token["c_nonce"] = response_meta["c_nonce"]
                 if response_meta.get("c_nonce_expires_in"):
-                    token["c_nonce_expires_in"] = int(response_meta["c_nonce_expires_in"])
+                    token["c_nonce_expires_in"] = int(
+                        response_meta["c_nonce_expires_in"]
+                    )
                 return
 
             if flow == OAuth2Flow.REFRESH_TOKEN:
@@ -90,7 +90,9 @@ def get_authorization_server() -> AuthorizationServer:
                         "refresh_token": new_refresh_token,
                         "token_type": "Bearer",
                         "expires_in": int(
-                            (new_access.expires_at - new_access.issued_at).total_seconds()
+                            (
+                                new_access.expires_at - new_access.issued_at
+                            ).total_seconds()
                         ),
                     }
                 )
@@ -101,7 +103,9 @@ def get_authorization_server() -> AuthorizationServer:
                 if response_meta.get("c_nonce"):
                     token["c_nonce"] = response_meta["c_nonce"]
                 if response_meta.get("c_nonce_expires_in"):
-                    token["c_nonce_expires_in"] = int(response_meta["c_nonce_expires_in"])
+                    token["c_nonce_expires_in"] = int(
+                        response_meta["c_nonce_expires_in"]
+                    )
                 return
         except FastAPIHTTPException as e:  # map service errors to OAuth errors
             if e.status_code == 400:

@@ -6,8 +6,10 @@ from typing import AsyncIterator
 from admin.config import settings
 from admin.deps import db_manager
 from admin.routers import internal, migrations, tenants
-from core.observability.observability import (RequestContextMiddleware,
-                                              setup_structlog_json)
+from core.observability.observability import (
+    RequestContextMiddleware,
+    setup_structlog_json,
+)
 from core.utils.logging import get_logger
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware

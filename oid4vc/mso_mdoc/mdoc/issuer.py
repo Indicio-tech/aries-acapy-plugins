@@ -22,6 +22,8 @@ import json
 import logging
 from typing import Any, Mapping
 
+import cbor2
+
 # ISO 18013-5 § 8.4: Presentation session
 # ISO 18013-5 § 9.1.3.5: ECDSA P-256 key pairs
 # ISO 18013-5 § 8.4.1: Session establishment
@@ -73,21 +75,46 @@ def isomdl_mdoc_sign(
         raise ValueError("missing payload.")
 
     try:
-        # Convert payload to JSON string for Rust processing
-        mdl_items = json.dumps(payload)
-
-        # Convert JWK to string
+        doctype = headers.get("doctype")
         holder_jwk = json.dumps(jwk)
 
-        # Create and sign mDoc using the new Rust function
-        # This handles CBOR encoding internally to avoid Python cbor2 issues
-        mdoc = Mdoc.create_and_sign_mdl(
-            mdl_items,
-            None,  # aamva_items - optional, currently not used
-            holder_jwk,
-            iaca_cert_pem,
-            iaca_key_pem,
-        )
+        LOGGER.info(f"holder_jwk: {holder_jwk}")
+        LOGGER.info(f"iaca_cert_pem length: {len(iaca_cert_pem)}")
+        LOGGER.info(f"iaca_key_pem length: {len(iaca_key_pem)}")
+
+        if doctype == "org.iso.18013.5.1.mDL":
+            # Convert payload to JSON string for Rust processing
+            mdl_items = json.dumps(payload)
+            LOGGER.info(f"mdl_items: {mdl_items}")
+
+            # Create and sign mDoc using the new Rust function
+            # This handles CBOR encoding internally to avoid Python cbor2 issues
+            mdoc = Mdoc.create_and_sign_mdl(
+                mdl_items,
+                None,  # aamva_items - optional, currently not used
+                holder_jwk,
+                iaca_cert_pem,
+                iaca_key_pem,
+            )
+        else:
+            # For generic doctypes, we assume the payload belongs to the namespace
+            # equal to the doctype. This supports the generic use case where claims
+            # are in the main namespace
+
+            # Encode payload values to CBOR bytes as expected by create_and_sign
+            encoded_payload = {}
+            for k, v in payload.items():
+                encoded_payload[k] = cbor2.dumps(v)
+
+            namespaces = {doctype: encoded_payload}
+
+            mdoc = Mdoc.create_and_sign(
+                doctype,
+                namespaces,
+                holder_jwk,
+                iaca_cert_pem,
+                iaca_key_pem,
+            )
 
         LOGGER.info("Generated mdoc with doctype: %s", mdoc.doctype())
 

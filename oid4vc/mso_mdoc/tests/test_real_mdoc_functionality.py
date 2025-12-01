@@ -262,24 +262,32 @@ class TestRealMdocFunctionality:
         self, sample_jwk, sample_headers, sample_iso_claims
     ):
         """Test real mDOC signing using isomdl-uniffi integration."""
-        payload = {
-            "doctype": "org.iso.18013.5.1.mDL",
-            "claims": sample_iso_claims,
-            "issued_at": datetime.now(timezone.utc).isoformat(),
-            "valid_from": datetime.now(timezone.utc).isoformat(),
-            "valid_until": (
-                datetime.now(timezone.utc) + timedelta(days=365)
-            ).isoformat(),
-        }
+        # Add doctype to headers
+        sample_headers["doctype"] = "org.iso.18013.5.1.mDL"
+
+        # Extract the inner claims which match the Rust struct structure
+        claims = sample_iso_claims["org.iso.18013.5.1"].copy()
+
+        # Add missing required fields that are not in the sample fixture
+        claims["un_distinguishing_sign"] = "US"
+        claims[
+            "portrait"
+        ] = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
+        # payload for isomdl_mdoc_sign should be the flat claims dictionary
+        payload = claims
 
         try:
             # Generate keys and certificate for signing
             private_pem, _, jwk = generate_ec_key_pair()
             cert_pem = generate_self_signed_certificate(private_pem)
 
+            # Remove private key 'd' from jwk to simulate public key only (like in real flow)
+            jwk_public = {k: v for k, v in jwk.items() if k != "d"}
+
             # Attempt real signing
             result = isomdl_mdoc_sign(
-                jwk, sample_headers, payload, cert_pem, private_pem
+                jwk_public, sample_headers, payload, cert_pem, private_pem
             )
 
             # Verify we get a result

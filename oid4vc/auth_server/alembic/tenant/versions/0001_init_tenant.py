@@ -14,7 +14,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("""
+    op.execute(
+        """
       DROP TABLE IF EXISTS auth.nonce;
       DROP TABLE IF EXISTS auth.dpop_jti;
       DROP TABLE IF EXISTS auth.refresh_token;
@@ -22,4 +23,5 @@ def downgrade() -> None:
       DROP TABLE IF EXISTS auth.pre_auth_code;
       DROP TABLE IF EXISTS auth.subject;
       DROP TABLE IF EXISTS auth.client;
-    """)
+    """
+    )

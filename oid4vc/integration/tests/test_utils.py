@@ -1,10 +1,14 @@
 """Test utilities for OID4VCI 1.0 compliance tests."""
 
+import json
 import logging
 import time
 from typing import Any
 
 import httpx
+from acapy_agent.did.did_key import DIDKey
+from acapy_agent.wallet.key_type import P256
+from aries_askar import Key
 
 from .test_config import (
     CREDENTIAL_SUBJECT_DATA,
@@ -59,8 +63,7 @@ class OID4VCTestHelper:
             response.raise_for_status()
             result = response.json()
             LOGGER.info("Credential setup response: %s", result)
-            # Return the supported_cred_id, not the identifier
-            return result["supported_cred_id"]
+            return result
 
     async def create_credential_offer(self, supported_cred_id: str) -> dict[str, Any]:
         """Create credential offer."""
@@ -92,8 +95,8 @@ class OID4VCTestHelper:
             # Merge exchange data with offer data
             return {**exchange_data, **offer_result}
 
-    async def setup_mdoc_credential(self) -> str:
-        """Setup mso_mdoc credential and return its ID."""
+    async def setup_mdoc_credential(self) -> dict:
+        """Setup mso_mdoc credential and return its configuration."""
         if not MDOC_AVAILABLE:
             raise RuntimeError("isomdl_uniffi not available for mdoc testing")
 
@@ -105,7 +108,7 @@ class OID4VCTestHelper:
             "id": unique_id,
             "format": "mso_mdoc",
             "identifier": "org.iso.18013.5.1.mDL",
-            "doctype": "org.iso.18013.5.1.mDL",
+            "format_data": {"doctype": "org.iso.18013.5.1.mDL"},
             "cryptographic_binding_methods_supported": ["cose_key"],
             "cryptographic_suites_supported": ["ES256", "ES384", "ES512"],
             "display": MSO_MDOC_CREDENTIAL_CONFIG["display"],
@@ -120,10 +123,13 @@ class OID4VCTestHelper:
             response.raise_for_status()
             result = response.json()
             LOGGER.info("mso_mdoc credential setup response: %s", result)
-            return result["supported_cred_id"]
+            # Ensure the original ID is available in the result
+            if "id" not in result:
+                result["id"] = unique_id
+            return result
 
     async def create_mdoc_credential_offer(
-        self, supported_cred_id: str
+        self, supported_cred: dict
     ) -> dict[str, Any]:
         """Create credential offer for mso_mdoc format."""
         if not MDOC_AVAILABLE:
@@ -132,8 +138,16 @@ class OID4VCTestHelper:
         # Generate test mdoc using isomdl_uniffi
         holder_key = mdl.P256KeyPair()
 
+        # Generate DID:Key for holder
+        jwk = holder_key.public_jwk()
+        if isinstance(jwk, str):
+            jwk = json.loads(jwk)
+
+        askar_key = Key.from_jwk(json.dumps(jwk))
+        did_key = DIDKey.from_public_key(askar_key.get_public_bytes(), P256).did
+
         offer_data = {
-            "supported_cred_id": supported_cred_id,
+            "supported_cred_id": supported_cred["supported_cred_id"],
             "credential_subject": {
                 "org.iso.18013.5.1": {
                     "given_name": "John",
@@ -145,7 +159,8 @@ class OID4VCTestHelper:
                     "document_number": "12345678",
                 }
             },
-            "holder_binding": {"method": "cose_key", "key": holder_key.public_jwk()},
+            "holder_binding": {"method": "cose_key", "key": jwk},
+            "did": did_key,
         }
 
         async with httpx.AsyncClient() as client:
@@ -168,4 +183,9 @@ class OID4VCTestHelper:
             LOGGER.info("mso_mdoc credential offer response: %s", offer_result)
 
             # Include holder key for testing
-            return {**exchange_data, **offer_result, "holder_key": holder_key}
+            return {
+                **exchange_data,
+                **offer_result,
+                "holder_key": holder_key,
+                "did": did_key,
+            }

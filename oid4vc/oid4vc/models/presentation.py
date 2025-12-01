@@ -15,7 +15,7 @@ class OID4VPPresentation(BaseRecord):
     PRESENTATION_INVALID = "presentation-invalid"
     PRESENTATION_VALID = "presentation-valid"
     RECORD_TOPIC = "oid4vp"
-    RECORD_TYPE = "oid4vp"
+    RECORD_TYPE = "oid4vp-presentation"
     STATES = (
         REQUEST_CREATED,
         REQUEST_RETRIEVED,
@@ -35,13 +35,13 @@ class OID4VPPresentation(BaseRecord):
         self,
         *,
         presentation_id: Optional[str] = None,
-        state: str,
+        state: Optional[str] = None,
         pres_def_id: Optional[str] = None,
         dcql_query_id: Optional[str] = None,
         errors: Optional[List[str]] = None,
         matched_credentials: Optional[Dict[str, Any]] = None,
         verified: Optional[bool] = None,
-        request_id: str,
+        request_id: Optional[str] = None,
         nonce: Optional[str] = None,
         **kwargs,
     ) -> None:
@@ -72,6 +72,8 @@ class OID4VPPresentation(BaseRecord):
                 "matched_credentials",
                 "verified",
                 "nonce",
+                "state",
+                "request_id",
             )
         }
 

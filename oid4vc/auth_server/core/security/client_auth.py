@@ -190,7 +190,8 @@ async def base_client_auth(
     if allowed == CLIENT_AUTH_METHOD.CLIENT_SECRET_BASIC and scheme != "basic":
         raise HTTPException(status_code=401, detail="unauthorized_client")
     if (
-        allowed in {CLIENT_AUTH_METHOD.PRIVATE_KEY_JWT, CLIENT_AUTH_METHOD.SHARED_KEY_JWT}
+        allowed
+        in {CLIENT_AUTH_METHOD.PRIVATE_KEY_JWT, CLIENT_AUTH_METHOD.SHARED_KEY_JWT}
         and scheme != "bearer"
     ):
         raise HTTPException(status_code=401, detail="unauthorized_client")

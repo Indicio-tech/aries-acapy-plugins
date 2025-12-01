@@ -28,22 +28,19 @@ dependencies = [
     "cbor-diag>=1.0.0",
     # sd_jwt dependencies  
     "jsonpointer>=3.0.0,<4.0.0",
-    # isomdl-uniffi from GitHub (will be updated to releases once available)
-    "isomdl-uniffi @ git+https://github.com/Indicio-tech/isomdl-uniffi.git@main#subdirectory=python",
+    # isomdl-uniffi from local workspace
+    "isomdl-uniffi",
 ]
-
-[project.optional-dependencies]
-aca-py = ["acapy-agent>=1.4.0rc0"]
-sd_jwt = ["jsonpointer>=3.0.0,<4.0.0"]
 
 [tool.uv.sources]
 acapy-agent = { path = "../../acapy", editable = true }
+isomdl-uniffi = { path = "../../isomdl-uniffi/python", editable = true }
 
 [tool.ruff]
 line-length = 90
 
 [tool.ruff.lint]
-select = ["E", "F", "C", "D"]
+select = ["E", "F", "C", "D", "I"]
 ignore = [
     # Google Python Doc Style
     "D203",

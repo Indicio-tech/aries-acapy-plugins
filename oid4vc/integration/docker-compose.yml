@@ -8,8 +8,8 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3020
-      - ACAPY_ISSUER_URL=http://acapy-issuer:8022
-      - ACAPY_VERIFIER_URL=http://acapy-verifier:8032
+      - ACAPY_ISSUER_URL=http://acapy-issuer.local:8022
+      - ACAPY_VERIFIER_URL=http://acapy-verifier.local:8032
     depends_on:
       acapy-issuer:
         condition: service_healthy
@@ -31,9 +31,13 @@ services:
       - "8022:8022"  # oid4vci endpoint
     environment:
       - AGENT_ENDPOINT=http://acapy-issuer:8020
-      - OID4VCI_ENDPOINT=http://acapy-issuer:8022
+      - OID4VCI_ENDPOINT=http://acapy-issuer.local:8022
       - WALLET_STORAGE_TYPE=${WALLET_STORAGE_TYPE:-sqlite}
       - PYTHONPATH=/usr/src/app/isomdl_wrapper:/usr/src/app
+    networks:
+      default:
+        aliases:
+          - acapy-issuer.local
     command: ["aca-py", "start", "--arg-file", "/usr/src/app/docker/dev.yml", "--wallet-storage-type", "${WALLET_STORAGE_TYPE:-sqlite}"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8021/status/ready"]
@@ -54,10 +58,16 @@ services:
       - "8033:8033"  # oid4vci endpoint
     environment:
       - AGENT_ENDPOINT=http://acapy-verifier:8030
-      - OID4VCI_ENDPOINT=http://acapy-verifier:8033
-      - OID4VP_ENDPOINT=http://acapy-verifier:8032
+      - OID4VCI_ENDPOINT=http://acapy-verifier.local:8033
+      - OID4VP_ENDPOINT=http://acapy-verifier.local:8032
       - WALLET_STORAGE_TYPE=${WALLET_STORAGE_TYPE:-sqlite}
       - PYTHONPATH=/usr/src/app/isomdl_wrapper:/usr/src/app
+    volumes:
+      - ../oid4vc:/usr/src/app/oid4vc
+    networks:
+      default:
+        aliases:
+          - acapy-verifier.local
     command: ["aca-py", "start", "--arg-file", "/usr/src/app/docker/dev-verifier.yml", "--wallet-storage-type", "${WALLET_STORAGE_TYPE:-sqlite}"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8031/status/ready"]
@@ -75,9 +85,9 @@ services:
     environment:
       - CREDO_AGENT_URL=http://credo-agent:3020
       - ACAPY_ISSUER_ADMIN_URL=http://acapy-issuer:8021
-      - ACAPY_ISSUER_OID4VCI_URL=http://acapy-issuer:8022
+      - ACAPY_ISSUER_OID4VCI_URL=http://acapy-issuer.local:8022
       - ACAPY_VERIFIER_ADMIN_URL=http://acapy-verifier:8031
-      - ACAPY_VERIFIER_OID4VP_URL=http://acapy-verifier:8032
+      - ACAPY_VERIFIER_OID4VP_URL=http://acapy-verifier.local:8032
       - PYTHONPATH=/usr/src/app
       - WAIT_HOSTS=credo-agent:3020,acapy-issuer:8021,acapy-verifier:8031
       - WAIT_HOSTS_TIMEOUT=300
@@ -85,6 +95,7 @@ services:
       - WAIT_HTTP_RETRY_COUNT=15
     volumes:
       - ./test-results:/usr/src/app/test-results
+      - ./tests:/usr/src/app/tests
     depends_on:
       credo-agent:
         condition: service_healthy

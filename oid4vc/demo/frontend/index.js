@@ -1,19 +1,25 @@
-import express from "express";
-
-import axios from "axios";
-
-import { v4 as uuidv4 } from "uuid";
-import {default as NodeCache } from "node-cache";
-import QRCode from "qrcode-svg";
-
-import path from "node:path";
-
-import pino from "pino";
-import colada from "pino-colada";
-
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-import { EventEmitter } from 'node:events';
+import "axios"
+import "express"
+import "node-cache"
+import "node:path"
+import "pino"
+import "pino-colada"
+import "qrcode-svg"
+import "uuid"
+import 'node:events'
+import 'path'
+import 'url'
+import axios
+import colada
+import express
+import path
+import pino
+import QRCode
+import { dirname }
+import { EventEmitter }
+import { fileURLToPath }
+import { v4 as uuidv4 }
+import {default as NodeCache }
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

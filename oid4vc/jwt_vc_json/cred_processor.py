@@ -43,7 +43,7 @@ class JwtVcJsonCredProcessor(Issuer, CredVerifier, PresVerifier):
         """Return signed credential in JWT format."""
         try:
             assert supported.format_data
-            if not types_are_subset(
+            if body.get("types") and not types_are_subset(
                 body.get("types"), supported.format_data.get("types")
             ):
                 raise CredProcessorError("Requested types does not match offer.")
@@ -108,6 +108,9 @@ class JwtVcJsonCredProcessor(Issuer, CredVerifier, PresVerifier):
                 # Fallback: use default did:jwk under this wallet for signing
                 async with context.profile.session() as session:
                     jwk_info = await retrieve_or_create_did_jwk(session)
+                # Update issuer in payload to match the did:jwk we're signing with
+                payload["vc"]["issuer"] = jwk_info.did
+                payload["iss"] = jwk_info.did
                 jws = await jwt_sign(
                     context.profile,
                     {},
