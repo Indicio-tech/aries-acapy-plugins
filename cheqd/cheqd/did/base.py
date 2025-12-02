@@ -1,7 +1,7 @@
 """DID Manager Base Classes."""
 
 from abc import ABC, abstractmethod
-from typing import List, Optional, Union, Literal, Dict
+from typing import Dict, List, Literal, Optional, Union
 
 from acapy_agent.core.error import BaseError
 from acapy_agent.core.profile import Profile
@@ -37,6 +37,10 @@ class ServiceSchema(BaseModel):
     id: str
     type: str
     serviceEndpoint: Union[str, List[str]]
+    recipientKeys: List[str]
+    priority: Optional[int] = 0
+    routingKeys: Optional[List[str]] = []
+    accept: Optional[List[str]] = []
 
 
 class DIDDocumentSchema(DynamicSchema):

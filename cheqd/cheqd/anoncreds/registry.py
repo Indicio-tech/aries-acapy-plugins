@@ -1,5 +1,6 @@
-"""DID Cheqd Anoncreds Registry."""
+"""DID Cheqd AnonCreds Registry."""
 
+import hashlib
 import logging
 import time
 from datetime import datetime, timezone
@@ -35,7 +36,7 @@ from acapy_agent.anoncreds.models.schema import (
     SchemaResult,
     SchemaState,
 )
-from acapy_agent.anoncreds.models.schema_info import AnoncredsSchemaInfo
+from acapy_agent.anoncreds.models.schema_info import AnonCredsSchemaInfo
 from acapy_agent.config.injection_context import InjectionContext
 from acapy_agent.core.profile import Profile
 from acapy_agent.resolver.base import DIDNotFound
@@ -45,14 +46,14 @@ from acapy_agent.wallet.jwt import dict_to_b64
 from pydantic import BaseModel
 
 from ..did.base import (
+    DidUrlActionState,
+    Options,
     ResourceCreateRequestOptions,
     ResourceUpdateRequestOptions,
     Secret,
     SubmitSignatureOptions,
-    DidUrlActionState,
-    Options,
 )
-from ..did.helpers import CheqdAnoncredsResourceType
+from ..did.helpers import CheqdAnonCredsResourceType
 from ..did.manager import CheqdDIDManager
 from ..did.registrar import DIDRegistrar
 from ..resolver.resolver import CheqdDIDResolver
@@ -114,6 +115,13 @@ class DIDCheqdRegistry(BaseAnonCredsResolver, BaseAnonCredsRegistrar):
         ids = schema_id.split("/")
         return ids[0], ids[2]
 
+    @staticmethod
+    def _get_resource_name(name: str) -> str:
+        """Get resource name, hashing if it exceeds the limit of 64 characters."""
+        if len(name) > 64:
+            return hashlib.sha256(name.encode()).hexdigest()  # Always 64 characters
+        return name
+
     async def setup(self, _context: InjectionContext, registrar_url, resolver_url):
         """Setup."""
         self.registrar = DIDRegistrar("cheqd", registrar_url)
@@ -122,7 +130,7 @@ class DIDCheqdRegistry(BaseAnonCredsResolver, BaseAnonCredsRegistrar):
 
     async def get_schema_info_by_schema_id(
         self, profile: Profile, schema_id: str
-    ) -> AnoncredsSchemaInfo:
+    ) -> AnonCredsSchemaInfo:
         """Get the schema info from the registry."""
         schema = self.get_schema(profile, schema_id)
         return {
@@ -133,7 +141,9 @@ class DIDCheqdRegistry(BaseAnonCredsResolver, BaseAnonCredsRegistrar):
 
     async def get_schema(self, _profile: Profile, schema_id: str) -> GetSchemaResult:
         """Get a schema from the registry."""
-        resource_with_metadata = await self.resolver.resolve_resource(schema_id)
+        resource_with_metadata = await self.resolver.dereference_with_metadata(
+            _profile, schema_id
+        )
         schema = resource_with_metadata.resource
         metadata = resource_with_metadata.metadata
 
@@ -160,16 +170,18 @@ class DIDCheqdRegistry(BaseAnonCredsResolver, BaseAnonCredsRegistrar):
         _options: Optional[dict] = None,
     ) -> SchemaResult:
         """Register a schema on the registry."""
-        resource_type = CheqdAnoncredsResourceType.schema.value
-        resource_name = f"{schema.name}"
+        resource_type = CheqdAnonCredsResourceType.schema.value
+
+        # Get resource name and hash if it exceeds 64 characters
+        resource_name = self._get_resource_name(schema.name)
         resource_version = schema.version
 
-        LOGGER.debug("Registering schema")
         try:
             # check if schema already exists
             try:
-                existing_schema = await self.resolver.resolve_resource(
-                    f"{schema.issuer_id}?resourceName={resource_name}&resourceType={resource_type}"
+                existing_schema = await self.resolver.dereference_with_metadata(
+                    profile,
+                    f"{schema.issuer_id}?resourceName={resource_name}&resourceType={resource_type}",
                 )
             except DIDNotFound:
                 existing_schema = None
@@ -179,7 +191,6 @@ class DIDCheqdRegistry(BaseAnonCredsResolver, BaseAnonCredsRegistrar):
             LOGGER.debug("Existing schema %s", existing_schema)
             # update if schema exists
             if existing_schema is not None:
-                LOGGER.debug("UPDATING SCHEMA")
                 cheqd_schema = ResourceUpdateRequestOptions(
                     options=Options(
                         name=resource_name,
@@ -206,7 +217,6 @@ class DIDCheqdRegistry(BaseAnonCredsResolver, BaseAnonCredsRegistrar):
                     cheqd_schema,
                 )
             else:
-                LOGGER.debug("CREATING SCHEMA")
                 cheqd_schema = ResourceCreateRequestOptions(
                     options=Options(
                         name=resource_name,
@@ -255,8 +265,8 @@ class DIDCheqdRegistry(BaseAnonCredsResolver, BaseAnonCredsRegistrar):
         self, _profile: Profile, credential_definition_id: str
     ) -> GetCredDefResult:
         """Get a credential definition from the registry."""
-        resource_with_metadata = await self.resolver.resolve_resource(
-            credential_definition_id
+        resource_with_metadata = await self.resolver.dereference_with_metadata(
+            _profile, credential_definition_id
         )
         credential_definition = resource_with_metadata.resource
         metadata = resource_with_metadata.metadata
@@ -285,9 +295,12 @@ class DIDCheqdRegistry(BaseAnonCredsResolver, BaseAnonCredsRegistrar):
         _options: Optional[dict] = None,
     ) -> CredDefResult:
         """Register a credential definition on the registry."""
-        resource_type = CheqdAnoncredsResourceType.credentialDefinition.value
-        # TODO: max chars are 31 for resource, on exceeding this should be hashed
-        resource_name = f"{schema.schema_value.name}-{credential_definition.tag}"
+        resource_type = CheqdAnonCredsResourceType.credentialDefinition.value
+
+        # Generate resource name and hash if it exceeds 64 characters
+        resource_name = self._get_resource_name(
+            f"{schema.schema_value.name}-{credential_definition.tag}"
+        )
 
         cred_def = ResourceCreateRequestOptions(
             options=Options(
@@ -334,8 +347,8 @@ class DIDCheqdRegistry(BaseAnonCredsResolver, BaseAnonCredsRegistrar):
         self, _profile: Profile, revocation_registry_id: str
     ) -> GetRevRegDefResult:
         """Get a revocation registry definition from the registry."""
-        resource_with_metadata = await self.resolver.resolve_resource(
-            revocation_registry_id
+        resource_with_metadata = await self.resolver.dereference_with_metadata(
+            _profile, revocation_registry_id
         )
         revocation_registry_definition = resource_with_metadata.resource
         metadata = resource_with_metadata.metadata
@@ -364,14 +377,17 @@ class DIDCheqdRegistry(BaseAnonCredsResolver, BaseAnonCredsRegistrar):
         _options: Optional[dict] = None,
     ) -> RevRegDefResult:
         """Register a revocation registry definition on the registry."""
+        resource_type = CheqdAnonCredsResourceType.revocationRegistryDefinition.value
 
         cred_def_result = await self.get_credential_definition(
             profile, revocation_registry_definition.cred_def_id
         )
         cred_def_res = cred_def_result.credential_definition_metadata.get("resourceName")
-        # TODO: max chars are 31 for resource name, on exceeding this should be hashed
-        resource_name = f"{cred_def_res}-{revocation_registry_definition.tag}"
-        resource_type = CheqdAnoncredsResourceType.revocationRegistryDefinition.value
+
+        # Generate resource name and hash if it exceeds 64 characters
+        resource_name = self._get_resource_name(
+            f"{cred_def_res}-{revocation_registry_definition.tag}"
+        )
 
         rev_reg_def = ResourceCreateRequestOptions(
             options=Options(
@@ -431,13 +447,14 @@ class DIDCheqdRegistry(BaseAnonCredsResolver, BaseAnonCredsRegistrar):
         )
         (did, resource_id) = self.split_did_url(revocation_registry_id)
 
-        resource_type = CheqdAnoncredsResourceType.revocationStatusList.value
+        resource_type = CheqdAnonCredsResourceType.revocationStatusList.value
         epoch_time = timestamp_to or int(time.time())
         dt_object = datetime.fromtimestamp(epoch_time, tz=timezone.utc)
 
         resource_time = dt_object.strftime("%Y-%m-%dT%H:%M:%SZ")
-        resource_with_metadata = await self.resolver.resolve_resource(
-            f"{did}?resourceType={resource_type}&resourceName={resource_name}&resourceVersionTime={resource_time}"
+        resource_with_metadata = await self.resolver.dereference_with_metadata(
+            profile,
+            f"{did}?resourceType={resource_type}&resourceName={resource_name}&resourceVersionTime={resource_time}",
         )
         status_list = resource_with_metadata.resource
         metadata = resource_with_metadata.metadata
@@ -458,12 +475,14 @@ class DIDCheqdRegistry(BaseAnonCredsResolver, BaseAnonCredsRegistrar):
 
     async def get_schema_info_by_id(
         self, profile: Profile, schema_id: str
-    ) -> AnoncredsSchemaInfo:
+    ) -> AnonCredsSchemaInfo:
         """Get a schema info from the registry."""
-        resource_with_metadata = await self.resolver.resolve_resource(schema_id)
+        resource_with_metadata = await self.resolver.dereference_with_metadata(
+            profile, schema_id
+        )
         schema = resource_with_metadata.resource
         (did, resource_id) = self.split_did_url(schema_id)
-        anoncreds_schema = AnoncredsSchemaInfo(
+        anoncreds_schema = AnonCredsSchemaInfo(
             issuer_id=did,
             name=schema["name"],
             version=schema["version"],
@@ -485,7 +504,7 @@ class DIDCheqdRegistry(BaseAnonCredsResolver, BaseAnonCredsRegistrar):
         resource_name = revocation_registry_definition.revocation_registry_metadata.get(
             "resourceName"
         )
-        resource_type = CheqdAnoncredsResourceType.revocationStatusList.value
+        resource_type = CheqdAnonCredsResourceType.revocationStatusList.value
         rev_status_list = ResourceCreateRequestOptions(
             options=Options(
                 name=resource_name,
@@ -542,7 +561,7 @@ class DIDCheqdRegistry(BaseAnonCredsResolver, BaseAnonCredsRegistrar):
         resource_name = revocation_registry_definition.revocation_registry_metadata.get(
             "resourceName"
         )
-        resource_type = CheqdAnoncredsResourceType.revocationStatusList.value
+        resource_type = CheqdAnonCredsResourceType.revocationStatusList.value
         rev_status_list = ResourceUpdateRequestOptions(
             options=Options(
                 name=resource_name,

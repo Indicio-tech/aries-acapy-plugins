@@ -12,7 +12,6 @@ async def test_status_list_models(
     profile: Profile, status_list_def: StatusListDef, status_list_cred: StatusListCred
 ):
     async with profile.session() as session:
-
         # Test status_list_def
         await status_list_def.save(session)
         definition = await StatusListDef.retrieve_by_id(session, status_list_def.id)
@@ -29,6 +28,7 @@ async def test_status_list_models(
             status_list_def.add_list_number("100_000")
         except Exception as err:
             assert isinstance(err, DuplicateListNumberError)
+            status_list_def.list_numbers.remove("100_000")
 
         # Test status_list_shard
         await create_next_status_list(session, status_list_def)

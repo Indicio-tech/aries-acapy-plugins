@@ -162,12 +162,15 @@ async def update_did(issuer, did, did_document):
     """Update the DID document by adding a service endpoint."""
     service = [
         {
-            "id": f"{did}#service-1",
-            "type": "MessagingService",
-            "serviceEndpoint": ["https://example.com/service"],
+            "id": f"{did}#did-communication",
+            "type": "did-communication",
+            "serviceEndpoint": "http://issuer:3002",
+            "recipientKeys": [f"{did}#key-1"],
+            "priority": 1,
         }
     ]
     did_document["service"] = service
+    did_document["assertionMethod"] = [f"{did}#key-1"]
     del did_document["@context"]
 
     did_update_result = await issuer.post(
@@ -180,8 +183,11 @@ async def update_did(issuer, did, did_document):
     assert "service" in updated_did_doc, (
         "Key 'service' is missing in updated DID document."
     )
-    assert updated_did_doc["service"] == service, (
-        "Service does not match the expected value!"
+    assert updated_did_doc["service"][0]["type"] == "did-communication", (
+        "Service does not match expected type 'did-communication'."
+    )
+    assert updated_did_doc["service"][0]["serviceEndpoint"] == "http://issuer:3002", (
+        "Service endpoint does not match expected value 'http://issuer:3002'."
     )
 
     print(f"Updated DID Document: {format_json(updated_did_doc)}")
@@ -207,6 +213,35 @@ async def deactivate_did(issuer, did):
     remove_cache()
 
 
+async def import_did(controller: Controller, did_document, metadata=None):
+    """Import a DID into the wallet using the /did/import endpoint."""
+    import_result = await controller.post(
+        "/did/import", json={"did_document": did_document, "metadata": metadata or {}}
+    )
+    assert "result" in import_result, "Import result should contain 'result' key"
+    result = import_result["result"]
+    assert "did" in result, "Result should contain 'did'"
+    assert "verkey" in result, "Result should contain 'verkey'"
+    assert "method" in result, "Result should contain 'method'"
+    return result
+
+
+async def assert_did_in_wallet(controller: Controller, expected_did: str):
+    """Verify that the imported DID appears in the wallet DID list."""
+    wallet_dids = await controller.get("/wallet/did")
+
+    assert "results" in wallet_dids, "Wallet DIDs response should contain 'results'"
+
+    dids = wallet_dids["results"]
+    imported_did = next((d for d in dids if d["did"] == expected_did), None)
+
+    assert imported_did is not None, f"DID {expected_did} should be found in wallet"
+
+    print(
+        f"Verified DID {expected_did} exists in wallet with posture: {imported_did['posture']}"
+    )
+
+
 async def create_schema(issuer, did):
     """Create a schema on the Cheqd testnet."""
     schema_create_result = await issuer.post(
@@ -217,6 +252,32 @@ async def create_schema(issuer, did):
                 "issuerId": did,
                 "name": "Example schema",
                 "version": "1.0",
+            }
+        },
+    )
+    print(f"Created schema: {format_json(schema_create_result)}")
+    schema_state = schema_create_result.get("schema_state")
+    assert schema_state.get("state") == "finished", "Schema state is not finished."
+    assert "schema_id" in schema_state, "Key 'schema_id' is missing in schema_state."
+
+    schema_id = schema_state.get("schema_id")
+    assert did in schema_id, (
+        f"schema_id does not contain the expected DID. Expected '{did}' in '{schema_id}'."
+    )
+
+    return schema_id
+
+
+async def update_schema(issuer, did):
+    """Update a schema on the Cheqd testnet."""
+    schema_create_result = await issuer.post(
+        "/anoncreds/schema",
+        json={
+            "schema": {
+                "attrNames": ["score", "name"],
+                "issuerId": did,
+                "name": "Example schema",
+                "version": "2.0",
             }
         },
     )

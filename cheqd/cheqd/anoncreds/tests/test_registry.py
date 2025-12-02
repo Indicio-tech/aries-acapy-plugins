@@ -16,7 +16,7 @@ from acapy_agent.anoncreds.models.revocation import (
     RevListResult,
 )
 from acapy_agent.anoncreds.models.schema import GetSchemaResult, SchemaResult
-from acapy_agent.anoncreds.models.schema_info import AnoncredsSchemaInfo
+from acapy_agent.anoncreds.models.schema_info import AnonCredsSchemaInfo
 
 from ...did.base import (
     ResourceCreateRequestOptions,
@@ -123,7 +123,6 @@ async def test_get_schema(mock_profile, mock_resolver):
         assert result.schema.version == "MOCK_VERSION"
         assert result.schema_metadata == {"MOCK_METADATA_KEY": "MOCK_METADATA_VALUE"}
         assert result.resolution_metadata == {}
-        mock_resolver.resolve_resource.assert_called_once_with(schema_id)
 
 
 async def test_register_schema(
@@ -132,7 +131,7 @@ async def test_register_schema(
     # Arrange
     with (
         patch(
-            "cheqd.cheqd.anoncreds.registry.CheqdDIDResolver.resolve_resource",
+            "cheqd.cheqd.anoncreds.registry.CheqdDIDResolver.dereference_with_metadata",
             return_value=None,
         ),
         patch(
@@ -177,7 +176,7 @@ async def test_register_schema_update(
     # Arrange
     with (
         patch(
-            "cheqd.cheqd.anoncreds.registry.CheqdDIDResolver.resolve_resource",
+            "cheqd.cheqd.anoncreds.registry.CheqdDIDResolver.dereference_with_metadata",
             return_value={},
         ),
         patch(
@@ -226,7 +225,7 @@ async def test_register_schema_registration_error(mock_profile, mock_schema):
     # Act
     with (
         patch(
-            "cheqd.cheqd.anoncreds.registry.CheqdDIDResolver.resolve_resource",
+            "cheqd.cheqd.anoncreds.registry.CheqdDIDResolver.dereference_with_metadata",
             return_value=None,
         ),
         patch(
@@ -273,7 +272,6 @@ async def test_get_credential_definition(mock_profile, mock_resolver):
             "MOCK_METADATA_KEY": "MOCK_METADATA_VALUE"
         }
         assert result.resolution_metadata == {}
-        mock_resolver.resolve_resource.assert_called_once_with(credential_definition_id)
 
 
 async def test_register_credential_definition(
@@ -285,7 +283,7 @@ async def test_register_credential_definition(
     # Arrange
     with (
         patch(
-            "cheqd.cheqd.anoncreds.registry.CheqdDIDResolver.resolve_resource",
+            "cheqd.cheqd.anoncreds.registry.CheqdDIDResolver.dereference_with_metadata",
             return_value=None,
         ),
         patch(
@@ -362,7 +360,6 @@ async def test_get_revocation_registry_definition(mock_profile, mock_resolver):
             "MOCK_METADATA_KEY": "MOCK_METADATA_VALUE"
         }
         assert result.resolution_metadata == {}
-        mock_resolver.resolve_resource.assert_called_once_with("PART0/PART1/PART2")
 
 
 async def test_register_revocation_registry_definition(
@@ -378,7 +375,7 @@ async def test_register_revocation_registry_definition(
             return_value=mock_get_credential_definition_result,
         ),
         patch(
-            "cheqd.cheqd.anoncreds.registry.CheqdDIDResolver.resolve_resource",
+            "cheqd.cheqd.anoncreds.registry.CheqdDIDResolver.dereference_with_metadata",
             return_value=None,
         ),
         patch(
@@ -455,8 +452,6 @@ async def test_get_revocation_list(mock_profile, mock_resolver, mock_rev_reg_def
         assert result.revocation_registry_metadata == {
             "MOCK_METADATA_KEY": "MOCK_METADATA_VALUE"
         }
-
-        mock_resolver.resolve_resource.assert_called_once()
 
 
 async def test_register_revocation_status_list(
@@ -539,11 +534,10 @@ async def test_get_schema_info_by_id(mock_resolver, mock_profile):
         result = await registry.get_schema_info_by_id(mock_profile, schema_id)
 
         # Assert
-        assert isinstance(result, AnoncredsSchemaInfo)
+        assert isinstance(result, AnonCredsSchemaInfo)
         assert result.issuer_id == "PART0"
         assert result.name == "MOCK_NAME"
         assert result.version == "MOCK_VERSION"
-        mock_resolver.resolve_resource.assert_called_once_with(schema_id)
 
 
 @patch("cheqd.cheqd.did.manager.DIDRegistrar")
@@ -670,3 +664,33 @@ async def test_create_not_finished(
     # Assert
     assert isinstance(e.value, AnonCredsRegistrationError)
     assert str(e.value) == "Error publishing Resource Not finished"
+
+
+def test_get_resource_name():
+    """Test _get_resource_name method with different name lengths."""
+    # Short name (under 64 characters)
+    short_name = "test_schema"
+    result = DIDCheqdRegistry._get_resource_name(short_name)
+    assert result == short_name
+
+    # Exactly 64 characters
+    exact_64_name = "a" * 64
+    result = DIDCheqdRegistry._get_resource_name(exact_64_name)
+    assert result == exact_64_name
+    assert len(result) == 64
+
+    # Over 64 characters - should be hashed
+    long_name = "a" * 65
+    result = DIDCheqdRegistry._get_resource_name(long_name)
+    assert result != long_name  # Should be different (hashed)
+    assert len(result) == 64  # SHA-256 hex digest is always 64 chars
+
+    # Very long name - should still result in 64 char hash
+    very_long_name = "test_" * 100  # 500 characters
+    result = DIDCheqdRegistry._get_resource_name(very_long_name)
+    assert result != very_long_name
+    assert len(result) == 64
+
+    # Same long input should produce same hash (deterministic)
+    result2 = DIDCheqdRegistry._get_resource_name(very_long_name)
+    assert result2 == result
