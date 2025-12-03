@@ -888,8 +888,8 @@ async def supported_credential_create_jwt(request: web.Request):
     format_data["order"] = body.pop("order", None)
     vc_additional_data = {}
     vc_additional_data["@context"] = format_data["context"]
-    # type vs types is deliberate; OID4VCI spec is inconsistent with VCDM
-    # ~ in Draft 11, fixed in later drafts
+    # In OID4VCI 1.0 metadata, the field is "type" (converted in to_issuer_metadata).
+    # In the actual W3C VC, it's also "type" (per VCDM spec).
     vc_additional_data["type"] = format_data["types"]
 
     record = SupportedCredential(
@@ -1041,14 +1041,14 @@ async def jwt_supported_cred_update_helper(
     format_data = {}
     vc_additional_data = {}
 
-    format_data["type"] = body.get("type")
+    format_data["types"] = body.get("type")
     format_data["credentialSubject"] = body.get("credentialSubject", None)
     format_data["context"] = body.get("@context")
     format_data["order"] = body.get("order", None)
     vc_additional_data["@context"] = format_data["context"]
-    # type vs types is deliberate; OID4VCI spec is inconsistent with VCDM
-    # ~ as of Draft 11, fixed in later drafts
-    vc_additional_data["type"] = format_data["type"]
+    # In OID4VCI 1.0 metadata, the field is "type" (converted in to_issuer_metadata).
+    # In the actual W3C VC, it's also "type" (per VCDM spec).
+    vc_additional_data["type"] = format_data["types"]
 
     record.identifier = body["id"]
     record.format = body["format"]
