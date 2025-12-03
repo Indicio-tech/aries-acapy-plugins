@@ -23,9 +23,9 @@ This test suite validates complete OID4VC v1 flows with three components:
 docker-compose up --build
 
 # Run specific test categories
-docker-compose run integration-tests -m "mdoc"     # Only mso_mdoc tests
-docker-compose run integration-tests -m "sdjwt"    # Only SD-JWT tests
-docker-compose run integration-tests -m "interop"  # Only interop tests
+docker-compose run test-river -m "mdoc"     # Only mso_mdoc tests
+docker-compose run test-river -m "sdjwt"    # Only SD-JWT tests
+docker-compose run test-river -m "interop"  # Only interop tests
 
 # Clean up
 docker-compose down -v

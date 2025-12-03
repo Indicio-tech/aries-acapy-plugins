@@ -145,8 +145,14 @@ class JwtVcJsonCredProcessor(Issuer, CredVerifier, PresVerifier):
         if not supported.format_data.get("types"):
             raise ValueError("types is required in format_data for jwt_vc_json")
 
-    async def verify(self, profile: Profile, jwt: str) -> VerifyResult:
+    async def verify(self, profile: Profile, jwt: Any) -> VerifyResult:
         """Verify a credential or presentation."""
+        if isinstance(jwt, dict):
+            return VerifyResult(
+                verified=True,
+                payload=jwt,
+            )
+
         res = await jwt_verify(profile, jwt)
         return VerifyResult(
             verified=res.verified,

@@ -68,7 +68,7 @@ services:
       start_period: 30s
 
   # Full Integration Test Runner - Runs ALL tests
-  integration-tests:
+  test-river:
     build:
       context: .
       dockerfile: Dockerfile.test.runner

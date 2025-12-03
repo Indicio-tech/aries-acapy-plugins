@@ -8,14 +8,10 @@
  * Supports both mso_mdoc and SD-JWT credential formats.
  */
 
-import './agent.js'
-import './issuance.js'
-import './verification.js'
-import 'express'
-import express
-import issuanceRouter
-import verificationRouter
-import { initializeAgent }
+import express from 'express';
+import issuanceRouter from './issuance.js';
+import verificationRouter from './verification.js';
+import { initializeAgent } from './agent.js';
 
 const app = express();
 const PORT = 3020;

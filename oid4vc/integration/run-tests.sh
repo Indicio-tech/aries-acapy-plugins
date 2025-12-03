@@ -119,7 +119,7 @@ run_full() {
 # Development environment
 run_dev() {
     print_info "Starting development environment..."
-    print_info "Services will run in background. Use 'docker compose -f docker-compose.dev.yml exec integration-tests bash' to access test container"
+    print_info "Services will run in background. Use 'docker compose -f docker-compose.dev.yml exec test-river bash' to access test container"
     
     cleanup
     docker compose -f docker-compose.dev.yml up -d --build
@@ -132,7 +132,7 @@ run_dev() {
         print_info "  - ACA-Py Verifier Admin: http://localhost:8031"
         print_info ""
         print_info "To run tests manually:"
-        print_info "  docker compose -f docker-compose.dev.yml exec integration-tests uv run pytest tests/ -v"
+        print_info "  docker compose -f docker-compose.dev.yml exec test-river uv run pytest tests/ -v"
         print_info ""
         print_info "To stop services:"
         print_info "  docker compose -f docker-compose.dev.yml down"
@@ -160,14 +160,14 @@ run_test() {
         sleep 10
     fi
     
-    docker compose -f docker-compose.dev.yml exec integration-tests uv run pytest "tests/${test_name}.py" -v -s
+    docker compose -f docker-compose.dev.yml exec test-river uv run pytest "tests/${test_name}.py" -v -s
 }
 
 # Show logs
 show_logs() {
     local service=$1
     if [ -z "$service" ]; then
-        print_error "Please specify a service name (credo-agent, acapy-issuer, acapy-verifier, integration-tests)"
+        print_error "Please specify a service name (credo-agent, acapy-issuer, acapy-verifier, test-river)"
         exit 1
     fi
     

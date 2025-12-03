@@ -72,7 +72,7 @@ services:
     restart: unless-stopped
 
   # Interactive Test Environment - No auto-run, for manual testing
-  integration-tests:
+  test-river:
     build:
       context: .
       dockerfile: Dockerfile.test.runner

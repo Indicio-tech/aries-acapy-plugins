@@ -13,12 +13,15 @@ services:
     depends_on:
       acapy-issuer:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3020/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+
+  # Sphereon Wrapper - Receives credentials from ACA-Py
+  sphereon-wrapper:
+    build:
+      context: ./sphereon
+    ports:
+      - "3010:3010"
+    environment:
+      - PORT=3010
 
   # ACA-Py Issuer - Issues credentials via OID4VCI
   acapy-issuer:
@@ -34,17 +37,12 @@ services:
       - OID4VCI_ENDPOINT=http://acapy-issuer.local:8022
       - WALLET_STORAGE_TYPE=${WALLET_STORAGE_TYPE:-sqlite}
       - PYTHONPATH=/usr/src/app/isomdl_wrapper:/usr/src/app
+      - ACAPY_ADMIN_PORT=8021
     networks:
       default:
         aliases:
           - acapy-issuer.local
     command: ["aca-py", "start", "--arg-file", "/usr/src/app/docker/dev.yml", "--wallet-storage-type", "${WALLET_STORAGE_TYPE:-sqlite}"]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8021/status/ready"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
 
   # ACA-Py Verifier - Receives presentations from Credo
   acapy-verifier:
@@ -62,6 +60,7 @@ services:
       - OID4VP_ENDPOINT=http://acapy-verifier.local:8032
       - WALLET_STORAGE_TYPE=${WALLET_STORAGE_TYPE:-sqlite}
       - PYTHONPATH=/usr/src/app/isomdl_wrapper:/usr/src/app
+      - ACAPY_ADMIN_PORT=8031
     volumes:
       - ../oid4vc:/usr/src/app/oid4vc
     networks:
@@ -69,27 +68,22 @@ services:
         aliases:
           - acapy-verifier.local
     command: ["aca-py", "start", "--arg-file", "/usr/src/app/docker/dev-verifier.yml", "--wallet-storage-type", "${WALLET_STORAGE_TYPE:-sqlite}"]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8031/status/ready"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
 
   # Integration Test Runner
-  integration-tests:
+  test-river:
     build:
       context: .
       dockerfile: Dockerfile.test.runner
     working_dir: /usr/src/app
     environment:
       - CREDO_AGENT_URL=http://credo-agent:3020
+      - SPHEREON_WRAPPER_URL=http://sphereon-wrapper:3010
       - ACAPY_ISSUER_ADMIN_URL=http://acapy-issuer:8021
       - ACAPY_ISSUER_OID4VCI_URL=http://acapy-issuer.local:8022
       - ACAPY_VERIFIER_ADMIN_URL=http://acapy-verifier:8031
       - ACAPY_VERIFIER_OID4VP_URL=http://acapy-verifier.local:8032
       - PYTHONPATH=/usr/src/app
-      - WAIT_HOSTS=credo-agent:3020,acapy-issuer:8021,acapy-verifier:8031
+      - WAIT_HOSTS=credo-agent:3020,sphereon-wrapper:3010,acapy-issuer:8021,acapy-verifier:8031
       - WAIT_HOSTS_TIMEOUT=300
       - WAIT_SLEEP_INTERVAL=5
       - WAIT_HTTP_RETRY_COUNT=15
@@ -98,6 +92,8 @@ services:
       - ./tests:/usr/src/app/tests
     depends_on:
       credo-agent:
+        condition: service_healthy
+      sphereon-wrapper:
         condition: service_healthy
       acapy-issuer:
         condition: service_healthy

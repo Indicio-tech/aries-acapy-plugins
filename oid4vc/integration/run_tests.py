@@ -110,7 +110,7 @@ class IntegrationTestRunner:
             time.sleep(30)  # Give services time to start
 
             # Run tests
-            test_cmd = ["docker-compose", "run", "--rm", "integration-tests"]
+            test_cmd = ["docker-compose", "run", "--rm", "test-river"]
 
             if self.credential_type != "all":
                 test_cmd.extend(["-m", self.credential_type])

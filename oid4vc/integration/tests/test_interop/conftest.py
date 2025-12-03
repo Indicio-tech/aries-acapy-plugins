@@ -161,7 +161,7 @@ async def sdjwt_offer(acapy_issuer: httpx.AsyncClient) -> str:
         "/oid4vci/credential-offer", params={"exchange_id": exchange_id}
     )
     response.raise_for_status()
-    return response.json()["credential_offer_uri"]
+    return response.json()["credential_offer"]
 
 
 @pytest_asyncio.fixture

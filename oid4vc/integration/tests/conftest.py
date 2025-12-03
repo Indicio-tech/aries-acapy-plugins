@@ -14,6 +14,7 @@ from acapy_controller import Controller
 
 # Environment configuration
 CREDO_AGENT_URL = os.getenv("CREDO_AGENT_URL", "http://localhost:3020")
+SPHEREON_WRAPPER_URL = os.getenv("SPHEREON_WRAPPER_URL", "http://localhost:3010")
 ACAPY_ISSUER_ADMIN_URL = os.getenv("ACAPY_ISSUER_ADMIN_URL", "http://localhost:8021")
 ACAPY_ISSUER_OID4VCI_URL = os.getenv(
     "ACAPY_ISSUER_OID4VCI_URL", "http://localhost:8022"
@@ -38,6 +39,25 @@ async def credo_client():
             await asyncio.sleep(1)
         else:
             raise RuntimeError("Credo agent service not available")
+
+        yield client
+
+
+@pytest_asyncio.fixture
+async def sphereon_client():
+    """HTTP client for Sphereon wrapper service."""
+    async with httpx.AsyncClient(base_url=SPHEREON_WRAPPER_URL, timeout=30.0) as client:
+        # Wait for service to be ready
+        for _ in range(5):
+            try:
+                response = await client.get("/health")
+                if response.status_code == 200:
+                    break
+            except httpx.ConnectError:
+                pass
+            await asyncio.sleep(1)
+        else:
+            raise RuntimeError("Sphereon wrapper service not available")
 
         yield client
 

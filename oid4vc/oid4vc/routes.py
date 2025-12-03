@@ -426,7 +426,7 @@ class CredOfferResponseSchemaVal(OpenAPISchema):
             "example": "openid-credential-offer://...",
         },
     )
-    credential_offer = fields.Nested(CredOfferSchema(), required=True)
+    offer = fields.Nested(CredOfferSchema(), required=True)
 
 
 class CredOfferResponseSchemaRef(OpenAPISchema):
@@ -439,7 +439,7 @@ class CredOfferResponseSchemaRef(OpenAPISchema):
             "example": "openid-credential-offer://...",
         },
     )
-    credential_offer = fields.Nested(CredOfferSchema(), required=True)
+    offer = fields.Nested(CredOfferSchema(), required=True)
 
 
 async def _create_pre_auth_code(
@@ -542,8 +542,8 @@ async def get_cred_offer(request: web.BaseRequest):
     offer = await _parse_cred_offer(context, exchange_id)
     offer_uri = quote(json.dumps(offer))
     offer_response = {
-        "credential_offer": offer,
-        "credential_offer_uri": f"openid-credential-offer://?credential_offer={offer_uri}",
+        "offer": offer,
+        "credential_offer": f"openid-credential-offer://?credential_offer={offer_uri}",
     }
     return web.json_response(offer_response)
 
@@ -572,9 +572,9 @@ async def get_cred_offer_by_ref(request: web.BaseRequest):
 
     config = Config.from_settings(context.settings)
     subpath = f"/tenant/{wallet_id}" if wallet_id else ""
-    ref_uri = f"{config.endpoint}{subpath}/oid4vci/dereference-credential-offer"
+    ref_uri = f"{config.endpoint}{subpath}/oid4vci/dereference-credential-offer?exchange_id={exchange_id}"
     offer_response = {
-        "credential_offer": offer,
+        "offer": offer,
         "credential_offer_uri": f"openid-credential-offer://?credential_offer={quote(ref_uri)}",
     }
     return web.json_response(offer_response)
@@ -882,7 +882,7 @@ async def supported_credential_create_jwt(request: web.Request):
     LOGGER.info(f"body: {body}")
     body["identifier"] = body.pop("id")
     format_data = {}
-    format_data["type"] = body.pop("type")
+    format_data["types"] = body.pop("type")
     format_data["credentialSubject"] = body.pop("credentialSubject", None)
     format_data["context"] = body.pop("@context")
     format_data["order"] = body.pop("order", None)
@@ -890,7 +890,7 @@ async def supported_credential_create_jwt(request: web.Request):
     vc_additional_data["@context"] = format_data["context"]
     # type vs types is deliberate; OID4VCI spec is inconsistent with VCDM
     # ~ in Draft 11, fixed in later drafts
-    vc_additional_data["type"] = format_data["type"]
+    vc_additional_data["type"] = format_data["types"]
 
     record = SupportedCredential(
         **body,

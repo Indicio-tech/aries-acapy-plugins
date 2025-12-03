@@ -38,23 +38,23 @@ case $ARG in
     # Run our current integration tests
     if [ -z "$1" ]; then
       echo "Running all ACA-Py + Credo integration tests..."
-      docker compose -f $F run --rm integration-tests uv run pytest tests/ -v
+      docker compose -f $F run --rm test-river uv run pytest tests/ -v
     else
       echo "Running specific test: $1"
-      docker compose -f $F run --rm integration-tests uv run pytest tests/$1 -v
+      docker compose -f $F run --rm test-river uv run pytest tests/$1 -v
     fi
     ;;
 
   endpoint)
     # Test our new dual endpoint functionality
     echo "🔗 Testing dual OID4VCI well-known endpoints..."
-    docker compose -f $F run --rm integration-tests uv run python tests/test_dual_endpoints.py run
+    docker compose -f $F run --rm test-river uv run python tests/test_dual_endpoints.py run
     ;;
 
   credo)
     # Test Credo agent functionality
     echo "Testing Credo agent..."
-    docker compose -f $F run --rm integration-tests curl -s http://credo-agent:3020/health | jq .
+    docker compose -f $F run --rm test-river curl -s http://credo-agent:3020/health | jq .
     ;;
 
   issuance)
@@ -66,7 +66,7 @@ case $ARG in
   flow)
     # Test complete credential flow: ACA-Py issues → Credo receives → Credo presents → ACA-Py verifies
     echo "🔄 Testing complete OID4VC flow: ACA-Py → Credo → ACA-Py..."
-    docker compose -f $F run --rm integration-tests uv run python tests/test_complete_oid4vc_flow.py run
+    docker compose -f $F run --rm test-river uv run python tests/test_complete_oid4vc_flow.py run
     ;;
 
   *)
@@ -82,7 +82,7 @@ case $ARG in
     
     # Run our endpoint test first
     echo "🔗 Testing OID4VCI endpoints..."
-    docker compose -f $F run --rm integration-tests bash -c '
+    docker compose -f $F run --rm test-river bash -c '
       echo "Standard endpoint:" && curl -s http://acapy-issuer:8022/.well-known/openid-credential-issuer | jq .
       echo "Deprecated endpoint:" && curl -s http://acapy-issuer:8022/.well-known/openid_credential_issuer | jq .
     '
@@ -90,10 +90,10 @@ case $ARG in
     # Run any additional tests passed as arguments
     if [ $# -gt 0 ]; then
       echo "🧪 Running specified tests: $*"
-      docker compose -f $F run --rm integration-tests python -m pytest tests/ -v -k "$*"
+      docker compose -f $F run --rm test-river python -m pytest tests/ -v -k "$*"
     else
       echo "🧪 Running basic connectivity tests..."
-      docker compose -f $F run --rm integration-tests bash -c '
+      docker compose -f $F run --rm test-river bash -c '
         echo "Checking ACA-Py issuer..." && curl -s http://acapy-issuer:8021/status/ready | jq .
         echo "Checking ACA-Py verifier..." && curl -s http://acapy-verifier:8031/status/ready | jq .  
         echo "Checking Credo agent..." && curl -s http://credo-agent:3020/health | jq .

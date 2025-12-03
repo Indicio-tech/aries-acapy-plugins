@@ -215,10 +215,12 @@ class DescriptorEvaluator:
         else:
             raise TypeError("descriptor must be dict or InputDescriptor")
 
-        field_constraints = [
-            ConstraintFieldEvaluator.compile(constraint)
-            for constraint in descriptor.constraint._fields
-        ]
+        field_constraints = []
+        if descriptor.constraint:
+            field_constraints = [
+                ConstraintFieldEvaluator.compile(constraint)
+                for constraint in descriptor.constraint._fields
+            ]
         return cls(descriptor.id, field_constraints)
 
     def match(self, value: Any) -> Dict[str, Any]:

@@ -83,15 +83,32 @@ def isomdl_mdoc_sign(
         LOGGER.info(f"iaca_key_pem length: {len(iaca_key_pem)}")
 
         if doctype == "org.iso.18013.5.1.mDL":
-            # Convert payload to JSON string for Rust processing
-            mdl_items = json.dumps(payload)
-            LOGGER.info(f"mdl_items: {mdl_items}")
+            namespaces = {}
 
-            # Create and sign mDoc using the new Rust function
-            # This handles CBOR encoding internally to avoid Python cbor2 issues
-            mdoc = Mdoc.create_and_sign_mdl(
-                mdl_items,
-                None,  # aamva_items - optional, currently not used
+            # Handle mDL namespace
+            # Extract mDL items from payload if wrapped in namespace
+            mdl_payload = payload.get("org.iso.18013.5.1", payload)
+            mdl_ns = {}
+            for k, v in mdl_payload.items():
+                # Skip nested namespaces if we are processing the wrapper
+                if k == "org.iso.18013.5.1.aamva":
+                    continue
+                mdl_ns[k] = cbor2.dumps(v)
+            namespaces["org.iso.18013.5.1"] = mdl_ns
+
+            # Handle AAMVA namespace
+            aamva_payload = payload.get("org.iso.18013.5.1.aamva")
+            if aamva_payload:
+                aamva_ns = {}
+                for k, v in aamva_payload.items():
+                    aamva_ns[k] = cbor2.dumps(v)
+                namespaces["org.iso.18013.5.1.aamva"] = aamva_ns
+
+            LOGGER.info(f"Creating mdoc with namespaces: {list(namespaces.keys())}")
+
+            mdoc = Mdoc.create_and_sign(
+                doctype,
+                namespaces,
                 holder_jwk,
                 iaca_cert_pem,
                 iaca_key_pem,

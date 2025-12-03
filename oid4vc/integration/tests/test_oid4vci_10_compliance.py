@@ -102,7 +102,7 @@ class TestOID4VCI10Compliance:
         offer_data = await test_runner.create_credential_offer(supported_cred_id)
 
         # Get access token
-        grants = offer_data["credential_offer"]["grants"]
+        grants = offer_data["offer"]["grants"]
         pre_auth_grant = grants["urn:ietf:params:oauth:grant-type:pre-authorized_code"]
         pre_authorized_code = pre_auth_grant["pre-authorized_code"]
 
@@ -188,7 +188,7 @@ class TestOID4VCI10Compliance:
         offer_data = await test_runner.create_credential_offer(supported_cred_id)
 
         # Extract pre-authorized code from credential offer
-        grants = offer_data["credential_offer"]["grants"]
+        grants = offer_data["offer"]["grants"]
         pre_auth_grant = grants["urn:ietf:params:oauth:grant-type:pre-authorized_code"]
         pre_authorized_code = pre_auth_grant["pre-authorized_code"]
 
@@ -259,7 +259,7 @@ class TestOID4VCI10Compliance:
         offer_data = await test_runner.create_credential_offer(supported_cred_id)
 
         # Extract pre-authorized code from credential offer
-        grants = offer_data["credential_offer"]["grants"]
+        grants = offer_data["offer"]["grants"]
         pre_auth_grant = grants["urn:ietf:params:oauth:grant-type:pre-authorized_code"]
         pre_authorized_code = pre_auth_grant["pre-authorized_code"]
 
@@ -283,7 +283,7 @@ class TestOID4VCI10Compliance:
 
             # Test with invalid proof type
             invalid_proof_request = {
-                "credential_identifier": offer_data["credential_offer"][
+                "credential_identifier": offer_data["offer"][
                     "credential_configuration_ids"
                 ][0],
                 "proof": {

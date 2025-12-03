@@ -93,7 +93,7 @@ class TestOID4VCMdocCompliance:
         holder_did = offer_data["did"]
 
         # Get access token using pre-authorized code flow
-        grants = offer_data["credential_offer"]["grants"]
+        grants = offer_data["offer"]["grants"]
         pre_auth_grant = grants["urn:ietf:params:oauth:grant-type:pre-authorized_code"]
         pre_authorized_code = pre_auth_grant["pre-authorized_code"]
 
@@ -170,6 +170,8 @@ class TestOID4VCMdocCompliance:
                 headers={"Authorization": f"Bearer {access_token}"},
             )
 
+            if cred_response.status_code != 200:
+                LOGGER.error(f"Credential request failed: {cred_response.text}")
             assert cred_response.status_code == 200
             cred_data = cred_response.json()
 
@@ -282,7 +284,7 @@ class TestOID4VCMdocCompliance:
         holder_did = offer_data["did"]
 
         # Get credential via OID4VC flow
-        grants = offer_data["credential_offer"]["grants"]
+        grants = offer_data["offer"]["grants"]
         pre_auth_grant = grants["urn:ietf:params:oauth:grant-type:pre-authorized_code"]
         pre_authorized_code = pre_auth_grant["pre-authorized_code"]
 
@@ -344,6 +346,8 @@ class TestOID4VCMdocCompliance:
                 headers={"Authorization": f"Bearer {access_token}"},
             )
 
+            if cred_response.status_code != 200:
+                LOGGER.error(f"Credential request failed: {cred_response.text}")
             assert cred_response.status_code == 200
             cred_data = cred_response.json()
 

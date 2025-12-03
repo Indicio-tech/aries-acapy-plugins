@@ -97,8 +97,8 @@ async def test_acapy_oid4vci_credential_issuance_to_credo(
     offer_response = await acapy_issuer_admin.get(
         "/oid4vci/credential-offer", params={"exchange_id": exchange_id}
     )
-    assert "credential_offer_uri" in offer_response
-    credential_offer_uri = offer_response["credential_offer_uri"]
+    assert "credential_offer" in offer_response
+    credential_offer_uri = offer_response["credential_offer"]
 
     # Step 3: Credo accepts the credential offer
     accept_offer_request = {
@@ -266,7 +266,7 @@ async def test_full_acapy_credo_oid4vc_flow(
     offer_response = await acapy_issuer_admin.get(
         "/oid4vci/credential-offer", params={"exchange_id": exchange_id}
     )
-    credential_offer_uri = offer_response["credential_offer_uri"]
+    credential_offer_uri = offer_response["credential_offer"]
 
     # Step 3: Credo accepts credential offer and receives credential
     accept_offer_request = {

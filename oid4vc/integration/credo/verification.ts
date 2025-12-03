@@ -4,7 +4,7 @@ import { getAgent, initializeAgent } from './agent.js';
 import { AuthorizationRequest } from '@sphereon/did-auth-siop';
 import { W3cJwtVerifiableCredential } from '@credo-ts/core';
 
-const router = express.Router();
+const router: express.Router = express.Router();
 
 // Present credential to ACA-Py verifier
 router.post('/present', async (req: any, res: any) => {

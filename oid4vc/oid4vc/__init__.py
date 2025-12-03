@@ -48,6 +48,8 @@ async def setup(context: InjectionContext):
     processors.register_issuer("jwt_vc", jwt_vc_json)
     processors.register_cred_verifier("jwt_vc_json", jwt_vc_json)
     processors.register_cred_verifier("jwt_vc", jwt_vc_json)
+    processors.register_cred_verifier("jwt_vp_json", jwt_vc_json)
+    processors.register_cred_verifier("jwt_vp", jwt_vc_json)
     processors.register_pres_verifier("jwt_vp_json", jwt_vc_json)
     processors.register_pres_verifier("jwt_vp", jwt_vc_json)
     LOGGER.info("Registered jwt_vc_json credential processor")

@@ -25,11 +25,13 @@ dependencies = [
     # mso_mdoc dependencies
     "cwt>=1.6.0",
     "pycose>=1.0.0",
-    # sd_jwt dependencies  
+    # sd_jwt dependencies
     "jsonpointer>=3.0.0,<4.0.0",
     # isomdl-uniffi from GitHub (will be updated to releases once available)
     # Temporarily commented for Docker builds - not needed for integration tests
     # "isomdl-uniffi @ git+https://github.com/Indicio-tech/isomdl-uniffi.git@feat/x509#subdirectory=python",
+    "acapy-agent>=1.4.0",
+    "Appium-Python-Client>=4.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]

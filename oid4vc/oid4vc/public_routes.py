@@ -83,8 +83,8 @@ async def dereference_cred_offer(request: web.BaseRequest):
     offer = await _parse_cred_offer(context, exchange_id)
     return web.json_response(
         {
-            "credential_offer": offer,
-            "credential_offer_uri": f"openid-credential-offer://?credential_offer={quote(json.dumps(offer))}",
+            "offer": offer,
+            "credential_offer": f"openid-credential-offer://?credential_offer={quote(json.dumps(offer))}",
         }
     )
 
@@ -620,12 +620,20 @@ async def _handle_jwt_proof(
         decoded_signature,
         sig_type=headers.get("alg", ""),
     )
+
+    if not verified:
+        raise web.HTTPBadRequest(reason="Proof verification failed: invalid signature")
+
+    holder_jwk = headers.get("jwk")
+    if not holder_jwk:
+        holder_jwk = json.loads(key.get_jwk_public())
+
     return PopResult(
         headers,
         payload,
         verified,
         holder_kid=headers.get("kid"),
-        holder_jwk=headers.get("jwk"),
+        holder_jwk=holder_jwk,
     )
 
 
@@ -1421,7 +1429,7 @@ async def post_response(request: web.Request):
         )
 
     LOGGER.debug("Presentation result: %s", record.verified)
-    return web.Response(status=200)
+    return web.json_response({})
 
 
 class StatusListMatchSchema(OpenAPISchema):

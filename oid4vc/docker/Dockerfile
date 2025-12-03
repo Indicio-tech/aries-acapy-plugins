@@ -82,8 +82,8 @@ COPY docker/dev-verifier.yml /usr/src/app/docker/dev-verifier.yml
 EXPOSE 8030 8031 8032
 
 # Add health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
-  CMD curl -f http://localhost:8031/status/ready || exit 1
+HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=30s \
+  CMD curl -f http://localhost:${ACAPY_ADMIN_PORT:-8021}/status/ready || exit 1
 
 # Set working directory and run ACA-Py
 WORKDIR /usr/src/acapy

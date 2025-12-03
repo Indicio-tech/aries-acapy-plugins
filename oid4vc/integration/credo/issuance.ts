@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { W3cJsonLdVerifiableCredential, W3cJwtVerifiableCredential } from '@credo-ts/core';
 import { getAgent, initializeAgent } from './agent.js';
 
-const router = express.Router();
+const router: express.Router = express.Router();
 
 // Accept credential offer from ACA-Py issuer
 router.post('/accept-offer', async (req: any, res: any) => {
