@@ -401,7 +401,7 @@ async def update_status_list_entry(
         "shard_number": str(shard_number),
     }
     shard = await StatusListShard.retrieve_by_tag_filter(
-        session, tag_filter, for_update=True
+        session, tag_filter
     )
     bit_index = shard_index * definition.status_size
     status_bits = shard.status_bits
@@ -445,7 +445,7 @@ async def get_status_list(
             status_bits.extend(shard.status_bits)
         bit_bytes = b""
         if definition.list_type == "ietf":
-            status_bits = bitarray(status_bits, endian="little")
+            status_bits = bitarray(status_bits)
             bit_bytes = status_bits.tobytes()
             bit_bytes = zlib.compress(bit_bytes)
         elif definition.list_type == "w3c":
