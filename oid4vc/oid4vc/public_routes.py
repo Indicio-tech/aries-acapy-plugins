@@ -197,6 +197,7 @@ async def credential_issuer_metadata(request: web.Request):
         metadata = {
             "credential_issuer": f"{public_url}{subpath}{version_path}",
             "credential_endpoint": f"{public_url}{subpath}{version_path}/credential",
+            "token_endpoint": f"{public_url}{subpath}{version_path}/token",
         }
 
         if config.auth_server_url:

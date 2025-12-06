@@ -20,6 +20,7 @@ endpoint:
 plugin:
   - oid4vc
   - sd_jwt_vc
+  - status_list.v1_0
   # Temporarily disabled due to missing libisomdl_uniffi.so dependency
   # - mso_mdoc
 
@@ -28,6 +29,9 @@ plugin-config-value:
   - oid4vci.host=0.0.0.0
   - oid4vci.port=8022
   - oid4vci.endpoint=${OID4VCI_ENDPOINT:-http://localhost:8022}
+  - oid4vci.status_handler=status_list.v1_0.status_handler
+  - status_list.public_uri=http://localhost:8022/status/{list_number}
+  - status_list.file_path=./status_list_data
 
 # Ledger configuration - use no-ledger for simple development
 no-ledger: true

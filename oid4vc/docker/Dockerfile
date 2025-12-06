@@ -4,8 +4,8 @@ RUN apt-get update && apt-get install -y curl git build-essential
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-ARG ISOMDL_BRANCH=feature/oid4vp-stateless-verification
-RUN git clone https://github.com/Indicio-tech/isomdl-uniffi.git
+ARG ISOMDL_BRANCH=feat/intermediate-chaining
+RUN git clone https://github.com/Indicio-tech/isomdl-uniffi.git /build/isomdl-uniffi
 WORKDIR /build/isomdl-uniffi
 RUN git checkout ${ISOMDL_BRANCH}
 
@@ -44,12 +44,14 @@ RUN pip install configargparse
 WORKDIR /usr/src/app
 
 # Copy the entire plugin source tree
-COPY pyproject.toml ./
-COPY README.md ./
-COPY oid4vc/ oid4vc/
-COPY jwt_vc_json/ jwt_vc_json/
-COPY mso_mdoc/ mso_mdoc/
-COPY sd_jwt_vc/ sd_jwt_vc/
+COPY oid4vc/pyproject.toml ./
+COPY oid4vc/README.md ./
+COPY oid4vc/oid4vc/ oid4vc/
+COPY oid4vc/jwt_vc_json/ jwt_vc_json/
+COPY oid4vc/mso_mdoc/ mso_mdoc/
+COPY oid4vc/sd_jwt_vc/ sd_jwt_vc/
+COPY status_list/ status_list/
+RUN pip install -e ./status_list
 
 # Install isomdl-uniffi from builder stage
 COPY --from=isomdl-build /build/isomdl-uniffi/python/dist/*.whl /tmp/
@@ -73,10 +75,10 @@ RUN apt-get update && apt-get install -y curl jq && apt-get clean
 COPY --from=base /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=base /usr/local/bin /usr/local/bin
 
-# Copy the docker config directory
+# Copy dev config
 RUN mkdir -p /usr/src/app/docker
-COPY docker/dev.yml /usr/src/app/docker/dev.yml
-COPY docker/dev-verifier.yml /usr/src/app/docker/dev-verifier.yml
+COPY oid4vc/docker/dev.yml /usr/src/app/docker/dev.yml
+COPY oid4vc/docker/dev-verifier.yml /usr/src/app/docker/dev-verifier.yml
 
 # Expose ports
 EXPOSE 8030 8031 8032

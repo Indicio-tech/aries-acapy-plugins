@@ -13,6 +13,7 @@ services:
     depends_on:
       acapy-issuer:
         condition: service_healthy
+    restart: unless-stopped
 
   # Sphereon Wrapper - Receives credentials from ACA-Py
   sphereon-wrapper:
@@ -26,8 +27,8 @@ services:
   # ACA-Py Issuer - Issues credentials via OID4VCI
   acapy-issuer:
     build: 
-      dockerfile: docker/Dockerfile
-      context: ../
+      dockerfile: oid4vc/docker/Dockerfile
+      context: ../../
     ports:
       - "8020:8020"  # inbound transport
       - "8021:8021"  # admin
@@ -38,17 +39,19 @@ services:
       - WALLET_STORAGE_TYPE=${WALLET_STORAGE_TYPE:-sqlite}
       - PYTHONPATH=/usr/src/app/isomdl_wrapper:/usr/src/app
       - ACAPY_ADMIN_PORT=8021
+      - LOG_LEVEL=DEBUG
     networks:
       default:
         aliases:
           - acapy-issuer.local
-    command: ["aca-py", "start", "--arg-file", "/usr/src/app/docker/dev.yml", "--wallet-storage-type", "${WALLET_STORAGE_TYPE:-sqlite}"]
+    command: ["aca-py", "start", "--arg-file", "/usr/src/app/docker/dev.yml", "--wallet-storage-type", "${WALLET_STORAGE_TYPE:-sqlite}", "--log-level", "DEBUG"]
+    restart: unless-stopped
 
   # ACA-Py Verifier - Receives presentations from Credo
   acapy-verifier:
     build: 
-      dockerfile: docker/Dockerfile
-      context: ../
+      dockerfile: oid4vc/docker/Dockerfile
+      context: ../../
     ports:
       - "8030:8030"  # inbound transport
       - "8031:8031"  # admin
@@ -61,13 +64,15 @@ services:
       - WALLET_STORAGE_TYPE=${WALLET_STORAGE_TYPE:-sqlite}
       - PYTHONPATH=/usr/src/app/isomdl_wrapper:/usr/src/app
       - ACAPY_ADMIN_PORT=8031
+      - LOG_LEVEL=DEBUG
     volumes:
-      - ../oid4vc:/usr/src/app/oid4vc
+      - ../../oid4vc:/usr/src/app/oid4vc
     networks:
       default:
         aliases:
           - acapy-verifier.local
-    command: ["aca-py", "start", "--arg-file", "/usr/src/app/docker/dev-verifier.yml", "--wallet-storage-type", "${WALLET_STORAGE_TYPE:-sqlite}"]
+    command: ["aca-py", "start", "--arg-file", "/usr/src/app/docker/dev-verifier.yml", "--wallet-storage-type", "${WALLET_STORAGE_TYPE:-sqlite}", "--log-level", "DEBUG"]
+    restart: unless-stopped
 
   # Integration Test Runner
   test-river:

@@ -32,6 +32,7 @@ dependencies = [
     # "isomdl-uniffi @ git+https://github.com/Indicio-tech/isomdl-uniffi.git@feat/x509#subdirectory=python",
     "acapy-agent>=1.4.0",
     "Appium-Python-Client>=4.0.0",
+    "bitarray>=2.9.2",
 ]
 
 [tool.hatch.build.targets.wheel]

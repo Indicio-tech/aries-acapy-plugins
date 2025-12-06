@@ -34,7 +34,6 @@ cleanup() {
     print_info "Cleaning up containers and volumes..."
     docker compose down -v 2>/dev/null || true
     docker compose -f docker-compose.full.yml down -v 2>/dev/null || true
-    docker compose -f docker-compose.dev.yml down -v 2>/dev/null || true
     print_success "Cleanup complete"
 }
 
@@ -63,8 +62,8 @@ show_usage() {
     echo "Usage: $0 <command> [options]"
     echo ""
     echo "Commands:"
-    echo "  quick          Run quick validation tests (3 tests, ~30s)"
-    echo "  full           Run comprehensive test suite (39 tests, ~5-10min)"
+    echo "  default        Run all tests (default)"
+    echo "  full           Run comprehensive test suite (with HTML report)"
     echo "  dev            Start development environment (services only)"
     echo "  test <name>    Run specific test file in dev environment"
     echo "  logs <service> Show logs for specific service"
@@ -73,8 +72,8 @@ show_usage() {
     echo "  status         Show status of running services"
     echo ""
     echo "Examples:"
-    echo "  $0 quick                           # Fast validation"
-    echo "  $0 full                            # Complete test suite"
+    echo "  $0                                 # Run all tests"
+    echo "  $0 full                            # Complete test suite with report"
     echo "  $0 dev                             # Start dev environment"
     echo "  $0 test test_docker_connectivity   # Run specific test"
     echo "  $0 logs credo-agent                # Show Credo agent logs"
@@ -83,18 +82,18 @@ show_usage() {
     echo ""
 }
 
-# Quick tests (default docker-compose.yml)
-run_quick() {
-    print_info "Running quick validation tests..."
-    print_info "This will run 3 essential tests: connectivity + basic flow"
+# Default tests (default docker-compose.yml)
+run_default() {
+    print_info "Running integration tests..."
+    print_info "This will run all tests"
     
     cleanup
     docker compose up --build --abort-on-container-exit
     
     if [ $? -eq 0 ]; then
-        print_success "Quick tests completed successfully!"
+        print_success "Tests completed successfully!"
     else
-        print_error "Quick tests failed!"
+        print_error "Tests failed!"
         exit 1
     fi
 }
@@ -119,10 +118,10 @@ run_full() {
 # Development environment
 run_dev() {
     print_info "Starting development environment..."
-    print_info "Services will run in background. Use 'docker compose -f docker-compose.dev.yml exec test-river bash' to access test container"
+    print_info "Services will run in background. Use 'docker compose exec test-river bash' to access test container"
     
     cleanup
-    docker compose -f docker-compose.dev.yml up -d --build
+    docker compose up -d --build
     
     if [ $? -eq 0 ]; then
         print_success "Development environment started!"
@@ -132,10 +131,10 @@ run_dev() {
         print_info "  - ACA-Py Verifier Admin: http://localhost:8031"
         print_info ""
         print_info "To run tests manually:"
-        print_info "  docker compose -f docker-compose.dev.yml exec test-river uv run pytest tests/ -v"
+        print_info "  docker compose exec test-river uv run pytest tests/ -v"
         print_info ""
         print_info "To stop services:"
-        print_info "  docker compose -f docker-compose.dev.yml down"
+        print_info "  docker compose down"
     else
         print_error "Failed to start development environment!"
         exit 1
@@ -154,13 +153,13 @@ run_test() {
     print_info "Running test: $test_name"
     
     # Check if dev environment is running
-    if ! docker compose -f docker-compose.dev.yml ps | grep -q "Up"; then
+    if ! docker compose ps | grep -q "Up"; then
         print_info "Starting development environment first..."
-        docker compose -f docker-compose.dev.yml up -d --build
+        docker compose up -d --build
         sleep 10
     fi
     
-    docker compose -f docker-compose.dev.yml exec test-river uv run pytest "tests/${test_name}.py" -v -s
+    docker compose run --rm test-river uv run pytest "tests/${test_name}.py" -v -s
 }
 
 # Show logs
@@ -208,8 +207,8 @@ main() {
     check_docker
     
     case "${1:-}" in
-        "quick"|"")
-            run_quick
+        "default"|"")
+            run_default
             ;;
         "full")
             run_full

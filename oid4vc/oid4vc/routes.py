@@ -39,7 +39,7 @@ from cryptography.x509.oid import NameOID
 from marshmallow import fields
 from marshmallow.validate import OneOf
 
-from oid4vc.cred_processor import CredProcessors
+from oid4vc.cred_processor import CredProcessorError, CredProcessors
 from oid4vc.jwk import DID_JWK
 from oid4vc.models.dcql_query import (
     CredentialQuery,
@@ -236,7 +236,7 @@ async def create_exchange(request: web.Request, refresh_id: str | None = None):
     processor = registered_processors.issuer_for_format(supported.format)
     try:
         processor.validate_credential_subject(supported, credential_subject)
-    except ValueError as err:
+    except (ValueError, CredProcessorError) as err:
         raise web.HTTPBadRequest(reason=str(err)) from err
 
     notification_id = secrets.token_urlsafe(CODE_BYTES)
@@ -769,7 +769,7 @@ async def supported_credential_create(request: web.Request):
     processor = registered_processors.issuer_for_format(record.format)
     try:
         processor.validate_supported_credential(record)
-    except ValueError as err:
+    except (ValueError, CredProcessorError) as err:
         raise web.HTTPBadRequest(reason=str(err)) from err
 
     async with profile.session() as session:
@@ -908,7 +908,7 @@ async def supported_credential_create_jwt(request: web.Request):
     processor = registered_processors.issuer_for_format(record.format)
     try:
         processor.validate_supported_credential(record)
-    except ValueError as err:
+    except (ValueError, CredProcessorError) as err:
         raise web.HTTPBadRequest(reason=str(err)) from err
 
     async with profile.session() as session:

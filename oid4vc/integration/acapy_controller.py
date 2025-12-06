@@ -33,6 +33,24 @@ class Controller:
             response.raise_for_status()
             return response.json()
 
+    async def patch(self, path: str, json: dict | None = None) -> dict[str, Any]:
+        """Make PATCH request to ACA-Py admin API."""
+        async with httpx.AsyncClient() as client:
+            response = await client.patch(
+                f"{self.base_url}{path}", json=json, headers=self.headers, timeout=30.0
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def put(self, path: str, json: dict | None = None) -> dict[str, Any]:
+        """Make PUT request to ACA-Py admin API."""
+        async with httpx.AsyncClient() as client:
+            response = await client.put(
+                f"{self.base_url}{path}", json=json, headers=self.headers, timeout=30.0
+            )
+            response.raise_for_status()
+            return response.json()
+
     async def delete(self, path: str, params: dict | None = None) -> dict[str, Any]:
         """Make DELETE request to ACA-Py admin API."""
         async with httpx.AsyncClient() as client:

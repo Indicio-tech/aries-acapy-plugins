@@ -1,6 +1,7 @@
 """Mdoc Verifier implementation using isomdl-uniffi."""
 
 import base64
+import json
 import logging
 import os
 from abc import abstractmethod
@@ -91,21 +92,78 @@ class MsoMdocCredVerifier(CredVerifier):
                     verified=False, payload={"error": "Invalid credential format"}
                 )
 
-            # Currently isomdl-uniffi focuses on presentation verification (session based)
-            # and does not expose a standalone issuer signature verification method for
-            # Mdoc objects. Therefore, successful parsing implies structural validity
-            # (CBOR structure, MSO format). Full cryptographic verification of the
-            # issuer signature requires a presentation session or future library
-            # enhancements.
-
-            return VerifyResult(
-                verified=True,
-                payload={
-                    "status": "structurally_valid",
-                    "doctype": mdoc.doctype(),
-                    "id": str(mdoc.id()),
-                },
+            # Get trust anchors if available
+            trust_anchors = (
+                self.trust_store.get_trust_anchors() if self.trust_store else None
             )
+            
+            # Convert to JSON format if trust anchors exist
+            if trust_anchors:
+                trust_anchors = [
+                    json.dumps({"certificate_pem": a, "purpose": "Iaca"}) 
+                    for a in trust_anchors
+                ]
+
+            # Verify issuer signature
+            try:
+                # Enable intermediate certificate chaining by default
+                verification_result = mdoc.verify_issuer_signature(trust_anchors, True)
+
+                if verification_result.verified:
+                    # Extract claims from mdoc details
+                    claims = {}
+                    try:
+                        details = mdoc.details()
+                        for namespace, elements in details.items():
+                            # Namespace is a string alias
+                            ns_claims = {}
+                            for element in elements:
+                                # element.value is a JSON string
+                                if element.value:
+                                    try:
+                                        ns_claims[element.identifier] = json.loads(element.value)
+                                    except json.JSONDecodeError:
+                                        ns_claims[element.identifier] = element.value
+                                else:
+                                    ns_claims[element.identifier] = None
+                            claims[namespace] = ns_claims
+                    except Exception as e:
+                        LOGGER.warning(f"Failed to extract claims from mdoc: {e}")
+
+                    payload = {
+                        "status": "verified",
+                        "doctype": mdoc.doctype(),
+                        "id": str(mdoc.id()),
+                        "issuer_common_name": verification_result.common_name,
+                    }
+                    # Merge claims into payload so they are at the top level for PEX matching
+                    payload.update(claims)
+                    
+                    LOGGER.info(f"Mdoc Payload: {json.dumps(payload)}")
+
+                    return VerifyResult(
+                        verified=True,
+                        payload=payload,
+                    )
+                else:
+                    return VerifyResult(
+                        verified=False,
+                        payload={
+                            "error": verification_result.error or "Signature verification failed",
+                            "doctype": mdoc.doctype(),
+                            "id": str(mdoc.id()),
+                        },
+                    )
+            except isomdl_uniffi.MdocVerificationError as e:
+                LOGGER.error(f"Issuer signature verification failed: {e}")
+                return VerifyResult(
+                    verified=False,
+                    payload={
+                        "error": str(e),
+                        "doctype": mdoc.doctype(),
+                        "id": str(mdoc.id()),
+                    },
+                )
 
         except Exception as e:
             LOGGER.error(f"Failed to parse mdoc credential: {e}")
@@ -156,6 +214,12 @@ class MsoMdocPresVerifier(PresVerifier):
             trust_anchors = (
                 self.trust_store.get_trust_anchors() if self.trust_store else []
             )
+            # isomdl-uniffi expects a list of JSON-encoded strings for trust anchors
+            # Each string must be a JSON object representing PemTrustAnchor struct
+            trust_anchors_json = [
+                json.dumps({"certificate_pem": a, "purpose": "Iaca"}) for a in trust_anchors
+            ]
+            LOGGER.info(f"DEBUG: trust_anchors_json: {trust_anchors_json}")
 
             # 2. Verify OID4VP Response
             # We need nonce, client_id, response_uri
@@ -201,7 +265,7 @@ class MsoMdocPresVerifier(PresVerifier):
 
             # 4. Verify using isomdl-uniffi
             verified_data = isomdl_uniffi.verify_oid4vp_response(
-                response_bytes, nonce, client_id, response_uri, trust_anchors
+                response_bytes, nonce, client_id, response_uri, trust_anchors_json
             )
 
             if (
@@ -224,6 +288,7 @@ class MsoMdocPresVerifier(PresVerifier):
             try:
                 # verified_response_as_json returns a dict (from serde_json::Value)
                 payload = verified_data.verified_response_as_json()
+                LOGGER.info(f"Mdoc Presentation Payload: {json.dumps(payload)}")
             except Exception as e:
                 LOGGER.error(f"Failed to convert verified response to JSON: {e}")
                 payload = {}
@@ -269,23 +334,46 @@ class MdocVerifyResult:
         }
 
 
-def mdoc_verify(mso_mdoc: str) -> MdocVerifyResult:
+def mdoc_verify(mso_mdoc: str, trust_anchors: Optional[List[str]] = None) -> MdocVerifyResult:
     """Verify an mso_mdoc credential.
 
     Args:
-        mso_mdoc: The base64 encoded mdoc string.
+        mso_mdoc: The hex-encoded or base64 encoded mdoc string.
+        trust_anchors: Optional list of PEM-encoded trust anchor certificates.
 
     Returns:
         MdocVerifyResult: The verification result.
     """
     try:
-        # Basic parsing check using isomdl-uniffi
-        # This is a simplified verification for the standalone endpoint
-        isomdl_uniffi.Mdoc.from_string(mso_mdoc)
-        # If parsing succeeds, we consider it "verified" structurally for now
-        # Note: Full signature verification requires session context or
-        # specific trust anchor validation which is not yet fully exposed
-        # for standalone strings in the current bindings.
-        return MdocVerifyResult(verified=True, payload={"status": "parsed"})
+        # Parse the mdoc
+        mdoc = isomdl_uniffi.Mdoc.from_string(mso_mdoc)
+
+        # Verify issuer signature
+        try:
+            # Enable intermediate certificate chaining by default
+            verification_result = mdoc.verify_issuer_signature(trust_anchors, True)
+
+            if verification_result.verified:
+                return MdocVerifyResult(
+                    verified=True,
+                    payload={
+                        "status": "verified",
+                        "doctype": mdoc.doctype(),
+                        "issuer_common_name": verification_result.common_name,
+                    },
+                )
+            else:
+                return MdocVerifyResult(
+                    verified=False,
+                    payload={"doctype": mdoc.doctype()},
+                    error=verification_result.error or "Signature verification failed",
+                )
+        except isomdl_uniffi.MdocVerificationError as e:
+            return MdocVerifyResult(
+                verified=False,
+                payload={"doctype": mdoc.doctype()},
+                error=str(e),
+            )
+
     except Exception as e:
         return MdocVerifyResult(verified=False, error=str(e))

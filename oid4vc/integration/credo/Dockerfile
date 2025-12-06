@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 node:18-bookworm AS base
+FROM node:18-bookworm AS base
 WORKDIR /app
 
 # Install system dependencies

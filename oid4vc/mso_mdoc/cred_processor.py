@@ -515,10 +515,22 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
         self, supported: SupportedCredential, subject: dict
     ):
         """Validate the credential subject."""
+        if not subject:
+            raise CredProcessorError("Credential subject cannot be empty")
+
+        if not isinstance(subject, dict):
+            raise CredProcessorError("Credential subject must be a dictionary")
+
         return True
 
     def validate_supported_credential(self, supported: SupportedCredential):
         """Validate a supported MSO MDOC Credential."""
+        if not supported.format_data:
+            raise CredProcessorError("format_data is required for mso_mdoc format")
+
+        # Validate doctype presence and format
+        self._validate_and_get_doctype({}, supported)
+
         return True
 
     async def verify_credential(
