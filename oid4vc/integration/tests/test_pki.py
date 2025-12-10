@@ -108,7 +108,7 @@ async def test_mdoc_pki_trust_chain(acapy_verifier_admin):
                     "limit_disclosure": "required",
                     "fields": [
                         {
-                            "path": ["$.org.iso.18013.5.1.given_name"],
+                            "path": ["$['org.iso.18013.5.1']['given_name']"],
                             "intent_to_retain": False,
                         }
                     ]

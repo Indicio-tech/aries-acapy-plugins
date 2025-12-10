@@ -8,6 +8,10 @@
  * Supports both mso_mdoc and SD-JWT credential formats.
  */
 
+// IMPORTANT: Import askar-nodejs first to register the native bindings
+// before any credo-ts packages that depend on @openwallet-foundation/askar-shared
+import '@openwallet-foundation/askar-nodejs';
+
 import express from 'express';
 import issuanceRouter from './issuance.js';
 import verificationRouter from './verification.js';

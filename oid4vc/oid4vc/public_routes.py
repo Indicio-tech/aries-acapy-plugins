@@ -39,6 +39,7 @@ from base58 import b58decode
 from marshmallow import fields, pre_load
 
 from oid4vc.dcql import DCQLQueryEvaluator
+from oid4vc.did_utils import retrieve_or_create_did_jwk
 from oid4vc.jwk import DID_JWK
 from oid4vc.jwt import JWTVerifyResult, jwt_sign, jwt_verify, key_material_for_kid
 from oid4vc.models.dcql_query import DCQLQuery
@@ -1090,76 +1091,6 @@ class OID4VPRequestIDMatchSchema(OpenAPISchema):
     )
 
 
-async def _retrieve_default_did(session: ProfileSession) -> Optional[DIDInfo]:
-    """Retrieve default DID from the store.
-
-    Args:
-        session: An active profile session
-
-    Returns:
-        Optional[DIDInfo]: retrieved DID info or None if not found
-
-    """
-    storage = session.inject(BaseStorage)
-    wallet = session.inject(BaseWallet)
-    try:
-        record = await storage.get_record(
-            record_type="OID4VP.default",
-            record_id="OID4VP.default",
-        )
-        info = json.loads(record.value)
-        info.update(record.tags)
-        did_info = await wallet.get_local_did(record.tags["did"])
-
-        return did_info
-    except StorageNotFoundError:
-        return None
-
-
-async def _create_default_did(session: ProfileSession) -> DIDInfo:
-    """Create default DID.
-
-    Args:
-        session: An active profile session
-
-    Returns:
-        DIDInfo: created default DID info
-
-    """
-    wallet = session.inject(BaseWallet)
-    storage = session.inject(BaseStorage)
-    key = await wallet.create_key(ED25519)
-    jwk = json.loads(
-        Key.from_public_bytes(KeyAlg.ED25519, b58decode(key.verkey)).get_jwk_public()
-    )
-    jwk["use"] = "sig"
-    jwk = json.dumps(jwk)
-
-    did_jwk = f"did:jwk:{bytes_to_b64(jwk.encode(), urlsafe=True, pad=False)}"
-
-    did_info = DIDInfo(did_jwk, key.verkey, {}, DID_JWK, ED25519)
-    info = await wallet.store_did(did_info)
-
-    record = StorageRecord(
-        type="OID4VP.default",
-        value=json.dumps({"verkey": info.verkey, "metadata": info.metadata}),
-        tags={"did": info.did},
-        id="OID4VP.default",
-    )
-    await storage.add_record(record)
-    return info
-
-
-async def retrieve_or_create_did_jwk(session: ProfileSession):
-    """Retrieve default did:jwk info, or create it."""
-
-    key = await _retrieve_default_did(session)
-    if key:
-        return key
-
-    return await _create_default_did(session)
-
-
 @docs(tags=["oid4vp"], summary="Retrive OID4VP authorization request token")
 @match_info_schema(OID4VPRequestIDMatchSchema())
 async def get_request(request: web.Request):
@@ -1237,11 +1168,13 @@ async def get_request(request: web.Request):
         },
         "response_type": "vp_token",
         "response_mode": "direct_post",
-        "scope": "openid vp_token",
     }
+    # According to OID4VP spec, exactly one of presentation_definition, 
+    # presentation_definition_uri, dcql_query, or scope MUST be present.
+    # Do not include scope when presentation_definition or dcql_query is provided.
     if pres_def is not None:
         payload["presentation_definition"] = pres_def.pres_def
-    if dcql_query is not None:
+    elif dcql_query is not None:
         payload["dcql_query"] = dcql_query.record_value
 
     LOGGER.error(f"DEBUG: Generated JWT payload: {payload}")
@@ -1260,7 +1193,10 @@ async def get_request(request: web.Request):
 
     LOGGER.debug("TOKEN: %s", token)
 
-    return web.Response(text=token)
+    return web.Response(
+        text=token,
+        content_type="application/oauth-authz-req+jwt"
+    )
 
 
 class OID4VPPresentationIDMatchSchema(OpenAPISchema):
@@ -1353,9 +1289,12 @@ async def verify_pres_def_presentation(
             pres_def_id,
         )
 
-        pres_def = PresentationDefinition.deserialize(pres_def_entry.pres_def)
+        # Keep raw dict for format extraction (ACA-Py < 1.5 doesn't have fmt attribute)
+        raw_pres_def = pres_def_entry.pres_def
+        LOGGER.info(f"DEBUG: raw_pres_def = {raw_pres_def}")
+        pres_def = PresentationDefinition.deserialize(raw_pres_def)
 
-    evaluator = PresentationExchangeEvaluator.compile(pres_def)
+    evaluator = PresentationExchangeEvaluator.compile(pres_def, raw_pres_def)
     result = await evaluator.verify(profile, submission, vp_result.payload)
     return result
 

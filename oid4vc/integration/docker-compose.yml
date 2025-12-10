@@ -10,6 +10,9 @@ services:
       - PORT=3020
       - ACAPY_ISSUER_URL=http://acapy-issuer.local:8022
       - ACAPY_VERIFIER_URL=http://acapy-verifier.local:8032
+      - TRUST_ANCHORS_PATH=/etc/credo/certs/trust-anchors
+    volumes:
+      - ./certs/trust-anchors:/etc/credo/certs/trust-anchors:ro
     depends_on:
       acapy-issuer:
         condition: service_healthy
@@ -94,7 +97,7 @@ services:
       - ../../oid4vc/oid4vc:/usr/src/app/oid4vc
       - ../../oid4vc/mso_mdoc:/usr/src/app/mso_mdoc
       - ../docker/dev-verifier.yml:/usr/src/app/docker/dev-verifier.yml
-      - ./certs:/etc/acapy/mdoc/trust-anchors/
+      - ./certs/trust-anchors:/etc/acapy/mdoc/trust-anchors/
     networks:
       default:
         aliases:

@@ -41,6 +41,11 @@ async def test_acapy_oid4vci_credential_issuance_to_credo(
         "id": f"IdentityCredential_{random_suffix}",
         "format": "vc+sd-jwt",
         "scope": "IdentityCredential",
+        "proof_types_supported": {
+            "jwt": {
+                "proof_signing_alg_values_supported": ["EdDSA", "ES256"]
+            }
+        },
         "format_data": {
             "cryptographic_binding_methods_supported": ["did:key"],
             "cryptographic_suites_supported": ["EdDSA"],
@@ -204,6 +209,11 @@ async def test_full_acapy_credo_oid4vc_flow(
         "id": f"TestCredential_{random_suffix}",
         "format": "vc+sd-jwt",
         "scope": "UniversityDegree",
+        "proof_types_supported": {
+            "jwt": {
+                "proof_signing_alg_values_supported": ["EdDSA", "ES256"]
+            }
+        },
         "format_data": {
             "cryptographic_binding_methods_supported": ["did:key"],
             "cryptographic_suites_supported": ["EdDSA"],
@@ -354,8 +364,9 @@ async def test_full_acapy_credo_oid4vc_flow(
     presentation_result = presentation_response.json()
 
     # Step 6: Verify presentation was successful
-    assert "presentation_submission" in presentation_result
+    # Credo API returns success=True and serverResponse.status=200 on successful presentation
     assert presentation_result.get("success") is True
+    assert presentation_result.get("result", {}).get("serverResponse", {}).get("status") == 200
 
     # Step 7: Check that ACA-Py received and validated the presentation
     # Poll for presentation status
@@ -522,11 +533,11 @@ async def test_acapy_credo_mdoc_flow(
                     "limit_disclosure": "required",
                     "fields": [
                         {
-                            "path": ["$.org.iso.18013.5.1.given_name"],
+                            "path": ["$['org.iso.18013.5.1']['given_name']"],
                             "intent_to_retain": False,
                         },
                         {
-                            "path": ["$.org.iso.18013.5.1.family_name"],
+                            "path": ["$['org.iso.18013.5.1']['family_name']"],
                             "intent_to_retain": False,
                         },
                     ]
@@ -567,8 +578,9 @@ async def test_acapy_credo_mdoc_flow(
     presentation_result = presentation_response.json()
 
     # Step 6: Verify presentation was successful
-    assert "presentation_submission" in presentation_result
     assert presentation_result.get("success") is True
+    # For mdoc presentations, the server response status should be 200
+    assert presentation_result.get("result", {}).get("serverResponse", {}).get("status") == 200
 
     # Step 7: Check that ACA-Py received and validated the presentation
     # Poll for presentation status
@@ -614,6 +626,11 @@ async def test_acapy_credo_sd_jwt_selective_disclosure(
         "id": f"SelectiveDisclosureCred_{random_suffix}",
         "format": "vc+sd-jwt",
         "scope": "PersonalProfile",
+        "proof_types_supported": {
+            "jwt": {
+                "proof_signing_alg_values_supported": ["EdDSA", "ES256"]
+            }
+        },
         "format_data": {
             "cryptographic_binding_methods_supported": ["did:key"],
             "cryptographic_suites_supported": ["EdDSA"],
@@ -772,6 +789,11 @@ async def test_acapy_credo_mdoc_selective_disclosure(
         "id": f"MdocSelective_{random_suffix}",
         "format": "mso_mdoc",
         "scope": "MdocProfile",
+        "proof_types_supported": {
+            "jwt": {
+                "proof_signing_alg_values_supported": ["ES256"]
+            }
+        },
         "format_data": {
             "cryptographic_binding_methods_supported": ["cose_key"],
             "cryptographic_suites_supported": ["ES256"],
@@ -844,11 +866,11 @@ async def test_acapy_credo_mdoc_selective_disclosure(
                     "limit_disclosure": "required",
                     "fields": [
                         {
-                            "path": ["$.org.iso.18013.5.1.given_name"],
+                            "path": ["$['org.iso.18013.5.1']['given_name']"],
                             "intent_to_retain": True,
                         },
                         {
-                            "path": ["$.org.iso.18013.5.1.family_name"],
+                            "path": ["$['org.iso.18013.5.1']['family_name']"],
                             "intent_to_retain": True,
                         },
                     ]

@@ -25,6 +25,56 @@ from oid4vc.models.presentation import OID4VPPresentation
 LOGGER = logging.getLogger(__name__)
 
 
+def extract_mdoc_item_value(item: Any) -> Any:
+    """Extract the actual value from an MDocItem enum variant.
+    
+    MDocItem is a Rust enum exposed via UniFFI with variants:
+    - TEXT(str)
+    - BOOL(bool)
+    - INTEGER(int)
+    - ARRAY(List[MDocItem])
+    - ITEM_MAP(Dict[str, MDocItem])
+    
+    Each variant stores its value in _values[0].
+    """
+    if item is None:
+        return None
+    
+    # Check if it's an MDocItem variant by checking for _values attribute
+    if hasattr(item, '_values') and item._values:
+        inner_value = item._values[0]
+        
+        # Handle nested structures recursively
+        if isinstance(inner_value, dict):
+            return {k: extract_mdoc_item_value(v) for k, v in inner_value.items()}
+        elif isinstance(inner_value, list):
+            return [extract_mdoc_item_value(v) for v in inner_value]
+        else:
+            return inner_value
+    
+    # Already a plain value
+    return item
+
+
+def extract_verified_claims(verified_response: dict) -> dict:
+    """Extract claims from MdlReaderVerifiedData.verified_response.
+    
+    The verified_response is structured as:
+    dict[str, dict[str, MDocItem]]
+    e.g. {"org.iso.18013.5.1": {"given_name": MDocItem.TEXT("Alice"), ...}}
+    
+    This function converts it to:
+    {"org.iso.18013.5.1": {"given_name": "Alice", ...}}
+    """
+    claims = {}
+    for namespace, elements in verified_response.items():
+        ns_claims = {}
+        for element_name, mdoc_item in elements.items():
+            ns_claims[element_name] = extract_mdoc_item_value(mdoc_item)
+        claims[namespace] = ns_claims
+    return claims
+
+
 class TrustStore(Protocol):
     """Protocol for retrieving trust anchors."""
 
@@ -119,27 +169,44 @@ class MsoMdocCredVerifier(CredVerifier):
             # Basic parsing check for raw credential data
             mdoc = None
             if isinstance(credential, str):
-                # Credential could be hex-encoded or base64url-encoded CBOR
-                # Try hex first, then base64url
+                # Credential could be:
+                # 1. hex-encoded DeviceResponse CBOR
+                # 2. base64url-encoded DeviceResponse CBOR  
+                # 3. base64url-encoded IssuerSigned CBOR (from VP inner credential)
+                
+                # Try hex first (full DeviceResponse)
                 try:
-                    # Check if it's valid hex (all chars are hex digits)
                     if all(c in '0123456789abcdefABCDEF' for c in credential):
+                        LOGGER.debug("Trying to parse credential as hex DeviceResponse")
                         mdoc = isomdl_uniffi.Mdoc.from_string(credential)
                     else:
-                        raise ValueError("Not hex, try base64url")
-                except Exception:
-                    # Try base64url decoding
+                        raise ValueError("Not hex, try base64url methods")
+                except Exception as hex_err:
+                    LOGGER.debug(f"Hex parsing failed: {hex_err}")
+                    
+                    # Try base64url-encoded IssuerSigned (common for VP inner credentials)
                     try:
-                        # Add padding if needed for base64url
-                        padded = credential + '=' * (4 - len(credential) % 4) if len(credential) % 4 else credential
-                        # Replace URL-safe chars with standard base64 chars
-                        standard_b64 = padded.replace('-', '+').replace('_', '/')
-                        decoded_bytes = base64.b64decode(standard_b64)
-                        mdoc = isomdl_uniffi.Mdoc.from_string(decoded_bytes.hex())
-                    except Exception as e:
-                        LOGGER.warning(f"Failed to decode credential as base64url: {e}")
-                        # Last resort: try direct parsing
-                        mdoc = isomdl_uniffi.Mdoc.from_string(credential)
+                        LOGGER.debug("Trying to parse credential as base64url IssuerSigned")
+                        # new_from_base64url_encoded_issuer_signed requires (credential, key_alias)
+                        # key_alias is a simple string identifier, not critical for verification
+                        mdoc = isomdl_uniffi.Mdoc.new_from_base64url_encoded_issuer_signed(
+                            credential, "verified-inner"
+                        )
+                    except Exception as issuer_signed_err:
+                        LOGGER.debug(f"IssuerSigned parsing failed: {issuer_signed_err}")
+                        
+                        # Try base64url decoding to hex, then DeviceResponse parsing
+                        try:
+                            LOGGER.debug("Trying to parse credential as base64url DeviceResponse")
+                            padded = credential + '=' * (4 - len(credential) % 4) if len(credential) % 4 else credential
+                            standard_b64 = padded.replace('-', '+').replace('_', '/')
+                            decoded_bytes = base64.b64decode(standard_b64)
+                            mdoc = isomdl_uniffi.Mdoc.from_string(decoded_bytes.hex())
+                        except Exception as b64_err:
+                            LOGGER.warning(f"All parsing methods failed. Hex: {hex_err}, IssuerSigned: {issuer_signed_err}, Base64: {b64_err}")
+                            # Last resort: try direct string parsing
+                            mdoc = isomdl_uniffi.Mdoc.from_string(credential)
+                            
             elif isinstance(credential, bytes):
                 # Convert bytes to hex string for parsing
                 mdoc = isomdl_uniffi.Mdoc.from_string(credential.hex())
@@ -150,16 +217,10 @@ class MsoMdocCredVerifier(CredVerifier):
                 )
 
             # Get trust anchors if available
+            # Note: verify_issuer_signature expects plain PEM strings, NOT JSON
             trust_anchors = (
                 self.trust_store.get_trust_anchors() if self.trust_store else None
             )
-            
-            # Convert to JSON format if trust anchors exist
-            if trust_anchors:
-                trust_anchors = [
-                    json.dumps({"certificate_pem": a, "purpose": "Iaca"}) 
-                    for a in trust_anchors
-                ]
 
             # Verify issuer signature
             try:
@@ -368,10 +429,35 @@ class MsoMdocPresVerifier(PresVerifier):
                     )
 
                 # 4. Verify using isomdl-uniffi
-                # Enable intermediate certificate chaining by default
+                # Try spec-compliant 2024 format first, fall back to legacy 2023 format
+                # for compatibility with older wallets (e.g., Credo)
+                LOGGER.info(
+                    f"DEBUG: Calling verify_oid4vp_response with:\n"
+                    f"  nonce={nonce}\n"
+                    f"  client_id={client_id}\n"
+                    f"  response_uri={response_uri}\n"
+                    f"  response_bytes_len={len(response_bytes)}\n"
+                    f"  response_bytes_hex={response_bytes[:50].hex()}..."
+                )
+                
+                # Try spec-compliant format (2024) first
                 verified_data = isomdl_uniffi.verify_oid4vp_response(
                     response_bytes, nonce, client_id, response_uri, trust_anchors_json, True
                 )
+                
+                # If device authentication failed but issuer is valid, try legacy format
+                # This handles wallets using the 2023 draft SessionTranscript format
+                if (
+                    verified_data.device_authentication != isomdl_uniffi.AuthenticationStatus.VALID
+                    and verified_data.issuer_authentication == isomdl_uniffi.AuthenticationStatus.VALID
+                ):
+                    LOGGER.info(
+                        "Device authentication failed with spec-compliant format, "
+                        "trying legacy 2023 format for backwards compatibility"
+                    )
+                    verified_data = isomdl_uniffi.verify_oid4vp_response_legacy(
+                        response_bytes, nonce, client_id, response_uri, trust_anchors_json, True
+                    )
 
                 if (
                     verified_data.issuer_authentication
@@ -380,13 +466,11 @@ class MsoMdocPresVerifier(PresVerifier):
                     == isomdl_uniffi.AuthenticationStatus.VALID
                 ):
                     # Extract verified claims from the Rust library response
-                    # This returns claims in namespace -> element -> value structure
+                    # verified_data.verified_response is dict[str, dict[str, MDocItem]]
+                    # We need to convert MDocItem enum variants to their actual values
                     try:
-                        claims_json = verified_data.verified_response_as_json()
-                        if isinstance(claims_json, str):
-                            claims = json.loads(claims_json)
-                        else:
-                            claims = claims_json
+                        claims = extract_verified_claims(verified_data.verified_response)
+                        LOGGER.info(f"DEBUG: Extracted claims namespaces: {list(claims.keys())}")
                     except Exception as e:
                         LOGGER.warning(f"Failed to extract claims from verified response: {e}")
                         claims = {}
@@ -413,9 +497,9 @@ class MsoMdocPresVerifier(PresVerifier):
                     )
                     # Convert verified response to JSON/dict for error details
                     try:
-                        payload = verified_data.verified_response_as_json()
+                        claims = extract_verified_claims(verified_data.verified_response)
                     except Exception:
-                        payload = {}
+                        claims = {}
                     
                     return VerifyResult(
                         verified=False,

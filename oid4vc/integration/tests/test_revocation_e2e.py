@@ -38,6 +38,11 @@ async def test_credo_revocation_flow(
         json={
             "cryptographic_binding_methods_supported": ["did:key"],
             "cryptographic_suites_supported": ["ES256"],
+            "proof_types_supported": {
+                "jwt": {
+                    "proof_signing_alg_values_supported": ["ES256", "EdDSA"]
+                }
+            },
             "format": "jwt_vc_json",
             "id": cred_id,
             "type": ["VerifiableCredential", "UniversityDegreeCredential"],

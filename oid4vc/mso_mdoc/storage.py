@@ -374,12 +374,12 @@ class MdocStorageManager:
         Returns:
             List of dictionaries containing key and certificate data
         """
-        keys = await self.list_keys(purpose="signing")
+        keys = await self.list_keys(session, purpose="signing")
         if not keys:
             return []
 
         result = []
-        certificates = await self.list_certificates()
+        certificates = await self.list_certificates(session)
 
         for key_data in keys:
             key_id = key_data["key_id"]
@@ -492,22 +492,23 @@ class MdocStorageManager:
         self, session: ProfileSession
     ) -> Optional[Dict[str, Any]]:
         """Get the default certificate."""
+        def _is_valid(cert: Dict[str, Any]) -> bool:
+            now = datetime.utcnow()
+            valid_from = datetime.fromisoformat(
+                cert.get("metadata", {}).get("valid_from", now.isoformat())
+            )
+            valid_to = datetime.fromisoformat(
+                cert.get("metadata", {}).get("valid_to", now.isoformat())
+            )
+            return valid_from <= now <= valid_to
+
         config = await self.get_config(session, "default_certificate")
         if not config:
             # Try to auto-select first available certificate
             certificates = await self.list_certificates(session)
             if certificates:
                 default_cert = certificates[0]
-                # Check if certificate is still valid
-                now = datetime.utcnow()
-                valid_from = datetime.fromisoformat(
-                    default_cert["metadata"].get("valid_from", now.isoformat())
-                )
-                valid_to = datetime.fromisoformat(
-                    default_cert["metadata"].get("valid_to", now.isoformat())
-                )
-
-                if valid_from <= now <= valid_to:
+                if _is_valid(default_cert):
                     await self.store_config(
                         session,
                         "default_certificate",
@@ -515,6 +516,15 @@ class MdocStorageManager:
                     )
                     return default_cert
             return None
+
+        cert_id = config.get("cert_id")
+        if not cert_id:
+            return None
+
+        certificates = await self.list_certificates(session)
+        for certificate in certificates:
+            if certificate["cert_id"] == cert_id and _is_valid(certificate):
+                return certificate
 
         return None
 

@@ -40,6 +40,7 @@ from marshmallow import fields
 from marshmallow.validate import OneOf
 
 from oid4vc.cred_processor import CredProcessorError, CredProcessors
+from oid4vc.did_utils import retrieve_or_create_did_jwk
 from oid4vc.jwk import DID_JWK
 from oid4vc.models.dcql_query import (
     CredentialQuery,
@@ -1227,6 +1228,9 @@ async def create_oid4vp_request(request: web.Request):
                 reason="One of pres_def_id or dcql_query_id must be provided"
             )
 
+        # Get the DID:JWK that will be used as client_id
+        jwk = await retrieve_or_create_did_jwk(session)
+
     config = Config.from_settings(context.settings)
     wallet_id = (
         context.profile.settings.get("wallet.id")
@@ -1235,7 +1239,8 @@ async def create_oid4vp_request(request: web.Request):
     )
     subpath = f"/tenant/{wallet_id}" if wallet_id else ""
     request_uri = quote(f"{config.endpoint}{subpath}/oid4vp/request/{req_record._id}")
-    full_uri = f"openid://?request_uri={request_uri}"
+    client_id = quote(jwk.did)
+    full_uri = f"openid://?client_id={client_id}&request_uri={request_uri}"
 
     return web.json_response(
         {

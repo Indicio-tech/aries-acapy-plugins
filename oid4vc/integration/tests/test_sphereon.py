@@ -265,11 +265,11 @@ async def test_sphereon_present_mdoc_credential(acapy_verifier_admin, acapy_issu
                     "limit_disclosure": "required",
                     "fields": [
                         {
-                            "path": ["$.org.iso.18013.5.1.given_name"],
+                            "path": ["$['org.iso.18013.5.1']['given_name']"],
                             "intent_to_retain": False,
                         },
                         {
-                            "path": ["$.org.iso.18013.5.1.family_name"],
+                            "path": ["$['org.iso.18013.5.1']['family_name']"],
                             "intent_to_retain": False,
                         },
                     ]
