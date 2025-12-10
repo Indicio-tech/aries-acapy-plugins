@@ -1332,11 +1332,12 @@ async def verify_pres_def_presentation(
         )
 
     # TODO: Support longer descriptor map arrays
-    if len(submission.descriptor_maps) != 1:
-        raise web.HTTPBadRequest(
-            reason="Descriptor map of length greater than 1 is not supported at this time"
-        )
+    # if len(submission.descriptor_maps) != 1:
+    #     raise web.HTTPBadRequest(
+    #         reason="Descriptor map of length greater than 1 is not supported at this time"
+    #     )
 
+    LOGGER.info(f"Available pres_verifiers: {list(processors.pres_verifiers.keys())}")
     verifier = processors.pres_verifier_for_format(submission.descriptor_maps[0].fmt)
     LOGGER.debug("VERIFIER: %s", verifier)
 

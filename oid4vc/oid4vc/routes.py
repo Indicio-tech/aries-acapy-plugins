@@ -699,6 +699,7 @@ async def supported_credential_create(request: web.Request):
         "identifier",
         "cryptographic_binding_methods_supported",
         "cryptographic_suites_supported",
+        "proof_types_supported",
         "display",
         "format_data",
         "vc_additional_data",

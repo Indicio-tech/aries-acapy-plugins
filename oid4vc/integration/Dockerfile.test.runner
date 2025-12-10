@@ -4,7 +4,7 @@ RUN apt-get update && apt-get install -y curl git build-essential
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-ARG ISOMDL_BRANCH=main
+ARG ISOMDL_BRANCH=feat/intermediate-chaining
 RUN git clone https://github.com/Indicio-tech/isomdl-uniffi.git
 WORKDIR /build/isomdl-uniffi
 RUN git checkout ${ISOMDL_BRANCH}
@@ -31,7 +31,10 @@ RUN chmod +x /wait
 RUN apt-get update && apt-get install -y curl jq git && apt-get clean
 
 # Clone ACA-Py to /usr/acapy to satisfy ../../acapy path dependency
-RUN git clone https://github.com/openwallet-foundation/acapy.git /usr/acapy
+ARG ACAPY_VERSION=1.4.0
+RUN git clone https://github.com/openwallet-foundation/acapy.git /usr/acapy && \
+    cd /usr/acapy && \
+    git checkout ${ACAPY_VERSION}
 
 # install uv
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh

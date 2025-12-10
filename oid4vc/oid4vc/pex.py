@@ -1,9 +1,13 @@
 """Presentation Exchange evaluation."""
 
+import json
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
 
 import jsonpath_ng as jsonpath
+
+LOGGER = logging.getLogger(__name__)
 from acapy_agent.core.profile import Profile
 from acapy_agent.messaging.models.base import BaseModel, BaseModelSchema
 from acapy_agent.messaging.valid import UUID4_EXAMPLE
@@ -198,10 +202,16 @@ class DescriptorMatchFailed(Exception):
 class DescriptorEvaluator:
     """Evaluate input descriptors."""
 
-    def __init__(self, id: str, field_constraints: List[ConstraintFieldEvaluator]):
+    def __init__(
+        self,
+        id: str,
+        field_constraints: List[ConstraintFieldEvaluator],
+        formats: Optional[List[str]] = None,
+    ):
         """Initialize descriptor evaluator."""
         self.id = id
         self._field_constraints = field_constraints
+        self.formats = formats or []
 
     @classmethod
     def compile(
@@ -221,7 +231,17 @@ class DescriptorEvaluator:
                 ConstraintFieldEvaluator.compile(constraint)
                 for constraint in descriptor.constraint._fields
             ]
-        return cls(descriptor.id, field_constraints)
+
+        formats = []
+        # Use getattr with default to handle cases where fmt attribute may not exist
+        descriptor_fmt = getattr(descriptor, 'fmt', None)
+        if descriptor_fmt:
+            try:
+                formats = [k for k, v in descriptor_fmt.serialize().items() if v]
+            except Exception:
+                pass
+
+        return cls(descriptor.id, field_constraints, formats)
 
     def match(self, value: Any) -> Dict[str, Any]:
         """Check value."""
@@ -296,6 +316,8 @@ class PresentationExchangeEvaluator:
                     details=f"Could not find input descriptor corresponding to {item.id}"
                 )
 
+            LOGGER.info(f"PEX: Processing descriptor map item: id={item.id}, fmt={item.fmt}, path={item.path}")
+            
             processors = profile.inject(CredProcessors)
             if item.path_nested:
                 assert item.path_nested.path
@@ -310,18 +332,59 @@ class PresentationExchangeEvaluator:
                 vc = values[0].value
                 processor = processors.cred_verifier_for_format(item.path_nested.fmt)
             else:
-                vc = presentation
+                if item.path:
+                    try:
+                        path = jsonpath.parse(item.path)
+                        values = path.find(presentation)
+                        if len(values) == 1:
+                            vc = values[0].value
+                        else:
+                            vc = presentation
+                    except Exception:
+                        vc = presentation
+                else:
+                    vc = presentation
                 processor = processors.cred_verifier_for_format(item.fmt)
 
+            LOGGER.info(f"PEX: Verifying credential type {type(vc)} with processor {processor}")
             result = await processor.verify_credential(profile, vc)
+            LOGGER.info(f"PEX: Verification result: {result.verified}")
+            if result.verified:
+                LOGGER.info(f"PEX: Payload keys: {result.payload.keys() if result.payload else 'None'}")
+                LOGGER.error(f"DEBUG: PEX Payload: {json.dumps(result.payload) if result.payload else 'None'}")
+
+            if result.verified and not item.path_nested and "mso_mdoc" in evaluator.formats:
+                # Check if we have a VP that contains mDoc
+                vp_payload = result.payload
+                if vp_payload and isinstance(vp_payload, dict):
+                    vcs = vp_payload.get("vp", {}).get("verifiableCredential") or vp_payload.get("verifiableCredential")
+                    if vcs:
+                        if not isinstance(vcs, list):
+                            vcs = [vcs]
+
+                        mdoc_processor = processors.cred_verifier_for_format("mso_mdoc")
+                        if mdoc_processor:
+                            LOGGER.info("PEX: Attempting to extract and verify mso_mdoc from VP")
+                            for inner_vc in vcs:
+                                try:
+                                    inner_result = await mdoc_processor.verify_credential(profile, inner_vc)
+                                    if inner_result.verified:
+                                        LOGGER.info("PEX: Successfully verified inner mso_mdoc")
+                                        result = inner_result
+                                        break
+                                except Exception as e:
+                                    LOGGER.warning(f"PEX: Failed to verify inner credential: {e}")
+
             if not result.verified:
+                LOGGER.error(f"DEBUG: Credential verification failed: {result.payload}")
                 return PexVerifyResult(
                     details="Credential signature verification failed"
                 )
 
             try:
                 fields = evaluator.match(result.payload)
-            except DescriptorMatchFailed:
+            except DescriptorMatchFailed as e:
+                LOGGER.error(f"DEBUG: Descriptor match failed: {e}")
                 return PexVerifyResult(
                     details="Credential did not match expected descriptor constraints"
                 )

@@ -16,6 +16,7 @@ import ast
 import base64
 import json
 import logging
+import os
 import re
 import uuid
 from datetime import datetime, timedelta
@@ -31,7 +32,11 @@ from oid4vc.models.presentation import OID4VPPresentation
 from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.pop_result import PopResult
 
-from .key_generation import generate_ec_key_pair, generate_self_signed_certificate
+from .key_generation import (
+    generate_ec_key_pair,
+    generate_self_signed_certificate,
+    pem_to_jwk,
+)
 from .mdoc.issuer import isomdl_mdoc_sign
 from .storage import MdocStorageManager
 
@@ -253,6 +258,58 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
     ) -> Dict[str, Any]:
         """Resolve the signing key for credential issuance."""
         storage_manager = MdocStorageManager(context.profile)
+
+        # Check for environment variables for static key
+        key_path = os.getenv("OID4VC_MDOC_SIGNING_KEY_PATH")
+        cert_path = os.getenv("OID4VC_MDOC_SIGNING_CERT_PATH")
+        
+        if key_path and cert_path and os.path.exists(key_path) and os.path.exists(cert_path):
+            static_key_id = "static-signing-key"
+            # Check if already stored
+            existing_key = await storage_manager.get_key(session, static_key_id)
+            if not existing_key:
+                LOGGER.info("Loading static signing key from %s", key_path)
+                try:
+                    with open(key_path, "r") as f:
+                        private_key_pem = f.read()
+                    with open(cert_path, "r") as f:
+                        certificate_pem = f.read()
+                    
+                    # Derive JWK from PEM
+                    jwk = pem_to_jwk(private_key_pem)
+                    
+                    await storage_manager.store_key(
+                        session,
+                        key_id=static_key_id,
+                        jwk=jwk,
+                        purpose="signing",
+                        metadata={
+                            "private_key_pem": private_key_pem,
+                            "static": True
+                        }
+                    )
+                    
+                    cert_id = f"mdoc-cert-{static_key_id}"
+                    await storage_manager.store_certificate(
+                        session,
+                        cert_id=cert_id,
+                        certificate_pem=certificate_pem,
+                        key_id=static_key_id,
+                        metadata={
+                            "static": True,
+                            "purpose": "mdoc_issuing"
+                        }
+                    )
+                    
+                    # Set as default
+                    await storage_manager.store_config(
+                        session,
+                        "default_signing_key",
+                        {"key_id": static_key_id}
+                    )
+                    
+                except Exception as e:
+                    LOGGER.error("Failed to load static signing key: %s", e)
 
         if verification_method:
             # Use verification method to resolve signing key

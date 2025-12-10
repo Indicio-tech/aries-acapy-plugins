@@ -2,7 +2,32 @@ import express from 'express';
 import * as util from 'util';
 import { getAgent, initializeAgent } from './agent.js';
 import { AuthorizationRequest } from '@sphereon/did-auth-siop';
-import { W3cJwtVerifiableCredential } from '@credo-ts/core';
+import { W3cJwtVerifiableCredential, Mdoc, MdocRecord } from '@credo-ts/core';
+import { CredentialMapper } from '@sphereon/ssi-types';
+
+// Monkey patch CredentialMapper to handle Mdoc
+// Removed as part of refactoring to use native Credo support
+/*
+try {
+    const originalToWrapped = CredentialMapper.toWrappedVerifiableCredential;
+    // @ts-ignore
+    CredentialMapper.toWrappedVerifiableCredential = (credential: any) => {
+        if (credential instanceof Mdoc || (credential.constructor && credential.constructor.name === 'Mdoc')) {
+            console.log('⚠️ Monkey-patched CredentialMapper handling Mdoc');
+            return {
+                credential: credential,
+                original: credential,
+                decoded: credential, // PEX might look at decoded
+                format: 'mso_mdoc' // Hint for PEX?
+            };
+        }
+        return originalToWrapped(credential);
+    };
+    console.log('✅ Successfully patched CredentialMapper');
+} catch (e) {
+    console.error('❌ Failed to patch CredentialMapper:', e);
+}
+*/
 
 const router: express.Router = express.Router();
 
@@ -11,8 +36,7 @@ router.post('/present', async (req: any, res: any) => {
   let agent = getAgent();
   try {
     if (!agent) {
-      await initializeAgent(3020);
-      agent = getAgent();
+      agent = await initializeAgent(3020);
     }
 
     const { request_uri } = req.body;
@@ -33,6 +57,8 @@ router.post('/present', async (req: any, res: any) => {
         Object.setPrototypeOf(resolvedRequest.authorizationRequest, AuthorizationRequest.prototype);
     }
 
+    // Patches for @animo-id/mdoc compatibility removed as we are using native Credo support
+
     let credentials: any = {};
     
     if (resolvedRequest.presentationExchange) {
@@ -49,10 +75,23 @@ router.post('/present', async (req: any, res: any) => {
              // Fetch all W3C credentials
              // @ts-ignore
              const w3cRecords = await agent!.w3cCredentials.getAllCredentialRecords();
-             console.log(`Found ${w3cRecords.length} W3C credentials in storage`);
              
-             if (w3cRecords.length > 0) {
-                 console.log('🔍 First W3C Record:', JSON.stringify(w3cRecords[0], null, 2));
+             // Fetch all mdoc records with defensive check
+             let mdocRecords: any[] = [];
+             if (agent?.modules?.mdoc) {
+                 // @ts-ignore
+                 mdocRecords = await agent!.modules.mdoc.getAll();
+             } else {
+                 console.error('❌ MdocModule not available. Agent modules:', Object.keys(agent?.modules || {}));
+             }
+
+             console.log(`Found ${w3cRecords.length} W3C credentials in storage`);
+             console.log(`Found ${mdocRecords.length} mdoc credentials in storage`);
+             
+             if (w3cRecords.length > 0 || mdocRecords.length > 0) {
+                 if (w3cRecords.length > 0) {
+                    console.log('🔍 First W3C Record:', JSON.stringify(w3cRecords[0], null, 2));
+                 }
                  
                  try {
                      console.log('W3cJwtVerifiableCredential defined:', !!W3cJwtVerifiableCredential);
@@ -122,6 +161,11 @@ router.post('/present', async (req: any, res: any) => {
                              }
                              // Add all W3C records
                              credentials[submission.inputDescriptorId].push(...w3cRecords);
+                             // Add all mdoc records
+                             if (mdocRecords.length > 0) {
+                                 console.log(`Adding ${mdocRecords.length} mdoc credentials to submission for ${submission.inputDescriptorId}`);
+                                 credentials[submission.inputDescriptorId].push(...mdocRecords);
+                             }
                          }
                      }
                  }
@@ -149,6 +193,18 @@ router.post('/present', async (req: any, res: any) => {
     }
 
     // Use Credo's OpenID4VC module to handle the presentation
+    console.log('OpenId4VcHolder methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(agent!.modules.openId4VcHolder)));
+
+    console.log('DEBUG: Credentials map keys:', Object.keys(credentials));
+    for (const key in credentials) {
+        console.log(`DEBUG: Credentials for ${key}:`, credentials[key].length);
+        credentials[key].forEach((c: any, i: number) => {
+             console.log(`DEBUG: Credential ${i} type:`, typeof c);
+             console.log(`DEBUG: Credential ${i} constructor:`, c ? c.constructor.name : 'null');
+             if (c === undefined) console.log('DEBUG: Credential is UNDEFINED!');
+        });
+    }
+
     const submissionResult = await agent!.modules.openId4VcHolder.acceptSiopAuthorizationRequest({
         authorizationRequest: resolvedRequest.authorizationRequest,
         presentationExchange: {

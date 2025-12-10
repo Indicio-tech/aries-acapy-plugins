@@ -10,6 +10,8 @@ RUN npm install
 
 # Copy source code and build
 COPY . .
+RUN npm install
+
 RUN npm run build
 
 

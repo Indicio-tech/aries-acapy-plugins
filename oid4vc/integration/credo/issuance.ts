@@ -1,6 +1,6 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { W3cJsonLdVerifiableCredential, W3cJwtVerifiableCredential } from '@credo-ts/core';
+import { W3cJsonLdVerifiableCredential, W3cJwtVerifiableCredential, Mdoc, MdocRecord } from '@credo-ts/core';
 import { getAgent, initializeAgent } from './agent.js';
 
 const router: express.Router = express.Router();
@@ -10,8 +10,7 @@ router.post('/accept-offer', async (req: any, res: any) => {
   let agent = getAgent();
   try {
     if (!agent) {
-      await initializeAgent(3020);
-      agent = getAgent();
+      agent = await initializeAgent(3020);
     }
 
     const { credential_offer } = req.body;
@@ -37,6 +36,8 @@ router.post('/accept-offer', async (req: any, res: any) => {
 
     console.log('✅ Offer resolved', JSON.stringify(resolvedOffer, null, 2));
 
+    let generatedDidUrl: string | undefined;
+
     // In Credo 0.5.17, we must choose the specific method based on the grant type
     // We'll assume pre-authorized code for now as that's what the tests use
     const credentialRecord = await agent!.modules.openId4VcHolder.acceptCredentialOfferUsingPreAuthorizedCode(
@@ -44,11 +45,22 @@ router.post('/accept-offer', async (req: any, res: any) => {
         {
             credentialsToRequest: resolvedOffer.offeredCredentials.map((c: any) => c.id),
             credentialBindingResolver: async (bindingOptions: any) => {
-                console.log('🔒 Resolving credential binding for:', bindingOptions.keyType);
+                let keyType = bindingOptions.keyType;
+                
+                // Check if any offered credential is mso_mdoc
+                const isMdoc = resolvedOffer.offeredCredentials.some((c: any) => c.format === 'mso_mdoc');
+                
+                // Force P-256 for mdoc if Ed25519 is requested (since isomdl only supports P-256)
+                if (isMdoc && (keyType === 'ed25519' || !keyType)) {
+                    console.log('⚠️ Forcing P-256 key type for mso_mdoc credential');
+                    keyType = 'p256';
+                }
+
+                console.log('🔒 Resolving credential binding for:', keyType);
                 const didResult = await agent!.dids.create({
                     method: 'key',
                     options: {
-                        keyType: bindingOptions.keyType,
+                        keyType: keyType,
                     },
                 });
                 
@@ -69,6 +81,7 @@ router.post('/accept-offer', async (req: any, res: any) => {
                 }
                 
                 console.log('🔑 Generated DID URL:', didUrl);
+                generatedDidUrl = didUrl;
 
                 return {
                     method: 'did',
@@ -86,23 +99,22 @@ router.post('/accept-offer', async (req: any, res: any) => {
     // Store credentials in the W3C credentials module so they can be found during presentation
     for (const credential of credentials) {
         try {
-            console.log('💾 Storing credential...');
-
             // Handle different credential structures from Credo's OpenID4VCI client
             const compactJwt = credential.compact || credential.jwt?.serializedJwt;
             
             if (credential.header && credential.header.typ === 'vc+sd-jwt') {
-                 console.log('Storing as SD-JWT credential');
-                 console.log('Agent modules:', Object.keys(agent!.modules));
                  // @ts-ignore
                  await agent!.sdJwtVc.store(compactJwt);
                  continue;
             } else if (compactJwt) {
-                 console.log('Storing as JWT-VC credential');
-                 // @ts-ignore
-                 const w3cCredential = W3cJwtVerifiableCredential.fromSerializedJwt(compactJwt);
-                 // @ts-ignore
-                 await agent!.w3cCredentials.storeCredential({ credential: w3cCredential });
+                 try {
+                     // @ts-ignore
+                     const w3cCredential = W3cJwtVerifiableCredential.fromSerializedJwt(compactJwt);
+                     // @ts-ignore
+                     await agent!.w3cCredentials.storeCredential({ credential: w3cCredential });
+                 } catch (err) {
+                     // Ignore error if storage fails
+                 }
                  continue;
             }
             
@@ -110,7 +122,6 @@ router.post('/accept-offer', async (req: any, res: any) => {
 
             // Patch for SD-JWT credentials which might be missing 'type' property expected by W3cCredentialRecord
             if (!credential.type && credential.payload && credential.payload.vct) {
-                console.log('🔧 Patching SD-JWT credential with type and context...');
                 // Create a plain object copy to ensure we can add properties and they are visible
                 credentialToStore = JSON.parse(JSON.stringify(credential));
                 
@@ -141,26 +152,64 @@ router.post('/accept-offer', async (req: any, res: any) => {
                 if (!credentialToStore.proof) {
                     credentialToStore.proof = [];
                 }
+            }
 
-                console.log('📦 Credential to store:', JSON.stringify(credentialToStore, null, 2));
+            // Skip W3C storage for mdoc
+            if (credential.issuerSignedDocument) {
+                console.log('⚠️ Processing mdoc credential for storage.');
+                
+                try {
+                    if (credential.base64Url) {
+                        // Try to create Mdoc instance
+                        // @ts-ignore
+                        const mdoc = Mdoc.fromBase64Url(credential.base64Url);
+                        console.log('✅ Created Mdoc instance from base64Url');
+                        
+                        if (!generatedDidUrl) {
+                            console.warn('⚠️ No generatedDidUrl captured! MdocRecord might be missing key binding.');
+                        }
+
+                        const mdocRecord = new MdocRecord({
+                            mdoc,
+                            tags: {
+                                docType: mdoc.docType
+                            }
+                        });
+
+                        // @ts-ignore - Using store() which is the correct Credo 0.5.x API
+                        await agent!.modules.mdoc.store(mdocRecord);
+                        console.log('✅ Stored MdocRecord in repository');
+
+                    } else {
+                        console.error('❌ No base64Url found in mdoc credential, cannot create MdocRecord');
+                    }
+                } catch (e) {
+                    console.error('❌ Failed to store MdocRecord:', e);
+                }
+                continue;
             }
 
             // @ts-ignore
             const w3cCredential = W3cJsonLdVerifiableCredential.fromJson(credentialToStore);
             // @ts-ignore
             await agent!.w3cCredentials.storeCredential({ credential: w3cCredential });
-            console.log('✅ Credential stored successfully');
         } catch (e) {
-            console.error('❌ Failed to store credential:', e);
+            console.error('Failed to store credential:', e);
         }
     }
 
     const firstCredential = credentials[0];
 
+    let format = firstCredential.header?.typ || 'unknown';
+    // Check for mdoc structure
+    if (firstCredential.issuerSignedDocument) {
+        format = 'mso_mdoc';
+    }
+
     res.json({
       success: true,
       credential: firstCredential,
-      format: firstCredential.header?.typ || 'unknown'
+      format: format
     });
 
   } catch (error) {

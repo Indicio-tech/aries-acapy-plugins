@@ -1,14 +1,19 @@
 import json
+import time
+import uuid
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.core.profile import Profile
+from acapy_agent.did.did_key import DIDKey
 from acapy_agent.wallet.did_info import DIDInfo
 from acapy_agent.wallet.did_method import KEY
-from acapy_agent.wallet.key_type import ED25519
+from acapy_agent.wallet.key_type import ED25519, KeyTypes
+from acapy_agent.wallet.util import bytes_to_b64
 from aiohttp import web
+from aries_askar import Key, KeyAlg
 
 from oid4vc import public_routes as test_module
 from oid4vc.models.exchange import OID4VCIExchangeRecord
@@ -59,6 +64,7 @@ async def test_issuer_metadata(context: AdminRequestContext, req: web.Request):
                 "credential_issuer": f"http://localhost:8020/tenant/{wallet_id}",
                 "authorization_servers": ["http://localhost:9001"],
                 "credential_endpoint": f"http://localhost:8020/tenant/{wallet_id}/credential",
+                "token_endpoint": f"http://localhost:8020/tenant/{wallet_id}/token",
                 "notification_endpoint": f"http://localhost:8020/tenant/{wallet_id}/notification",
                 "credential_configurations_supported": {
                     "MyCredential": {
@@ -81,13 +87,47 @@ async def test_get_token(context: AdminRequestContext, req: web.Request):
 @pytest.mark.asyncio
 async def test_handle_proof_of_posession(profile: Profile):
     """Test handling of proof of posession."""
+    # Generate a key
+    key = Key.generate(KeyAlg.ED25519)
+    did_key = DIDKey.from_public_key(key.get_public_bytes(), ED25519).did
+
+    # Create JWT
+    nonce = "test-nonce"
+    now = int(time.time())
+    payload = {
+        "iat": now,
+        "exp": now + 300,
+        "aud": "http://localhost:8020",
+        "nonce": nonce,
+        "iss": "test-issuer",
+        "jti": str(uuid.uuid4()),
+    }
+
+    headers = {
+        "typ": "openid4vci-proof+jwt",
+        "alg": "EdDSA",
+        "kid": did_key,
+    }
+
+    encoded_headers = bytes_to_b64(json.dumps(headers).encode(), urlsafe=True)
+    encoded_payload = bytes_to_b64(json.dumps(payload).encode(), urlsafe=True)
+    signing_input = f"{encoded_headers}.{encoded_payload}".encode()
+    signature = key.sign_message(signing_input)
+    encoded_signature = bytes_to_b64(signature, urlsafe=True)
+
+    jwt = f"{encoded_headers}.{encoded_payload}.{encoded_signature}"
+
     proof = {
         "proof_type": "jwt",
-        "jwt": "eyJ0eXAiOiJvcGVuaWQ0dmNpLXByb29mK2p3dCIsImFsZyI6IkVTMjU2SyIsImtpZCI6ImRpZDpqd2s6ZXlKaGJHY2lPaUpGVXpJMU5rc2lMQ0oxYzJVaU9pSnphV2NpTENKcmRIa2lPaUpGUXlJc0ltTnlkaUk2SW5ObFkzQXlOVFpyTVNJc0luZ2lPaUpzTWtKbU1GVXlabHA1TFdaMVl6WkJOM3BxYmxwTVJXbFNiM2xzV0VsNWJrMUdOM1JHYUVOd2RqUm5JaXdpZVNJNklrYzBSRlJaUVhGZlEwZHdjVEJ2UkdKQmNVWkxWMWxLTFZoRmRDMUZiVFl6TXpGV2QwcHRjaTFpUkdNaWZRIzAifQ.eyJpYXQiOjE3MDExMjczMTUuMjQ3LCJleHAiOjE3MDExMjc5NzUuMjQ3LCJhdWQiOiJodHRwczovLzEzNTQtMTk4LTkxLTYyLTU4Lm5ncm9rLmlvIiwibm9uY2UiOiIySTF3LUVfNkUtczA3dkFJbzNxOThnIiwiaXNzIjoic3BoZXJlb246c3NpLXdhbGxldCIsImp0aSI6IjdjNzJmODg3LTI4YjQtNDg5Mi04MTUxLWNhZWMxNDRjMzBmMSJ9.XUfMcLMddw1DEqfQvQkk41FTwTmOk-dR3M51PsC76VWn3Ln3KlmPBUEwmFjEEqoEpVIm6kV7K_9svYNc2_ZX4w",
+        "jwt": jwt,
     }
-    nonce = "2I1w-E_6E-s07vAIo3q98g"
-    result = await test_module.handle_proof_of_posession(profile, proof, nonce)
+
+    with patch("oid4vc.public_routes.key_material_for_kid", new_callable=AsyncMock) as mock_resolve:
+        mock_resolve.return_value = key
+        result = await test_module.handle_proof_of_posession(profile, proof, nonce)
+    
     assert isinstance(result.verified, bool)
+    assert result.verified
 
 
 @pytest.mark.asyncio

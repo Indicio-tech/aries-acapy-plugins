@@ -154,6 +154,8 @@ try:
 
     MDOC_AVAILABLE = True
 except ImportError:
+    if os.getenv("REQUIRE_MDOC", "false").lower() == "true":
+        raise ImportError("isomdl_uniffi is required but not installed")
     MDOC_AVAILABLE = False
     mdl = None
 

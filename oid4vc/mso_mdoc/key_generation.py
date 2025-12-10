@@ -97,6 +97,40 @@ def generate_ec_key_pair() -> Tuple[str, str, Dict[str, Any]]:
     return private_pem, public_pem, jwk
 
 
+def pem_to_jwk(private_key_pem: str) -> Dict[str, Any]:
+    """Derive JWK from a PEM-encoded EC private key.
+
+    Args:
+        private_key_pem: PEM-encoded private key string
+
+    Returns:
+        JSON Web Key dictionary with EC parameters
+    """
+    private_key = serialization.load_pem_private_key(
+        private_key_pem.encode("utf-8"), password=None
+    )
+
+    if not isinstance(private_key, ec.EllipticCurvePrivateKey):
+        raise ValueError("PEM must be an EC private key")
+
+    private_numbers = private_key.private_numbers()
+    public_numbers = private_numbers.public_numbers
+
+    def int_to_base64url_uint(val: int) -> str:
+        import base64
+
+        val_bytes = val.to_bytes(32, byteorder="big")
+        return base64.urlsafe_b64encode(val_bytes).decode("ascii").rstrip("=")
+
+    return {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": int_to_base64url_uint(public_numbers.x),
+        "y": int_to_base64url_uint(public_numbers.y),
+        "d": int_to_base64url_uint(private_numbers.private_value),
+    }
+
+
 def generate_self_signed_certificate(
     private_key_pem: str,
     subject_name: str = "CN=mDoc Test Issuer",

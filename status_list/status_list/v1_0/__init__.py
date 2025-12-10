@@ -17,20 +17,19 @@ async def setup(context: InjectionContext):
     """Setup the plugin."""
     LOGGER.info("> status_list plugin setup...")
 
-    bus = context.inject(EventBus)
-    if not bus:
-        raise ValueError("EventBus missing in context")
-
-    bus.subscribe(STARTUP_EVENT_PATTERN, on_startup)
-    LOGGER.info("< status_list plugin setup.")
-
-
-async def on_startup(profile: Profile, event: Event):
-    """Handle startup event."""
-    LOGGER.info("> status_list on_startup")
-
-    admin_server = profile.context.inject(BaseAdminServer)
+    admin_server = context.inject_or(BaseAdminServer)
     if admin_server:
         await routes.register(admin_server.app)
 
-    LOGGER.info("< status_list on_startup")
+    LOGGER.info("< status_list plugin setup.")
+
+
+# async def on_startup(profile: Profile, event: Event):
+#     """Handle startup event."""
+#     LOGGER.info("> status_list on_startup")
+
+#     admin_server = profile.context.inject(BaseAdminServer)
+#     if admin_server:
+#         await routes.register(admin_server.app)
+
+#     LOGGER.info("< status_list on_startup")

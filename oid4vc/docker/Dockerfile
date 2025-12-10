@@ -29,12 +29,12 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Accept build argument for ACA-Py tag
-ARG ACAPY_TAG=main
+ARG ACAPY_VERSION=1.4.0
 
 # Clone ACA-Py source at specified tag
 RUN git clone https://github.com/openwallet-foundation/acapy.git /usr/src/acapy
 WORKDIR /usr/src/acapy
-RUN git checkout ${ACAPY_TAG}
+RUN git checkout ${ACAPY_VERSION}
 
 # Install ACA-Py using pip (since it doesn't use Poetry)
 RUN pip install -e . --no-cache-dir

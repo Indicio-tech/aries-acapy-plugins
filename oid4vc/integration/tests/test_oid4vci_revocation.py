@@ -35,7 +35,8 @@ class TestOID4VCIRevocation:
         LOGGER.info("Testing revocation status in credential...")
         
         # Setup supported credential
-        supported_cred_id = await test_runner.setup_supported_credential()
+        supported_cred_result = await test_runner.setup_supported_credential()
+        supported_cred_id = supported_cred_result["supported_cred_id"]
         LOGGER.info(f"Supported Credential ID: {supported_cred_id}")
         
         # Create a DID to use as issuer for the status list

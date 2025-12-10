@@ -352,16 +352,14 @@ class TestOID4VCMdocCompliance:
             cred_data = cred_response.json()
 
             # Phase 2: Use issued credential in mdoc presentation
-            # For this test, we'll simulate using the credential in a presentation
-            # In a real scenario, the credential would be parsed and used with
-            # isomdl_uniffi
-
-            # Generate a test mdoc for presentation
-            # (in real scenario, this would be the issued credential)
-            test_mdl = mdl.generate_test_mdl(holder_key)
-
-            # Create presentation session
-            session = mdl.MdlPresentationSession(test_mdl, str(uuid.uuid4()))
+            # Parse the issued credential using isomdl_uniffi
+            issued_mdoc_b64 = cred_data["credential"]
+            
+            key_alias = "parsed"
+            issued_mdoc = mdl.Mdoc.new_from_base64url_encoded_issuer_signed(issued_mdoc_b64, key_alias)
+            
+            # Create presentation session with the ISSUED credential
+            session = mdl.MdlPresentationSession(issued_mdoc, str(uuid.uuid4()))
             qr_code = session.get_qr_code_uri()
 
             # Test verification workflow
@@ -400,6 +398,6 @@ class TestOID4VCMdocCompliance:
                 ),
                 "validation": (
                     "OID4VC mso_mdoc issuance and mdoc presentation "
-                    "interoperability successful"
+                    "interoperability successful using issued credential"
                 ),
             }

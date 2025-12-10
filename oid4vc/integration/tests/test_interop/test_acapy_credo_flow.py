@@ -79,13 +79,17 @@ async def test_credential_issuance_flow(acapy_issuer: httpx.AsyncClient, credo):
     print(f"✅ Created supported credential with ID: {supported_cred_id}")
 
     # Step 2: Create credential exchange record
-    # Using a mock DID for testing - in real scenarios this would be Credo's actual DID
-    mock_holder_did = "did:key:z6Mkgg342Ycpuk263R9d8Aq6MUaxPn1DDeHyGo38EefXmgDL"
+    # Create a DID for the issuer
+    did_response = await acapy_issuer.post(
+        "/wallet/did/create", json={"method": "key", "options": {"key_type": "ed25519"}}
+    )
+    assert did_response.status_code == 200, f"Failed to create DID: {did_response.text}"
+    issuer_did = did_response.json()["result"]["did"]
 
     exchange_request = {
         "supported_cred_id": supported_cred_id,
         "credential_subject": {"name": "John Doe", "email": "john.doe@example.com"},
-        "did": mock_holder_did,
+        "did": issuer_did,
     }
 
     print("🔄 Creating credential exchange...")

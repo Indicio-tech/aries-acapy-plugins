@@ -103,6 +103,10 @@ class SupportedCredential(BaseRecord):
 
         Returns credential configuration object as per OID4VCI 1.0 specification.
         """
+        import logging
+        LOGGER = logging.getLogger(__name__)
+        LOGGER.info(f"to_issuer_metadata: format={self.format}, binding_methods={self.cryptographic_binding_methods_supported}")
+
         # Base credential configuration per OID4VCI 1.0 § 11.2.3
         issuer_metadata = {
             prop: value

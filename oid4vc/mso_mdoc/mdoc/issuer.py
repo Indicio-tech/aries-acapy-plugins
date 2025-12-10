@@ -136,7 +136,59 @@ def isomdl_mdoc_sign(
         LOGGER.info("Generated mdoc with doctype: %s", mdoc.doctype())
 
         # Return the stringified CBOR
-        return mdoc.stringify()
+        mdoc_b64 = mdoc.stringify()
+        
+        # Patch: isomdl returns 'issuer_auth' but spec requires 'issuerAuth'
+        # We decode, fix the key, and re-encode.
+        try:
+            import base64
+            # Add padding if needed
+            pad = len(mdoc_b64) % 4
+            if pad > 0:
+                mdoc_b64_padded = mdoc_b64 + "=" * (4 - pad)
+            else:
+                mdoc_b64_padded = mdoc_b64
+                
+            mdoc_bytes = base64.urlsafe_b64decode(mdoc_b64_padded)
+            mdoc_map = cbor2.loads(mdoc_bytes)
+            
+            patched = False
+            if "issuer_auth" in mdoc_map:
+                LOGGER.info("Patching issuer_auth to issuerAuth in mdoc")
+                mdoc_map["issuerAuth"] = mdoc_map.pop("issuer_auth")
+                patched = True
+            
+            if "namespaces" in mdoc_map:
+                LOGGER.info("Patching namespaces to nameSpaces in mdoc")
+                namespaces = mdoc_map.pop("namespaces")
+                # Convert dict of items to list of items as per ISO 18013-5
+                fixed_namespaces = {}
+                for ns, items in namespaces.items():
+                    if isinstance(items, dict):
+                        fixed_namespaces[ns] = list(items.values())
+                    else:
+                        fixed_namespaces[ns] = items
+                mdoc_map["nameSpaces"] = fixed_namespaces
+                patched = True
+
+            if patched:
+                # Construct IssuerSigned object (filter out internal fields like 'id', 'mso')
+                issuer_signed = {}
+                if "issuerAuth" in mdoc_map:
+                    issuer_signed["issuerAuth"] = mdoc_map["issuerAuth"]
+                if "nameSpaces" in mdoc_map:
+                    issuer_signed["nameSpaces"] = mdoc_map["nameSpaces"]
+                
+                # Re-encode
+                patched_bytes = cbor2.dumps(issuer_signed)
+                patched_b64 = base64.urlsafe_b64encode(patched_bytes).decode("ascii").rstrip("=")
+                return patched_b64
+                
+        except Exception as e:
+            LOGGER.warning(f"Failed to patch mdoc keys: {e}")
+            # Fallback to original if patching fails
+            
+        return mdoc_b64
 
     except Exception as ex:
         LOGGER.error("Failed to create mdoc with isomdl: %s", ex)

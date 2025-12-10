@@ -69,11 +69,17 @@ async def offer(acapy_issuer: httpx.AsyncClient) -> dict[str, Any]:
     supported_cred = response.json()
     supported_cred_id = supported_cred["supported_cred_id"]
 
-    mock_holder_did = "did:key:z6Mkgg342Ycpuk263R9d8Aq6MUaxPn1DDeHyGo38EefXmgDL"
+    # Create a DID for the issuer
+    did_response = await acapy_issuer.post(
+        "/wallet/did/create", json={"method": "key", "options": {"key_type": "ed25519"}}
+    )
+    did_response.raise_for_status()
+    issuer_did = did_response.json()["result"]["did"]
+
     exchange_request = {
         "supported_cred_id": supported_cred_id,
         "credential_subject": {"name": "John Doe", "email": "john.doe@example.com"},
-        "did": mock_holder_did,
+        "did": issuer_did,
     }
 
     response = await acapy_issuer.post(

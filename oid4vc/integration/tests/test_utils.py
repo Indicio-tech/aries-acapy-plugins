@@ -109,7 +109,7 @@ class OID4VCTestHelper:
             "format": "mso_mdoc",
             "identifier": "org.iso.18013.5.1.mDL",
             "format_data": {"doctype": "org.iso.18013.5.1.mDL"},
-            "cryptographic_binding_methods_supported": ["cose_key"],
+            "cryptographic_binding_methods_supported": ["cose_key", "did:key", "did"],
             "cryptographic_suites_supported": ["ES256", "ES384", "ES512"],
             "display": MSO_MDOC_CREDENTIAL_CONFIG["display"],
             "claims": MSO_MDOC_CREDENTIAL_CONFIG["claims"],

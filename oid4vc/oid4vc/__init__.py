@@ -71,6 +71,7 @@ async def setup(context: InjectionContext):
         processors.register_cred_verifier("mso_mdoc", mso_mdoc)
         processors.register_pres_verifier("mso_mdoc", mso_mdoc)
         LOGGER.info("Registered mso_mdoc credential processor")
+        LOGGER.info(f"Current pres_verifiers: {list(processors.pres_verifiers.keys())}")
     except ImportError:
         LOGGER.warning(
             "mso_mdoc plugin not found or dependencies missing, skipping registration"

@@ -30,7 +30,7 @@ plugin-config-value:
   - oid4vci.port=8022
   - oid4vci.endpoint=${OID4VCI_ENDPOINT:-http://localhost:8022}
   - oid4vci.status_handler=status_list.v1_0.status_handler
-  - status_list.public_uri=http://localhost:8022/status/{list_number}
+  # status_list.public_uri is set via STATUS_LIST_PUBLIC_URI env var to avoid issues with variable substitution
   - status_list.file_path=./status_list_data
 
 # Ledger configuration - use no-ledger for simple development
