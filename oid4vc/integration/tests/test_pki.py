@@ -20,29 +20,20 @@ if MDOC_AVAILABLE:
 
 @pytest.mark.skipif(not MDOC_AVAILABLE, reason="isomdl_uniffi not available")
 @pytest.mark.asyncio
-async def test_mdoc_pki_trust_chain(acapy_verifier_admin):
-    """Test mdoc verification with PKI trust chain (Leaf -> Intermediate -> Root)."""
-    print("DEBUG: I AM RUNNING THE MODIFIED TEST")
+async def test_mdoc_pki_trust_chain(acapy_verifier_admin, generated_test_certs, setup_pki_chain_trust_anchor):
+    """Test mdoc verification with PKI trust chain (Leaf -> Intermediate -> Root).
     
-    # 1. Load certificates and keys
-    certs_dir = Path("/usr/src/app/certs")
-    if not certs_dir.exists():
-        pytest.skip("Certs directory not found, skipping PKI test")
-
-    try:
-        with open(certs_dir / "leaf.key", "rb") as f:
-            leaf_key_pem = f.read().decode()
-        with open(certs_dir / "leaf.pem", "rb") as f:
-            leaf_cert_pem = f.read().decode()
-        with open(certs_dir / "intermediate_ca.pem", "rb") as f:
-            inter_cert_pem = f.read().decode()
-    except FileNotFoundError:
-        pytest.skip("Certificates not found, skipping PKI test")
-
+    This test uses dynamically generated certificates from the generated_test_certs fixture
+    rather than static filesystem certificates. Trust anchors are uploaded via API.
+    """
+    print("DEBUG: Running PKI test with dynamic certificates")
+    
+    # 1. Get certificates from the generated_test_certs fixture
+    leaf_key_pem = generated_test_certs["leaf_key_pem"]
+    leaf_cert_pem = generated_test_certs["leaf_cert_pem"]
+    inter_cert_pem = generated_test_certs["intermediate_ca_pem"]
+    
     # Construct the chain (Leaf + Intermediate)
-    # isomdl_uniffi might expect them concatenated or just the leaf if it builds the chain itself?
-    # Usually for signing, you provide the signer's cert and optionally the chain.
-    # Let's try passing the concatenated PEMs.
     full_chain_pem = leaf_cert_pem + inter_cert_pem
 
     # 2. Create a signed mdoc using the Leaf key and Chain
@@ -281,23 +272,35 @@ async def test_mdoc_pki_trust_chain(acapy_verifier_admin):
         }
         device_engagement_bytes = cbor2.dumps(device_engagement)
         
-        # 3. Construct SessionTranscript
-        response_uri_hash = hashlib.sha256(response_uri.encode()).digest()
-        client_id_hash = hashlib.sha256(client_id.encode()).digest()
+        # 3. Construct SessionTranscript using 2024 OID4VP spec format
+        # SessionTranscript = [null, null, ["OpenID4VPHandover", sha256(cbor([clientId, nonce, jwkThumbprint, responseUri]))]]
         
-        # OID4VP Handover = [Hash(client_id), Hash(response_uri), nonce]
-        handover = [
-            client_id_hash,
-            response_uri_hash,
-            nonce
+        # jwkThumbprint is null for non-encrypted responses (as per isomdl implementation)
+        
+        # Construct OpenID4VPHandoverInfo = [clientId, nonce, jwkThumbprint, responseUri]
+        # jwkThumbprint is None/null for non-encrypted responses
+        handover_info = [
+            client_id,
+            nonce,
+            None,  # jwkThumbprint - null for non-encrypted responses
+            response_uri
         ]
         
-        # ERReaderKeyBytes is null for OID4VP
-        er_reader_key_bytes = cbor2.dumps(None) 
+        # CBOR-encode the handover info
+        handover_info_cbor = cbor2.dumps(handover_info)
+        
+        # SHA-256 hash it
+        handover_info_hash = hashlib.sha256(handover_info_cbor).digest()
+        
+        # Construct OID4VP Handover = ["OpenID4VPHandover", hash]
+        handover = [
+            "OpenID4VPHandover",
+            handover_info_hash
+        ]
         
         session_transcript = [
-            None, # DeviceEngagementBytes (isomdl uses None)
-            None, # ERReaderKeyBytes (isomdl uses None)
+            None, # DeviceEngagementBytes (null for OID4VP)
+            None, # EReaderKeyBytes (null for OID4VP)
             handover
         ]
         

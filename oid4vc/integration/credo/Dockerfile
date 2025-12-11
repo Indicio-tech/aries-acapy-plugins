@@ -1,8 +1,8 @@
 FROM node:18-bookworm AS base
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y python3 build-essential git && rm -rf /var/lib/apt/lists/*
+# Install system dependencies (including curl for healthcheck)
+RUN apt-get update && apt-get install -y python3 build-essential git curl && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies
 COPY package.json package-lock.json* ./
@@ -15,7 +15,7 @@ RUN npm install
 RUN npm run build
 
 
-HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=5 \
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=10 \
   CMD curl -f http://localhost:3020/health || exit 1
 
 EXPOSE 3020

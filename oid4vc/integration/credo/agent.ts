@@ -17,36 +17,6 @@ import { agentDependencies } from '@credo-ts/node';
 import { AskarModule } from '@credo-ts/askar';
 import { OpenId4VcModule } from '@credo-ts/openid4vc';
 import { v4 as uuidv4 } from 'uuid';
-import * as fs from 'fs';
-import * as path from 'path';
-
-// Load trusted certificates from the certs directory
-const loadTrustedCertificates = (): string[] => {
-  const trustAnchorsDir = process.env.TRUST_ANCHORS_PATH || '/etc/credo/certs/trust-anchors';
-  const certificates: string[] = [];
-  
-  try {
-    if (fs.existsSync(trustAnchorsDir)) {
-      const files = fs.readdirSync(trustAnchorsDir);
-      for (const file of files) {
-        if (file.endsWith('.pem')) {
-          const certPath = path.join(trustAnchorsDir, file);
-          const certPem = fs.readFileSync(certPath, 'utf-8').trim();
-          // Credo 0.6.0 X509Module accepts PEM strings directly via X509Certificate.fromEncodedCertificate()
-          // Do NOT base64 encode the PEM - pass it as-is
-          certificates.push(certPem);
-          console.log(`Loaded trust anchor: ${file}`);
-        }
-      }
-    } else {
-      console.warn(`Trust anchors directory not found: ${trustAnchorsDir}`);
-    }
-  } catch (error) {
-    console.error(`Error loading trust anchors: ${error}`);
-  }
-  
-  return certificates;
-};
 
 let agent: Agent | null = null;
 
@@ -56,6 +26,39 @@ export const getAgent = () => {
   }
   return agent;
 }
+
+/**
+ * Add a trusted certificate to the agent's X509 module.
+ * This allows dynamic trust anchor registration via API.
+ * 
+ * @param certificate PEM-encoded certificate string
+ */
+export const addTrustedCertificate = (certificate: string) => {
+  const agentInstance = getAgent();
+  agentInstance.x509.config.addTrustedCertificate(certificate);
+  console.log('Added trusted certificate to X509 module');
+};
+
+/**
+ * Set all trusted certificates, replacing any existing ones.
+ * 
+ * @param certificates Array of PEM-encoded certificate strings
+ */
+export const setTrustedCertificates = (certificates: string[]) => {
+  const agentInstance = getAgent();
+  agentInstance.x509.config.setTrustedCertificates(certificates);
+  console.log(`Set ${certificates.length} trusted certificates in X509 module`);
+};
+
+/**
+ * Get currently configured trusted certificates.
+ * 
+ * @returns Array of PEM-encoded certificate strings
+ */
+export const getTrustedCertificates = (): string[] => {
+  const agentInstance = getAgent();
+  return agentInstance.x509.config.trustedCertificates ?? [];
+};
 
 export const initializeAgent = async (port: number) => {
   if (agent) {
@@ -89,8 +92,9 @@ export const initializeAgent = async (port: number) => {
     w3cCredentials: new W3cCredentialsModule(),
     sdJwtVc: new SdJwtVcModule(),
     mdoc: new MdocModule(),
+    // Start with no trusted certificates - they will be added via API
     x509: new X509Module({
-      trustedCertificates: loadTrustedCertificates(),
+      trustedCertificates: [],
     }),
     openid4vc: new OpenId4VcModule(),
     dids: new DidsModule(),

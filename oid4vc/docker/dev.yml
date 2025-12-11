@@ -21,8 +21,7 @@ plugin:
   - oid4vc
   - sd_jwt_vc
   - status_list.v1_0
-  # Temporarily disabled due to missing libisomdl_uniffi.so dependency
-  # - mso_mdoc
+  - mso_mdoc
 
 # OID4VC plugin configuration - Use different port for OID4VCI server
 plugin-config-value:

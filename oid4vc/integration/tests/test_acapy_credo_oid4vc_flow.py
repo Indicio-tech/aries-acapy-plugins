@@ -433,8 +433,14 @@ async def test_acapy_credo_mdoc_flow(
     acapy_issuer_admin,
     acapy_verifier_admin,
     credo_client,
+    setup_all_trust_anchors,
 ):
-    """Test complete OID4VC flow for mso_mdoc: ACA-Py issues → Credo receives → Credo presents → ACA-Py verifies."""
+    """Test complete OID4VC flow for mso_mdoc: ACA-Py issues → Credo receives → Credo presents → ACA-Py verifies.
+    
+    Note: This test requires trust anchors to be configured in both Credo and ACA-Py verifier.
+    The setup_all_trust_anchors fixture handles this automatically by generating ephemeral
+    certificates and uploading them via API.
+    """
 
     # Step 1: Setup mdoc credential configuration on ACA-Py issuer
     random_suffix = str(uuid.uuid4())[:8]
@@ -780,8 +786,13 @@ async def test_acapy_credo_mdoc_selective_disclosure(
     acapy_issuer_admin,
     acapy_verifier_admin,
     credo_client,
+    setup_all_trust_anchors,
 ):
-    """Test mdoc selective disclosure: Request subset of namespaces/elements."""
+    """Test mdoc selective disclosure: Request subset of namespaces/elements.
+    
+    Note: This test requires trust anchors to be configured in both Credo and ACA-Py verifier.
+    The setup_all_trust_anchors fixture handles this automatically.
+    """
 
     # Step 1: Issue mdoc credential
     random_suffix = str(uuid.uuid4())[:8]

@@ -88,6 +88,7 @@ run_default() {
     print_info "This will run all tests"
     
     cleanup
+    # Note: Certificates are generated dynamically in tests via API
     docker compose up --build --abort-on-container-exit
     
     if [ $? -eq 0 ]; then
@@ -104,6 +105,7 @@ run_full() {
     print_info "This will run all 39+ tests and may take 5-10 minutes"
     
     cleanup
+    # Note: Certificates are generated dynamically in tests via API
     docker compose -f docker-compose.full.yml up --build --abort-on-container-exit
     
     if [ $? -eq 0 ]; then
@@ -121,6 +123,7 @@ run_dev() {
     print_info "Services will run in background. Use 'docker compose exec test-river bash' to access test container"
     
     cleanup
+    # Note: Certificates are generated dynamically in tests via API
     docker compose up -d --build
     
     if [ $? -eq 0 ]; then

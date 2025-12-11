@@ -1,5 +1,6 @@
 """Mdoc Verifier implementation using isomdl-uniffi."""
 
+import asyncio
 import base64
 import json
 import logging
@@ -9,7 +10,7 @@ from typing import Any, List, Optional, Protocol
 
 # Import isomdl_uniffi library directly
 import isomdl_uniffi
-from acapy_agent.core.profile import Profile, ProfileSession
+from acapy_agent.core.profile import Profile
 
 from oid4vc.config import Config
 from oid4vc.cred_processor import (
@@ -104,6 +105,90 @@ class FileTrustStore:
                 except Exception as e:
                     LOGGER.warning(f"Failed to read trust anchor {filename}: {e}")
         return anchors
+
+
+class WalletTrustStore:
+    """Trust store implementation backed by Askar wallet storage.
+
+    This implementation stores trust anchor certificates in the ACA-Py
+    wallet using the MdocStorageManager, providing secure storage that
+    doesn't require filesystem access or static certificate files.
+    """
+
+    def __init__(self, profile: Profile):
+        """Initialize the wallet trust store.
+
+        Args:
+            profile: ACA-Py profile for accessing wallet storage
+        """
+        self.profile = profile
+        self._cached_anchors: Optional[List[str]] = None
+
+    def get_trust_anchors(self) -> List[str]:
+        """Retrieve trust anchors from wallet storage.
+
+        Note: This method is synchronous to match the TrustStore protocol,
+        but internally runs an async operation. The cache helps minimize
+        repeated async calls during verification.
+
+        Returns:
+            List of PEM-encoded trust anchor certificates
+        """
+        # Use cached value if available
+        if self._cached_anchors is not None:
+            return self._cached_anchors
+
+        # Run async retrieval synchronously
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # We're in an async context, need to use a different approach
+                # Return empty for now and rely on refresh_cache being called
+                LOGGER.warning(
+                    "WalletTrustStore.get_trust_anchors called from async context "
+                    "without cache. Call refresh_cache() first."
+                )
+                return []
+            else:
+                self._cached_anchors = loop.run_until_complete(
+                    self._fetch_trust_anchors()
+                )
+        except RuntimeError:
+            # No event loop, create one
+            self._cached_anchors = asyncio.run(self._fetch_trust_anchors())
+
+        return self._cached_anchors or []
+
+    async def refresh_cache(self) -> List[str]:
+        """Refresh the cached trust anchors from wallet storage.
+
+        This method should be called before verification operations
+        when running in an async context.
+
+        Returns:
+            List of PEM-encoded trust anchor certificates
+        """
+        self._cached_anchors = await self._fetch_trust_anchors()
+        return self._cached_anchors
+
+    async def _fetch_trust_anchors(self) -> List[str]:
+        """Fetch trust anchors from wallet storage.
+
+        Returns:
+            List of PEM-encoded trust anchor certificates
+        """
+        # Import here to avoid circular imports
+        from mso_mdoc.storage import MdocStorageManager
+
+        storage_manager = MdocStorageManager(self.profile)
+        async with self.profile.session() as session:
+            anchors = await storage_manager.get_all_trust_anchor_pems(session)
+            LOGGER.debug("Loaded %d trust anchors from wallet", len(anchors))
+            return anchors
+
+    def clear_cache(self) -> None:
+        """Clear the cached trust anchors."""
+        self._cached_anchors = None
 
 
 class MsoMdocCredVerifier(CredVerifier):
@@ -204,6 +289,10 @@ class MsoMdocCredVerifier(CredVerifier):
 
             # Get trust anchors if available
             # Note: verify_issuer_signature expects plain PEM strings, NOT JSON
+            # For WalletTrustStore, refresh cache before getting anchors since we're in async context
+            if self.trust_store and isinstance(self.trust_store, WalletTrustStore):
+                await self.trust_store.refresh_cache()
+            
             trust_anchors = (
                 self.trust_store.get_trust_anchors() if self.trust_store else None
             )
@@ -316,6 +405,10 @@ class MsoMdocPresVerifier(PresVerifier):
         """
         try:
             # 1. Prepare Trust Anchors
+            # For WalletTrustStore, refresh cache before getting anchors since we're in async context
+            if self.trust_store and isinstance(self.trust_store, WalletTrustStore):
+                await self.trust_store.refresh_cache()
+            
             trust_anchors = (
                 self.trust_store.get_trust_anchors() if self.trust_store else []
             )
@@ -324,7 +417,7 @@ class MsoMdocPresVerifier(PresVerifier):
             trust_anchors_json = [
                 json.dumps({"certificate_pem": a, "purpose": "Iaca"}) for a in trust_anchors
             ]
-            LOGGER.info(f"DEBUG: trust_anchors_json: {trust_anchors_json}")
+            LOGGER.info(f"DEBUG: trust_anchors_json (count: {len(trust_anchors_json)}): {[a[:100] + '...' for a in trust_anchors_json] if trust_anchors_json else '[]'}")
 
             # 2. Verify OID4VP Response
             # We need nonce, client_id, response_uri
@@ -424,13 +517,20 @@ class MsoMdocPresVerifier(PresVerifier):
                     verified_data.device_authentication != isomdl_uniffi.AuthenticationStatus.VALID
                     and verified_data.issuer_authentication == isomdl_uniffi.AuthenticationStatus.VALID
                 ):
-                    LOGGER.info(
-                        "Device authentication failed with spec-compliant format, "
-                        "trying legacy 2023 format for backwards compatibility"
-                    )
-                    verified_data = isomdl_uniffi.verify_oid4vp_response_legacy(
-                        response_bytes, nonce, client_id, response_uri, trust_anchors_json, True
-                    )
+                    # Check if legacy function is available (not all isomdl_uniffi versions have it)
+                    if hasattr(isomdl_uniffi, 'verify_oid4vp_response_legacy'):
+                        LOGGER.info(
+                            "Device authentication failed with spec-compliant format, "
+                            "trying legacy 2023 format for backwards compatibility"
+                        )
+                        verified_data = isomdl_uniffi.verify_oid4vp_response_legacy(
+                            response_bytes, nonce, client_id, response_uri, trust_anchors_json, True
+                        )
+                    else:
+                        LOGGER.warning(
+                            "Device authentication failed and legacy format not available in isomdl_uniffi. "
+                            "Consider upgrading isomdl_uniffi to a version with verify_oid4vp_response_legacy."
+                        )
 
                 if (
                     verified_data.issuer_authentication
@@ -480,7 +580,7 @@ class MsoMdocPresVerifier(PresVerifier):
                             "error": verified_data.errors,
                             "issuer_auth": str(verified_data.issuer_authentication),
                             "device_auth": str(verified_data.device_authentication),
-                            "claims": payload,
+                            "claims": claims,
                         },
                     )
 

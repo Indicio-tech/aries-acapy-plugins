@@ -883,6 +883,7 @@ async def test_mdoc_issue_to_credo_verify_with_sphereon_patterns(
     acapy_verifier_admin,
     credo_client,
     sphereon_client,  # noqa: ARG001
+    setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
 ):
     """Issue mDOC to Credo and verify using Sphereon-compatible verification patterns.
     
@@ -1003,6 +1004,7 @@ async def test_mdoc_issue_to_sphereon_verify_with_credo_patterns(
     acapy_issuer_admin,
     acapy_verifier_admin,
     sphereon_client,
+    setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
 ):
     """Issue mDOC to Sphereon and verify.
     

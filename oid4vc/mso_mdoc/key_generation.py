@@ -133,19 +133,27 @@ def pem_to_jwk(private_key_pem: str) -> Dict[str, Any]:
 
 def generate_self_signed_certificate(
     private_key_pem: str,
-    subject_name: str = "CN=mDoc Test Issuer",
+    subject_name: str = "CN=mDoc Test Issuer,C=US",
     issuer_name: Optional[str] = None,
     validity_days: int = 365,
 ) -> str:
-    """Generate a self-signed X.509 certificate for mDoc issuer.
+    """Generate a self-signed X.509 IACA certificate for mDoc issuer.
 
-    Creates a self-signed certificate compliant with ISO 18013-5 requirements
-    for mDoc issuer authentication. The certificate uses SHA-256 with ECDSA
-    signature algorithm as specified in ISO 18013-5 § 9.1.3.5.
+    Creates a self-signed certificate compliant with ISO 18013-5 Annex B
+    requirements for IACA (Issuing Authority Certificate Authority) 
+    authentication. The certificate includes all required extensions for 
+    proper trust chain validation.
+
+    Required Extensions per ISO 18013-5 Annex B.1.1:
+    - BasicConstraints: CA=True
+    - KeyUsage: keyCertSign, cRLSign
+    - SubjectKeyIdentifier: SHA-1 hash of public key
+    - CRLDistributionPoints: HTTP URI for CRL
+    - IssuerAlternativeName: RFC822 email
 
     Args:
         private_key_pem: Private key in PEM format for signing
-        subject_name: Subject Distinguished Name (default: CN=mDoc Test Issuer)
+        subject_name: Subject Distinguished Name (default: CN=mDoc Test Issuer,C=US)
         issuer_name: Issuer DN (uses subject_name if None)
         validity_days: Certificate validity period in days (default: 365)
 
@@ -160,12 +168,9 @@ def generate_self_signed_certificate(
         >>> private_pem, _, _ = generate_ec_key_pair()
         >>> cert = generate_self_signed_certificate(private_pem)
         >>> print("-----BEGIN CERTIFICATE-----" in cert)  # True
-        issuer_name: Issuer DN (defaults to subject_name for self-signed)
-        validity_days: Certificate validity in days
-
-    Returns:
-        Certificate in PEM format
     """
+    import hashlib
+
     # Load private key
     private_key = serialization.load_pem_private_key(
         private_key_pem.encode("utf-8"), password=None
@@ -176,7 +181,7 @@ def generate_self_signed_certificate(
 
     # Parse subject and issuer names
     def parse_dn(dn_string):
-        """Parse a simple DN string like 'CN=Test,O=Org'."""
+        """Parse a simple DN string like 'CN=Test,O=Org,C=US'."""
         name_parts = []
         for part in dn_string.split(","):
             part = part.strip()
@@ -204,24 +209,41 @@ def generate_self_signed_certificate(
     subject = parse_dn(subject_name)
     issuer = parse_dn(issuer_name)
 
+    # Get public key bytes for SubjectKeyIdentifier calculation
+    # Per RFC 5280 section 4.2.1.2, the SKI is the SHA-1 hash of the
+    # subjectPublicKey BIT STRING value (excluding tag, length, and unused bits).
+    # For EC keys, this is the uncompressed point (0x04 || X || Y).
+    public_key = private_key.public_key()
+    # Use UncompressedPoint format which gives just the raw point bytes
+    raw_public_key_bytes = public_key.public_bytes(
+        encoding=serialization.Encoding.X962,
+        format=serialization.PublicFormat.UncompressedPoint
+    )
+    # SHA-1 hash of the raw public key point for SKI
+    ski_digest = hashlib.sha1(raw_public_key_bytes).digest()
+
     # Generate certificate
     now = datetime.utcnow()
     cert_builder = x509.CertificateBuilder()
     cert_builder = cert_builder.subject_name(subject)
     cert_builder = cert_builder.issuer_name(issuer)
-    cert_builder = cert_builder.public_key(private_key.public_key())
+    cert_builder = cert_builder.public_key(public_key)
     cert_builder = cert_builder.serial_number(int(uuid.uuid4()))
     cert_builder = cert_builder.not_valid_before(now)
     cert_builder = cert_builder.not_valid_after(now + timedelta(days=validity_days))
 
-    # Add extensions
+    # Add ISO 18013-5 Annex B required extensions for IACA certificate
+    
+    # 1. BasicConstraints - CA=True (required)
     cert_builder = cert_builder.add_extension(
-        x509.BasicConstraints(ca=True, path_length=None),
+        x509.BasicConstraints(ca=True, path_length=0),
         critical=True,
     )
+    
+    # 2. KeyUsage - keyCertSign and cRLSign (required for IACA)
     cert_builder = cert_builder.add_extension(
         x509.KeyUsage(
-            digital_signature=True,
+            digital_signature=False,
             key_cert_sign=True,
             crl_sign=True,
             key_encipherment=False,
@@ -232,6 +254,34 @@ def generate_self_signed_certificate(
             decipher_only=False,
         ),
         critical=True,
+    )
+    
+    # 3. SubjectKeyIdentifier - SHA-1 of public key (required for trust chain)
+    cert_builder = cert_builder.add_extension(
+        x509.SubjectKeyIdentifier(ski_digest),
+        critical=False,
+    )
+    
+    # 4. CRLDistributionPoints - HTTP URI (required per Annex B)
+    # For test purposes, we use a placeholder URL
+    cert_builder = cert_builder.add_extension(
+        x509.CRLDistributionPoints([
+            x509.DistributionPoint(
+                full_name=[x509.UniformResourceIdentifier("http://example.com/crl")],
+                relative_name=None,
+                reasons=None,
+                crl_issuer=None,
+            )
+        ]),
+        critical=False,
+    )
+    
+    # 5. IssuerAlternativeName - RFC822 email (required per Annex B)
+    cert_builder = cert_builder.add_extension(
+        x509.IssuerAlternativeName([
+            x509.RFC822Name("test@example.com"),
+        ]),
+        critical=False,
     )
 
     # Sign the certificate
@@ -290,10 +340,13 @@ async def generate_default_keys_and_certs(
         },
     )
 
-    # Generate certificate
+    # Generate certificate with ISO 18013-5 compliant subject name
+    # Must include stateOrProvinceName (ST) for IACA validation
+    # Using ST=NY to match the hardcoded DS cert in isomdl-uniffi's setup_certificate_chain
+    cert_subject = "CN=mDoc Test Issuer,O=ACA-Py,ST=NY,C=US"
     cert_pem = generate_self_signed_certificate(
         private_key_pem=private_pem,
-        subject_name="CN=mDoc Test Issuer,O=ACA-Py,C=US",
+        subject_name=cert_subject,
         validity_days=365,
     )
 
@@ -308,8 +361,8 @@ async def generate_default_keys_and_certs(
         metadata={
             "self_signed": True,
             "purpose": "mdoc_issuing",
-            "issuer_dn": "CN=mDoc Test Issuer,O=ACA-Py,C=US",
-            "subject_dn": "CN=mDoc Test Issuer,O=ACA-Py,C=US",
+            "issuer_dn": cert_subject,
+            "subject_dn": cert_subject,
             "valid_from": datetime.now().isoformat(),
             "valid_to": (datetime.now() + timedelta(days=365)).isoformat(),
         },

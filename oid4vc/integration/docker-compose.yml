@@ -10,9 +10,9 @@ services:
       - PORT=3020
       - ACAPY_ISSUER_URL=http://acapy-issuer.local:8022
       - ACAPY_VERIFIER_URL=http://acapy-verifier.local:8032
-      - TRUST_ANCHORS_PATH=/etc/credo/certs/trust-anchors
-    volumes:
-      - ./certs/trust-anchors:/etc/credo/certs/trust-anchors:ro
+      # Trust anchors are now uploaded via API - no filesystem path needed
+    # Healthcheck defined in Dockerfile
+    # No volume mounts for trust anchors - they are uploaded via API
     depends_on:
       acapy-issuer:
         condition: service_healthy
@@ -46,8 +46,8 @@ services:
       - PYTHONPATH=/usr/src/app/isomdl_wrapper:/usr/src/app
       - ACAPY_ADMIN_PORT=8021
       - LOG_LEVEL=DEBUG
-      - OID4VC_MDOC_SIGNING_KEY_PATH=/etc/acapy/mdoc/certs/leaf.key
-      - OID4VC_MDOC_SIGNING_CERT_PATH=/etc/acapy/mdoc/certs/leaf.pem
+      # Certificates are now stored in wallet, no file paths needed
+      # Keys and certs are auto-generated on startup if not present
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8021/status/ready"]
       interval: 10s
@@ -58,7 +58,7 @@ services:
       - ../docker/dev.yml:/usr/src/app/docker/dev.yml
       - ../oid4vc:/usr/src/app/oid4vc
       - ../mso_mdoc:/usr/src/app/mso_mdoc
-      - ./certs:/etc/acapy/mdoc/certs/
+      # Static cert mounts removed - certs are now stored in wallet
     networks:
       default:
         aliases:
@@ -86,6 +86,9 @@ services:
       - PYTHONPATH=/usr/src/app/isomdl_wrapper:/usr/src/app
       - ACAPY_ADMIN_PORT=8031
       - LOG_LEVEL=DEBUG
+      # Use wallet-based trust store instead of file-based
+      - OID4VC_MDOC_TRUST_STORE_TYPE=${OID4VC_MDOC_TRUST_STORE_TYPE:-wallet}
+      # Fallback path for file-based trust store (if OID4VC_MDOC_TRUST_STORE_TYPE=file)
       - OID4VC_MDOC_TRUST_ANCHORS_PATH=/etc/acapy/mdoc/trust-anchors/
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8031/status/ready"]
@@ -97,7 +100,7 @@ services:
       - ../../oid4vc/oid4vc:/usr/src/app/oid4vc
       - ../../oid4vc/mso_mdoc:/usr/src/app/mso_mdoc
       - ../docker/dev-verifier.yml:/usr/src/app/docker/dev-verifier.yml
-      - ./certs/trust-anchors:/etc/acapy/mdoc/trust-anchors/
+      # Static trust anchor mounts removed - trust anchors stored in wallet
     networks:
       default:
         aliases:
@@ -127,7 +130,7 @@ services:
     volumes:
       - ./test-results:/usr/src/app/test-results
       - ./tests:/usr/src/app/tests
-      - ./certs:/usr/src/app/certs
+      # Static cert mounts removed - certs generated dynamically in tests
     depends_on:
       credo-agent:
         condition: service_healthy
