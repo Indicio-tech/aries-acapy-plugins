@@ -860,7 +860,8 @@ async def test_acapy_credo_mdoc_selective_disclosure(
         "format": {"mso_mdoc": {"alg": ["ES256"]}},
         "input_descriptors": [
             {
-                "id": "mdl-subset",
+                # Input descriptor ID must match the mDOC docType for Credo/animo-id/mdoc library
+                "id": "org.iso.18013.5.1.mDL",
                 "format": {"mso_mdoc": {"alg": ["ES256"]}},
                 "constraints": {
                     "limit_disclosure": "required",

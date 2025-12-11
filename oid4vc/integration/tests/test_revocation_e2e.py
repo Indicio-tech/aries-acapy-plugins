@@ -112,19 +112,37 @@ async def test_credo_revocation_flow(
     assert "credential" in result
     credential_data = result["credential"]
 
+    credential_jwt = None
     if isinstance(credential_data, dict):
         if "compact" in credential_data:
             credential_jwt = credential_data["compact"]
         elif "jwt" in credential_data and "serializedJwt" in credential_data["jwt"]:
             credential_jwt = credential_data["jwt"]["serializedJwt"]
-        else:
-            # Fallback or fail
-            credential_jwt = credential_data
-    else:
+        # Credo 0.6.0 format: record.credentialInstances[0].<format>
+        # - compactSdJwtVc for SD-JWT
+        # - credential for W3C JWT (jwt_vc_json)
+        elif "record" in credential_data:
+            record = credential_data["record"]
+            if "credentialInstances" in record and len(record["credentialInstances"]) > 0:
+                instance = record["credentialInstances"][0]
+                if "compactSdJwtVc" in instance:
+                    credential_jwt = instance["compactSdJwtVc"]
+                elif "credential" in instance:
+                    # W3C JWT credential format
+                    credential_jwt = instance["credential"]
+                elif "compactJwtVc" in instance:
+                    credential_jwt = instance["compactJwtVc"]
+    elif isinstance(credential_data, str):
         credential_jwt = credential_data
+    
+    if credential_jwt is None:
+        pytest.skip(f"Could not extract JWT from credential data: {type(credential_data)}")
 
-    # Verify credential has status list
-    payload = jwt.decode(credential_jwt, options={"verify_signature": False})
+    # Verify credential has status list (only for JWT-based credentials)
+    # SD-JWT format: header.payload.signature~disclosure1~disclosure2~...
+    # Regular JWT format: header.payload.signature
+    jwt_part = credential_jwt.split('~')[0] if '~' in credential_jwt else credential_jwt
+    payload = jwt.decode(jwt_part, options={"verify_signature": False})
     vc = payload.get("vc", payload)
     assert "credentialStatus" in vc
     

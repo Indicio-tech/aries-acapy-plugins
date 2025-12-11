@@ -1153,7 +1153,8 @@ async def get_request(request: web.Request):
         "exp": now + 120,
         "jti": str(uuid.uuid4()),
         "client_id": jwk.did,
-        "client_id_scheme": "did",
+        # Note: client_id_scheme is deprecated in OID4VP v1.0 - using DID as client_id
+        # is recognized via the "did:" prefix in the client_id itself
         "response_uri": response_uri,
         "state": pres.presentation_id,
         "nonce": pres.nonce,

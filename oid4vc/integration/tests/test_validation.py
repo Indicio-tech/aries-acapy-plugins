@@ -29,11 +29,14 @@ async def test_mso_mdoc_validation(acapy_issuer_admin):
     # validate_credential_subject should fail
     
     # Create a valid supported cred to proceed to exchange step
+    # OID4VCI v1.0 compliant: include cryptographic_binding_methods_supported
     valid_supported_cred = {
         "id": f"ValidMDOC_{random_suffix}",
         "format": "mso_mdoc",
         "scope": "ValidMDOC",
         "format_data": {"doctype": "org.iso.18013.5.1.mDL"},
+        "cryptographic_binding_methods_supported": ["cose_key"],
+        "cryptographic_suites_supported": ["ES256"],
         "vc_additional_data": {},
     }
     response = await acapy_issuer_admin.post(

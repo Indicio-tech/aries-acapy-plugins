@@ -10,8 +10,6 @@ from typing import Any, List, Optional, Protocol
 # Import isomdl_uniffi library directly
 import isomdl_uniffi
 from acapy_agent.core.profile import Profile, ProfileSession
-from acapy_agent.storage.base import BaseStorage
-from acapy_agent.storage.error import StorageNotFoundError
 
 from oid4vc.config import Config
 from oid4vc.cred_processor import (
@@ -114,18 +112,6 @@ class MsoMdocCredVerifier(CredVerifier):
     def __init__(self, trust_store: Optional[TrustStore] = None):
         """Initialize the credential verifier."""
         self.trust_store = trust_store
-
-    async def _get_verifier_did(self, session: ProfileSession) -> Optional[str]:
-        """Retrieve the default verifier DID."""
-        storage = session.inject(BaseStorage)
-        try:
-            record = await storage.get_record(
-                record_type="OID4VP.default",
-                record_id="OID4VP.default",
-            )
-            return record.tags.get("did")
-        except StorageNotFoundError:
-            return None
 
     async def verify_credential(
         self,
@@ -312,18 +298,6 @@ class MsoMdocPresVerifier(PresVerifier):
             clean = clean[1:]
         return clean.split(".")
 
-    async def _get_verifier_did(self, session: ProfileSession) -> Optional[str]:
-        """Retrieve the default verifier DID."""
-        storage = session.inject(BaseStorage)
-        try:
-            record = await storage.get_record(
-                record_type="OID4VP.default",
-                record_id="OID4VP.default",
-            )
-            return record.tags.get("did")
-        except StorageNotFoundError:
-            return None
-
     async def verify_presentation(
         self,
         profile: Profile,
@@ -358,14 +332,13 @@ class MsoMdocPresVerifier(PresVerifier):
 
             config = Config.from_settings(profile.settings)
             
-            # Try to get DID first
+            # Get the DID:JWK that was used as client_id when the request was created
+            # Use retrieve_or_create_did_jwk to ensure consistency with request creation
+            from oid4vc.did_utils import retrieve_or_create_did_jwk
             async with profile.session() as session:
-                verifier_did = await self._get_verifier_did(session)
+                jwk = await retrieve_or_create_did_jwk(session)
             
-            if verifier_did:
-                client_id = verifier_did
-            else:
-                client_id = config.endpoint
+            client_id = jwk.did
 
             wallet_id = (
                 profile.settings.get("wallet.id")

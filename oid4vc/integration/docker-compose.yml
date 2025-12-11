@@ -36,7 +36,7 @@ services:
         ACAPY_VERSION: 1.4.0
     ports:
       - "8020:8020"  # inbound transport
-      - "8021:8021"  # admin
+      - "8083:8021"  # admin (mapped to 8083)
       - "8022:8022"  # oid4vci endpoint
     environment:
       - AGENT_ENDPOINT=http://acapy-issuer:8020
