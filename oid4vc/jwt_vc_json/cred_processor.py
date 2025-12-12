@@ -23,7 +23,8 @@ from oid4vc.models.exchange import OID4VCIExchangeRecord
 from oid4vc.models.presentation import OID4VPPresentation
 from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.pop_result import PopResult
-from oid4vc.public_routes import retrieve_or_create_did_jwk, types_are_subset
+from oid4vc.did_utils import retrieve_or_create_did_jwk
+from oid4vc.public_routes import types_are_subset
 from oid4vc.status_handler import StatusHandler
 
 LOGGER = logging.getLogger(__name__)

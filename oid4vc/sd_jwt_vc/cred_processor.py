@@ -218,11 +218,16 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
         presentation_record: OID4VPPresentation,
     ) -> VerifyResult:
         """Verify signature over credential or presentation."""
-        context: AdminRequestContext = profile.context
-        config = Config.from_settings(context.settings)
+        # Use client_id (verifier's DID) as expected audience for KB-JWT verification
+        expected_aud = presentation_record.client_id
+        if not expected_aud:
+            # Fallback to endpoint if client_id is not set (legacy records)
+            context: AdminRequestContext = profile.context
+            config = Config.from_settings(context.settings)
+            expected_aud = config.endpoint
 
         result = await sd_jwt_verify(
-            profile, presentation, config.endpoint, presentation_record.nonce
+            profile, presentation, expected_aud, presentation_record.nonce
         )
         # TODO: This is a little hacky
         return VerifyResult(result.verified, presentation)
@@ -415,8 +420,10 @@ class SDJWTVerifierACAPy(SDJWTVerifier):
         # Verify the key binding JWT using the holder public key
         if not self._holder_public_key_payload:
             raise ValueError("No holder public key in SD-JWT")
+        # Pass the cnf (holder public key) to jwt_verify so it can verify the KB-JWT
+        # The KB-JWT is signed by the holder, and their public key is in the cnf claim
         verified_kb_jwt = await jwt_verify(
-            self.profile, self._unverified_input_key_binding_jwt
+            self.profile, self._unverified_input_key_binding_jwt, cnf=self._holder_public_key_payload
         )
 
         if verified_kb_jwt.headers["typ"] != self.KB_JWT_TYP_HEADER:
@@ -454,5 +461,9 @@ async def sd_jwt_verify(
     try:
         payload = (await sd_jwt_verifier.verify()).get_verified_payload()
         return VerifyResult(True, payload)
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(
+            f"SD-JWT verification failed: {e}, aud={expected_aud}, nonce={expected_nonce}"
+        )
         return VerifyResult(False, None)

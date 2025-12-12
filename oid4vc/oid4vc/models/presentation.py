@@ -43,6 +43,7 @@ class OID4VPPresentation(BaseRecord):
         verified: Optional[bool] = None,
         request_id: Optional[str] = None,
         nonce: Optional[str] = None,
+        client_id: Optional[str] = None,
         **kwargs,
     ) -> None:
         """Initialize an OID4VP Presentation instance."""
@@ -56,6 +57,7 @@ class OID4VPPresentation(BaseRecord):
         self.request_id = request_id
         self.dcql_query_id = dcql_query_id
         self.nonce = nonce  # in request
+        self.client_id = client_id  # verifier DID for KB-JWT aud
 
     @property
     def presentation_id(self) -> str:
@@ -74,6 +76,7 @@ class OID4VPPresentation(BaseRecord):
                 "nonce",
                 "state",
                 "request_id",
+                "client_id",
             )
         }
 
@@ -126,6 +129,13 @@ class OID4VPPresentationSchema(BaseRecordSchema):
 
     nonce = fields.Str(
         required=False,
+    )
+
+    client_id = fields.Str(
+        required=False,
+        metadata={
+            "description": "Verifier's client_id (DID) for KB-JWT audience verification",
+        },
     )
 
     errors = fields.List(

@@ -142,11 +142,24 @@ class DCQLQueryEvaluator:
         id_to_claim = {}
 
         for cred in self.query.credentials:
-            pres = vp_token.get(cred.credential_query_id)
-            if not pres:
+            pres_list = vp_token.get(cred.credential_query_id)
+            if not pres_list:
                 return DCQLVerifyResult(
                     details=f"Missing presentation for {cred.credential_query_id}"
                 )
+
+            # DCQL vp_token format: {credential_query_id: [presentations...]}
+            # The value is always an array of presentations per the spec
+            # For now, we verify the first presentation in the array
+            if isinstance(pres_list, list):
+                if len(pres_list) == 0:
+                    return DCQLVerifyResult(
+                        details=f"Empty presentation array for {cred.credential_query_id}"
+                    )
+                pres = pres_list[0]
+            else:
+                # Handle case where it's already a single presentation (backwards compat)
+                pres = pres_list
 
             pres_verifier = processors.pres_verifier_for_format(cred.format)
 
@@ -173,7 +186,28 @@ class DCQLQueryEvaluator:
                     "failed verification"
                 )
 
-            # TODO: Add doctype checks
+            # Doctype validation for mDOC credentials
+            if cred.meta:
+                # Get expected doctype(s) from the query
+                expected_doctypes = []
+                if cred.meta.doctype_value:
+                    expected_doctypes = [cred.meta.doctype_value]
+                elif cred.meta.doctype_values:
+                    expected_doctypes = cred.meta.doctype_values
+
+                if expected_doctypes:
+                    # mDOC credentials include doctype in payload
+                    presented_doctype = vc_result.payload.get("docType")
+                    if presented_doctype is None:
+                        return DCQLVerifyResult(
+                            details=f"Credential for {cred.credential_query_id} "
+                            "is missing doctype"
+                        )
+                    if presented_doctype not in expected_doctypes:
+                        return DCQLVerifyResult(
+                            details=f"Presented doctype '{presented_doctype}' does not "
+                            f"match requested doctype(s): {expected_doctypes}"
+                        )
 
             if cred.meta and cred.meta.vct_values:
                 presented_vct = vc_result.payload.get("vct")
@@ -184,22 +218,40 @@ class DCQLQueryEvaluator:
                         details="Presented vct does not match requested vct(s)."
                     )
 
-            # TODO: we're assuming that the credential format type is JSON
+            # Handle claims verification for both JSON-based (path) and mDOC (namespace/claim_name) formats
             for claim in cred.claims or []:
-                assert claim.path is not None
-                path = claim.path
-
-                pointer = ClaimsPathPointer(path)
-                try:
-                    value = pointer.resolve(vc_result.payload)
+                if claim.path is not None:
+                    # JSON-based claims structure (SD-JWT, etc.) - use path pointer
+                    path = claim.path
+                    pointer = ClaimsPathPointer(path)
+                    try:
+                        value = pointer.resolve(vc_result.payload)
+                        if claim.values and value not in claim.values:
+                            return DCQLVerifyResult(
+                                details="Credential presented did not "
+                                "match the values required by the query"
+                            )
+                    except ValueError:
+                        return DCQLVerifyResult(details=f"Path {path} does not exist")
+                elif claim.namespace is not None and claim.claim_name is not None:
+                    # mDOC format - use namespace/claim_name syntax
+                    # mDOC payload structure is typically: {"namespace": {"claim_name": value}}
+                    namespace_data = vc_result.payload.get(claim.namespace)
+                    if namespace_data is None:
+                        return DCQLVerifyResult(
+                            details=f"Namespace {claim.namespace} does not exist in credential"
+                        )
+                    if claim.claim_name not in namespace_data:
+                        return DCQLVerifyResult(
+                            details=f"Claim {claim.claim_name} does not exist in namespace {claim.namespace}"
+                        )
+                    value = namespace_data[claim.claim_name]
                     if claim.values and value not in claim.values:
                         return DCQLVerifyResult(
                             details="Credential presented did not "
                             "match the values required by the query"
                         )
-
-                except ValueError:
-                    return DCQLVerifyResult(details=f"Path {path} does not exist")
+                # If neither path nor namespace/claim_name is set, skip the claim check
 
             id_to_claim[cred.credential_query_id] = vc_result.payload
 

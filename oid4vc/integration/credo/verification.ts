@@ -25,9 +25,42 @@ router.post('/present', async (req: any, res: any) => {
 
     const resolvedRequest = await agent!.openid4vc.holder.resolveOpenId4VpAuthorizationRequest(request_uri);
 
+    // Debug logging to understand the resolved request structure
+    console.log('📥 Resolved Request Structure:');
+    console.log('  - Has dcql:', !!resolvedRequest.dcql);
+    console.log('  - Has presentationExchange:', !!resolvedRequest.presentationExchange);
+    console.log('  - authorizationRequestPayload keys:', Object.keys(resolvedRequest.authorizationRequestPayload || {}));
+    if (resolvedRequest.authorizationRequestPayload) {
+        const payload = resolvedRequest.authorizationRequestPayload as any;
+        console.log('  - Has dcql_query in payload:', !!payload.dcql_query);
+        console.log('  - Has presentation_definition in payload:', !!payload.presentation_definition);
+        if (payload.dcql_query) {
+            console.log('  - dcql_query structure:', JSON.stringify(payload.dcql_query, null, 2));
+        }
+    }
+
     let selectedCredentials: any = undefined;
+    let isDcqlRequest = false;
     
-    if (resolvedRequest.presentationExchange) {
+    // Check for DCQL query first (OID4VP v1.0 spec)
+    if (resolvedRequest.dcql) {
+        isDcqlRequest = true;
+        const { queryResult } = resolvedRequest.dcql;
+        
+        console.log('📋 DCQL Query Details:');
+        console.log('  - Can be satisfied:', queryResult.can_be_satisfied);
+        console.log('  - Credentials:', JSON.stringify(queryResult.credentials, null, 2));
+        
+        if (queryResult.can_be_satisfied) {
+            // Use Credo's built-in DCQL credential selection
+            selectedCredentials = agent!.openid4vc.holder.selectCredentialsForDcqlRequest(queryResult);
+            console.log('✅ Using Credo selectCredentialsForDcqlRequest');
+            console.log('Selected credentials keys:', Object.keys(selectedCredentials));
+        } else {
+            console.log('⚠️ DCQL query cannot be satisfied with available credentials');
+            return res.status(400).json({ error: 'DCQL query cannot be satisfied with available credentials' });
+        }
+    } else if (resolvedRequest.presentationExchange) {
         const { credentialsForRequest } = resolvedRequest.presentationExchange;
         
         console.log('📋 Presentation Exchange Details:');
@@ -91,7 +124,7 @@ router.post('/present', async (req: any, res: any) => {
     }
 
     if (!selectedCredentials) {
-        return res.status(400).json({ error: 'No credentials selected for presentation' });
+        return res.status(400).json({ error: 'No credentials selected for presentation (no DCQL or presentationExchange in request)' });
     }
 
     // Use Credo's OpenID4VC module to handle the presentation
@@ -106,12 +139,20 @@ router.post('/present', async (req: any, res: any) => {
         });
     }
 
-    const submissionResult = await agent!.openid4vc.holder.acceptOpenId4VpAuthorizationRequest({
+    // Build the accept request based on whether this is DCQL or PEX
+    const acceptRequest: any = {
         authorizationRequestPayload: resolvedRequest.authorizationRequestPayload,
-        presentationExchange: resolvedRequest.presentationExchange ? {
-            credentials: selectedCredentials
-        } : undefined
-    });
+    };
+    
+    if (isDcqlRequest && resolvedRequest.dcql) {
+        acceptRequest.dcql = { credentials: selectedCredentials };
+        console.log('DEBUG: Using DCQL response format');
+    } else if (resolvedRequest.presentationExchange) {
+        acceptRequest.presentationExchange = { credentials: selectedCredentials };
+        console.log('DEBUG: Using PresentationExchange response format');
+    }
+    
+    const submissionResult = await agent!.openid4vc.holder.acceptOpenId4VpAuthorizationRequest(acceptRequest);
 
     console.log('✅ Presentation submitted successfully');
     

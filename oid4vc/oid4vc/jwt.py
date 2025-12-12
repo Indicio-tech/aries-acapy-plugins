@@ -186,7 +186,10 @@ async def jwt_verify(
         if "jwk" in cnf:
             key = Key.from_jwk(cnf["jwk"])
         elif "kid" in cnf:
-            verification_method = headers["kid"]
+            # Use the kid from cnf to resolve the holder's public key
+            # This is used for key binding JWT verification where the holder's
+            # key is referenced by a DID key id in the cnf claim
+            verification_method = cnf["kid"]
             key = await key_material_for_kid(profile, verification_method)
         else:
             raise ValueError("Unsupported cnf")

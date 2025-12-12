@@ -3,7 +3,7 @@ from acapy_agent.admin.request_context import AdminRequestContext
 
 from oid4vc.models.exchange import OID4VCIExchangeRecord
 from oid4vc.models.supported_cred import SupportedCredential
-from oid4vc.public_routes import PopResult
+from oid4vc.pop_result import PopResult
 
 
 @pytest.fixture

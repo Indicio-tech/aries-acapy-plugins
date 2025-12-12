@@ -54,30 +54,8 @@ async def setup(context: InjectionContext):
     processors.register_pres_verifier("jwt_vp", jwt_vc_json)
     LOGGER.info("Registered jwt_vc_json credential processor")
 
-    # Register mso_mdoc processor if available
-    try:
-        import os
-
-        from mso_mdoc.cred_processor import MsoMdocCredProcessor
-        from mso_mdoc.mdoc.verifier import FileTrustStore
-
-        trust_store_path = os.getenv(
-            "OID4VC_MDOC_TRUST_ANCHORS_PATH", "/etc/acapy/mdoc/trust-anchors/"
-        )
-        trust_store = FileTrustStore(trust_store_path)
-
-        mso_mdoc = MsoMdocCredProcessor(trust_store=trust_store)
-        processors.register_issuer("mso_mdoc", mso_mdoc)
-        processors.register_cred_verifier("mso_mdoc", mso_mdoc)
-        processors.register_pres_verifier("mso_mdoc", mso_mdoc)
-        LOGGER.info("Registered mso_mdoc credential processor")
-        LOGGER.info(f"Current pres_verifiers: {list(processors.pres_verifiers.keys())}")
-    except ImportError:
-        LOGGER.warning(
-            "mso_mdoc plugin not found or dependencies missing, skipping registration"
-        )
-    except Exception as e:
-        LOGGER.error(f"Failed to register mso_mdoc processor: {e}")
+    # Note: mso_mdoc and sd_jwt_vc processors register themselves
+    # in their own setup() functions when loaded as plugins
 
     context.injector.bind_instance(CredProcessors, processors)
 

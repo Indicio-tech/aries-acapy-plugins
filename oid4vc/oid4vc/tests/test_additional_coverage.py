@@ -1959,7 +1959,7 @@ class TestPublicRouteFunctionality:
 
     def test_did_jwk_operations(self):
         """Test DID JWK creation and retrieval operations."""
-        from oid4vc.public_routes import (
+        from oid4vc.did_utils import (
             _create_default_did,
             _retrieve_default_did,
             retrieve_or_create_did_jwk,

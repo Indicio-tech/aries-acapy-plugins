@@ -553,6 +553,7 @@ class MsoMdocPresVerifier(PresVerifier):
                     # recognize it as pre-verified by the namespace structure
                     payload = {
                         "status": "verified",
+                        "docType": verified_data.doc_type,  # Include docType for DCQL validation
                         "issuer_auth": str(verified_data.issuer_authentication),
                         "device_auth": str(verified_data.device_authentication),
                     }

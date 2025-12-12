@@ -15,11 +15,18 @@ from acapy_agent.wallet.util import bytes_to_b64
 from aiohttp import web
 from aries_askar import Key, KeyAlg
 
+import importlib
+
 from oid4vc import public_routes as test_module
+from oid4vc.public_routes import credential as credential_module
+from oid4vc.public_routes import metadata as metadata_module
+from oid4vc.public_routes import proof as proof_module
+# Import the token module directly to avoid the shadowed name from __init__.py
+token_module = importlib.import_module("oid4vc.public_routes.token")
+from oid4vc.jwt import JWTVerifyResult
 from oid4vc.models.exchange import OID4VCIExchangeRecord
 from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.public_routes import (
-    JWTVerifyResult,
     check_token,
     issue_cred,
     receive_notification,
@@ -43,7 +50,7 @@ def req(context: AdminRequestContext):
 @pytest.mark.asyncio
 async def test_issuer_metadata(context: AdminRequestContext, req: web.Request):
     """Test issuer metadata endpoint per OID4VCI 1.0 § 11.2.1."""
-    supported = test_module.SupportedCredential(
+    supported = SupportedCredential(
         format="jwt_vc_json",
         identifier="MyCredential",
         format_data={
@@ -54,7 +61,7 @@ async def test_issuer_metadata(context: AdminRequestContext, req: web.Request):
     async with context.session() as session:
         await supported.save(session)
 
-    with patch.object(test_module, "web", autospec=True) as mock_web:
+    with patch.object(metadata_module, "web", autospec=True) as mock_web:
         await test_module.credential_issuer_metadata(req)
         wallet_id = req.match_info.get(
             "wallet_id",
@@ -122,7 +129,7 @@ async def test_handle_proof_of_posession(profile: Profile):
         "jwt": jwt,
     }
 
-    with patch("oid4vc.public_routes.key_material_for_kid", new_callable=AsyncMock) as mock_resolve:
+    with patch.object(proof_module, "key_material_for_kid", new_callable=AsyncMock) as mock_resolve:
         mock_resolve.return_value = key
         result = await test_module.handle_proof_of_posession(profile, proof, nonce)
     
@@ -134,7 +141,7 @@ async def test_handle_proof_of_posession(profile: Profile):
 async def test_check_token_valid(monkeypatch, context):
     # Patch get_auth_header to return a dummy header
     monkeypatch.setattr(
-        "oid4vc.public_routes.get_auth_header",
+        token_module, "get_auth_header",
         AsyncMock(return_value="Bearer dummyheader"),
     )
 
@@ -146,7 +153,7 @@ async def test_check_token_valid(monkeypatch, context):
     )
     mock_client.post = AsyncMock(return_value=mock_response)
     monkeypatch.setattr(
-        "oid4vc.public_routes.AppResources.get_http_client", lambda: mock_client
+        token_module, "AppResources", MagicMock(get_http_client=lambda: mock_client)
     )
 
     # Call check_token with a valid bearer token
@@ -166,7 +173,7 @@ async def test_check_token_invalid_scheme(context):
 async def test_check_token_expired(monkeypatch, context):
     # Patch jwt_verify to return an expired token
     monkeypatch.setattr(
-        "oid4vc.public_routes.jwt_verify",
+        token_module, "jwt_verify",
         AsyncMock(
             return_value=JWTVerifyResult(headers={}, payload={"exp": 1}, verified=True)
         ),
@@ -179,7 +186,7 @@ async def test_check_token_expired(monkeypatch, context):
 async def test_check_token_invalid_token(monkeypatch, context):
     # Patch jwt_verify to return not verified
     monkeypatch.setattr(
-        "oid4vc.public_routes.jwt_verify",
+        token_module, "jwt_verify",
         AsyncMock(
             return_value=JWTVerifyResult(
                 headers={}, payload={"exp": 9999999999}, verified=False
@@ -216,14 +223,14 @@ async def test_receive_notification(context):
     request = DummyRequest()
 
     # Patch check_token to always return True
-    with patch("oid4vc.public_routes.check_token", AsyncMock(return_value=True)):
+    with patch.object(credential_module, "check_token", AsyncMock(return_value=True)):
         # Patch OID4VCIExchangeRecord.retrieve_by_notification_id to return a mock record
         mock_record = AsyncMock()
         mock_record.state = None
         mock_record.notification_event = None
         mock_record.save = AsyncMock()
-        with patch(
-            "oid4vc.public_routes.OID4VCIExchangeRecord.retrieve_by_notification_id",
+        with patch.object(
+            credential_module.OID4VCIExchangeRecord, "retrieve_by_notification_id",
             AsyncMock(return_value=mock_record),
         ):
             # Patch context.profile.session to return an async context manager
@@ -250,7 +257,7 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
         "c_nonce": "test_nonce",
     }
     monkeypatch.setattr(
-        "oid4vc.public_routes.check_token", AsyncMock(return_value=mock_token_result)
+        credential_module, "check_token", AsyncMock(return_value=mock_token_result)
     )
 
     # Patch OID4VCIExchangeRecord.retrieve_by_refresh_id
@@ -266,7 +273,7 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
     mock_ex_record.verification_method = "did:example:123#key-1"
     mock_ex_record.save = AsyncMock()
     monkeypatch.setattr(
-        "oid4vc.public_routes.OID4VCIExchangeRecord.retrieve_by_refresh_id",
+        credential_module.OID4VCIExchangeRecord, "retrieve_by_refresh_id",
         AsyncMock(return_value=mock_ex_record),
     )
     # Patch wallet.get_local_did to return a dummy DIDInfo
@@ -294,7 +301,7 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
     mock_supported.to_issuer_metadata = MagicMock(return_value={})
     mock_supported.vc_additional_data = {}
     monkeypatch.setattr(
-        "oid4vc.public_routes.SupportedCredential.retrieve_by_id",
+        credential_module.SupportedCredential, "retrieve_by_id",
         AsyncMock(return_value=mock_supported),
     )
 
@@ -303,7 +310,7 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
     mock_pop.verified = True
     mock_pop.holder_kid = "did:example:123#key-1"
     monkeypatch.setattr(
-        "oid4vc.public_routes.handle_proof_of_posession",
+        credential_module, "handle_proof_of_posession",
         AsyncMock(return_value=mock_pop),
     )
 

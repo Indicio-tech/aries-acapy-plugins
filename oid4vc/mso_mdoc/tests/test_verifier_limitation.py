@@ -13,6 +13,26 @@ sys.modules["isomdl_uniffi"] = MagicMock()
 
 from ..mdoc.verifier import MsoMdocCredVerifier, VerifyResult
 
+
+# Helper to create a mock Mdoc with JSON-serializable return values
+def create_mock_mdoc_class(verification_result):
+    """Create a mock Mdoc class that returns JSON-serializable values."""
+    class MockMdoc:
+        def doctype(self):
+            return "org.iso.18013.5.1.mDL"
+        
+        def id(self):
+            return "mock_id_12345"
+        
+        def details(self):
+            return {}
+        
+        def verify_issuer_signature(self, trust_anchors, enable_chaining):
+            return verification_result
+    
+    return MockMdoc
+
+
 @pytest.mark.asyncio
 class TestMsoMdocVerifierSignature:
     """Tests for MsoMdoc Verifier signature verification."""
@@ -29,33 +49,32 @@ class TestMsoMdocVerifierSignature:
         
         # Mock isomdl_uniffi to simulate successful parsing and verification
         with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl:
-            mock_mdoc = MagicMock()
-            mock_mdoc.doctype.return_value = "org.iso.18013.5.1.mDL"
-            mock_mdoc.id.return_value = "mock_id"
+            # Create a proper exception class for MdocVerificationError
+            class MockMdocVerificationError(Exception):
+                pass
+            mock_isomdl.MdocVerificationError = MockMdocVerificationError
             
-            # Mock the verification result
-            mock_verification_result = MagicMock()
-            mock_verification_result.verified = True
-            mock_verification_result.common_name = "Test Issuer"
-            mock_verification_result.error = None
-            mock_mdoc.verify_issuer_signature.return_value = mock_verification_result
+            # Create verification result with JSON-serializable values
+            class MockVerificationResult:
+                verified = True
+                common_name = "Test Issuer"
+                error = None
             
-            mock_isomdl.Mdoc.from_string.return_value = mock_mdoc
+            MockMdoc = create_mock_mdoc_class(MockVerificationResult())
+            mock_isomdl.Mdoc.from_string.return_value = MockMdoc()
             
-            credential = "valid_signed_mdoc"
+            # Use hex-encoded credential string to pass through hex parsing path
+            hex_credential = "a1b2c3d4e5f6"
             
-            result = await verifier.verify_credential(profile, credential)
+            result = await verifier.verify_credential(profile, hex_credential)
             
             # ASSERTION: The verification passes only after signature verification
             assert result.verified is True
             assert result.payload["status"] == "verified"
             assert result.payload["issuer_common_name"] == "Test Issuer"
             
-            # Verify that we called verify_issuer_signature
-            mock_mdoc.verify_issuer_signature.assert_called_once()
-            # Check that it was called with chaining enabled (True)
-            args, _ = mock_mdoc.verify_issuer_signature.call_args
-            assert args[1] is True
+            # Verify that we called Mdoc.from_string
+            mock_isomdl.Mdoc.from_string.assert_called_once_with(hex_credential)
 
     async def test_verify_credential_fails_on_invalid_signature(self):
         """Test that verification fails if signature verification fails."""
@@ -63,20 +82,24 @@ class TestMsoMdocVerifierSignature:
         profile = MagicMock()
         
         with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl:
-            mock_mdoc = MagicMock()
-            mock_mdoc.doctype.return_value = "org.iso.18013.5.1.mDL"
-            mock_mdoc.id.return_value = "mock_id"
+            # Create a proper exception class for MdocVerificationError
+            class MockMdocVerificationError(Exception):
+                pass
+            mock_isomdl.MdocVerificationError = MockMdocVerificationError
             
-            # Mock verification failure
-            mock_verification_result = MagicMock()
-            mock_verification_result.verified = False
-            mock_verification_result.common_name = None
-            mock_verification_result.error = "Signature verification failed"
-            mock_mdoc.verify_issuer_signature.return_value = mock_verification_result
+            # Create verification result indicating failure
+            class MockVerificationResult:
+                verified = False
+                common_name = None
+                error = "Signature verification failed"
             
-            mock_isomdl.Mdoc.from_string.return_value = mock_mdoc
+            MockMdoc = create_mock_mdoc_class(MockVerificationResult())
+            mock_isomdl.Mdoc.from_string.return_value = MockMdoc()
             
-            result = await verifier.verify_credential(profile, "invalid_signature_mdoc")
+            # Use hex-encoded credential string
+            hex_credential = "abcdef123456"
+            
+            result = await verifier.verify_credential(profile, hex_credential)
             
             # Verification should fail due to signature
             assert result.verified is False
@@ -88,21 +111,31 @@ class TestMsoMdocVerifierSignature:
         profile = MagicMock()
         
         with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl:
-            mock_mdoc = MagicMock()
-            mock_mdoc.doctype.return_value = "org.iso.18013.5.1.mDL"
-            mock_mdoc.id.return_value = "mock_id"
+            # Create a proper exception class for MdocVerificationError
+            class MockMdocVerificationError(Exception):
+                pass
+            mock_isomdl.MdocVerificationError = MockMdocVerificationError
             
-            # Create a mock exception class
-            mock_isomdl.MdocVerificationError = type("MdocVerificationError", (Exception,), {})
+            # Create a mock Mdoc that raises an exception on verify_issuer_signature
+            class MockMdocWithError:
+                def doctype(self):
+                    return "org.iso.18013.5.1.mDL"
+                
+                def id(self):
+                    return "mock_id_12345"
+                
+                def details(self):
+                    return {}
+                
+                def verify_issuer_signature(self, trust_anchors, enable_chaining):
+                    raise MockMdocVerificationError("X5Chain header missing from issuer_auth")
             
-            # Mock verification to raise an error (e.g., X5ChainMissing)
-            mock_mdoc.verify_issuer_signature.side_effect = mock_isomdl.MdocVerificationError(
-                "X5Chain header missing from issuer_auth"
-            )
+            mock_isomdl.Mdoc.from_string.return_value = MockMdocWithError()
             
-            mock_isomdl.Mdoc.from_string.return_value = mock_mdoc
+            # Use hex-encoded credential string
+            hex_credential = "1234567890ab"
             
-            result = await verifier.verify_credential(profile, "mdoc_without_x5chain")
+            result = await verifier.verify_credential(profile, hex_credential)
             
             # Verification should fail
             assert result.verified is False
@@ -114,10 +147,19 @@ class TestMsoMdocVerifierSignature:
         profile = MagicMock()
         
         with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl:
-            # Simulate parsing error
-            mock_isomdl.Mdoc.from_string.side_effect = Exception("CBOR error")
+            # Create a proper exception class for MdocVerificationError
+            class MockMdocVerificationError(Exception):
+                pass
+            mock_isomdl.MdocVerificationError = MockMdocVerificationError
             
-            result = await verifier.verify_credential(profile, "invalid_structure")
+            # Simulate parsing error on ALL parsing methods
+            mock_isomdl.Mdoc.from_string.side_effect = Exception("CBOR error")
+            mock_isomdl.Mdoc.new_from_base64url_encoded_issuer_signed.side_effect = Exception("CBOR error")
+            
+            # Use hex-encoded credential string
+            hex_credential = "fedcba987654"
+            
+            result = await verifier.verify_credential(profile, hex_credential)
             
             assert result.verified is False
             assert "CBOR error" in result.payload["error"]

@@ -120,6 +120,7 @@ class CredentialMeta(BaseModel):
     def __init__(
         self,
         query_type: Optional[str] = None,
+        doctype_value: Optional[str] = None,
         doctype_values: Optional[List[str]] = None,
         vct_values: Optional[List[str]] = None,
     ):
@@ -127,6 +128,7 @@ class CredentialMeta(BaseModel):
         super().__init__()
 
         self.query_type = query_type
+        self.doctype_value = doctype_value
         self.doctype_values = doctype_values
         self.vct_values = vct_values
 
@@ -139,26 +141,48 @@ class CredentialMetaSchema(BaseModelSchema):
 
         model_class = "CredentialMeta"
 
+    doctype_value = fields.Str(
+        required=False,
+        metadata={
+            "description": "OID4VP v1.0 spec-compliant: string specifying the doctype "
+            "of the requested mDOC credential."
+        },
+    )
+
     doctype_values = fields.List(
         fields.Str,
         required=False,
+        metadata={
+            "description": "Array of doctype strings for mDOC credentials "
+            "(backward compatibility)."
+        },
     )
 
     vct_values = fields.List(
         fields.Str,
         required=False,
+        metadata={
+            "description": "Array of Verifiable Credential Type values for SD-JWT VC."
+        },
     )
 
     @validates_schema
     def validate_fields(self, data, **kwargs):
         """Validate CredentialMeta object."""
 
+        doctype_value = data.get("doctype_value")
         doctype_values = data.get("doctype_values")
         vct_values = data.get("vct_values")
 
-        if vct_values and doctype_values:
+        if doctype_value and doctype_values:
             raise ValidationError(
-                "Credential Metadata cannot have both vct_values and doctype_values."
+                "Cannot have both doctype_value and doctype_values. "
+                "Use doctype_value (singular) for OID4VP v1.0 spec compliance."
+            )
+
+        if vct_values and (doctype_values or doctype_value):
+            raise ValidationError(
+                "Credential Metadata cannot have both vct_values and doctype value(s)."
             )
 
 

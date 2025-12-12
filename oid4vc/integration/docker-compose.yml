@@ -99,6 +99,7 @@ services:
     volumes:
       - ../../oid4vc/oid4vc:/usr/src/app/oid4vc
       - ../../oid4vc/mso_mdoc:/usr/src/app/mso_mdoc
+      - ../../oid4vc/sd_jwt_vc:/usr/src/app/sd_jwt_vc
       - ../docker/dev-verifier.yml:/usr/src/app/docker/dev-verifier.yml
       # Static trust anchor mounts removed - trust anchors stored in wallet
     networks:
