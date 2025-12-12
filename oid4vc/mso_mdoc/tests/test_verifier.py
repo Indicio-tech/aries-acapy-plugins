@@ -34,6 +34,11 @@ def mock_isomdl_module():
 class TestFileTrustStore:
     """Test FileTrustStore functionality."""
 
+    def test_init_stores_path(self):
+        """Test that initialization stores the path correctly."""
+        store = FileTrustStore("/some/path")
+        assert store.path == "/some/path"
+
     def test_get_trust_anchors_success(self):
         """Test retrieving trust anchors successfully."""
         with patch("os.path.isdir", return_value=True), patch(
@@ -60,6 +65,74 @@ class TestFileTrustStore:
             store = FileTrustStore("/path/to/certs")
             anchors = store.get_trust_anchors()
             assert anchors == []
+
+    def test_get_trust_anchors_empty_directory(self):
+        """Test handling of empty directory with no certificate files."""
+        with patch("os.path.isdir", return_value=True), patch(
+            "os.listdir", return_value=[]
+        ):
+            store = FileTrustStore("/path/to/empty")
+            anchors = store.get_trust_anchors()
+            assert anchors == []
+
+    def test_get_trust_anchors_only_non_cert_files(self):
+        """Test directory with only non-certificate files."""
+        with patch("os.path.isdir", return_value=True), patch(
+            "os.listdir", return_value=["readme.txt", "config.json", "script.sh"]
+        ):
+            store = FileTrustStore("/path/to/certs")
+            anchors = store.get_trust_anchors()
+            assert anchors == []
+
+    def test_get_trust_anchors_partial_read_failure(self):
+        """Test that successful reads continue after a failed read."""
+
+        def mock_open_side_effect(path, mode="r"):
+            if "fail" in path:
+                raise Exception("Read error")
+            return mock_open(read_data="CERT_CONTENT")()
+
+        with patch("os.path.isdir", return_value=True), patch(
+            "os.listdir", return_value=["good1.pem", "fail.pem", "good2.crt"]
+        ), patch("builtins.open", side_effect=mock_open_side_effect):
+            store = FileTrustStore("/path/to/certs")
+            anchors = store.get_trust_anchors()
+
+            # Should have 2 successful reads despite 1 failure
+            assert len(anchors) == 2
+            assert all(a == "CERT_CONTENT" for a in anchors)
+
+    def test_get_trust_anchors_case_sensitive_extensions(self):
+        """Test that file extension matching is case-sensitive."""
+        with patch("os.path.isdir", return_value=True), patch(
+            "os.listdir", return_value=["cert1.PEM", "cert2.CRT", "cert3.pem"]
+        ), patch("builtins.open", mock_open(read_data="CERT_CONTENT")):
+            store = FileTrustStore("/path/to/certs")
+            anchors = store.get_trust_anchors()
+
+            # Only .pem (lowercase) should be matched, not .PEM or .CRT
+            assert len(anchors) == 1
+
+    def test_get_trust_anchors_reads_different_content(self):
+        """Test that different certificate files have different content."""
+        file_contents = {
+            "/path/to/certs/cert1.pem": "CERT_ONE",
+            "/path/to/certs/cert2.crt": "CERT_TWO",
+        }
+
+        def mock_open_with_content(path, mode="r"):
+            content = file_contents.get(path, "UNKNOWN")
+            return mock_open(read_data=content)()
+
+        with patch("os.path.isdir", return_value=True), patch(
+            "os.listdir", return_value=["cert1.pem", "cert2.crt"]
+        ), patch("builtins.open", side_effect=mock_open_with_content):
+            store = FileTrustStore("/path/to/certs")
+            anchors = store.get_trust_anchors()
+
+            assert len(anchors) == 2
+            assert "CERT_ONE" in anchors
+            assert "CERT_TWO" in anchors
 
 
 class TestMsoMdocCredVerifier:
