@@ -18,6 +18,8 @@ References:
 import asyncio
 import uuid
 
+from .test_utils import assert_selective_disclosure
+
 import pytest
 
 
@@ -800,8 +802,13 @@ class TestDCQLSelectiveDisclosure:
 
         assert result.get("state") == "presentation-valid"
         
-        # TODO: Verify that salary and ssn were NOT disclosed in the presentation
-        # This would require examining the actual VP content
+        # Verify selective disclosure: requested claims present, sensitive claims absent
+        assert_selective_disclosure(
+            result.get("matched_credentials"),
+            "employee_verification",
+            must_have=["employee_id", "full_name", "department"],
+            must_not_have=["salary", "ssn"],
+        )
         
         print("✅ DCQL SD-JWT selective disclosure flow completed successfully!")
 

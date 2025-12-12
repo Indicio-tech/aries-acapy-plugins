@@ -225,17 +225,17 @@ class TestOID4VCIRevocation:
             
             assert ba_initial[status_list_index] == 0, "Credential should not be revoked initially"
             LOGGER.info("Credential initially valid (bit set to 0)")
-    
-            # TODO: Test revocation (update status)
-    
+
+            # Test revocation (update status)
+
             # Let's revoke the credential and check again
             # We need the credential ID (jti) or the index to revoke.
             # The index is status_list_index.
-    
+
             # Update status list entry
             # We need the definition ID.
             definition_id = status_def["id"]
-    
+
             # We need the credential ID used in the status list binding.
             # In OID4VC plugin, the exchange_id is used as the credential_id for status list binding.
             cred_id = offer_data["exchange_id"]
@@ -245,13 +245,13 @@ class TestOID4VCIRevocation:
             # Let's try to revoke using the credential ID.
             # We need to find the endpoint to update status.
             # PATCH /status-list/defs/{def_id}/creds/{cred_id}
-    
+
             update_response = await client.patch(
                 f"{TEST_CONFIG['admin_endpoint']}/status-list/defs/{definition_id}/creds/{cred_id}",
-                json={"status": "1"} # Revoked
+                json={"status": "1"}  # Revoked
             )
             if update_response.status_code != 200:
-                 LOGGER.error(f"Failed to revoke credential: {update_response.text}")
+                LOGGER.error(f"Failed to revoke credential: {update_response.text}")
             assert update_response.status_code == 200
             
             # Publish the update (if needed? The plugin might auto-publish or we need to trigger it)
@@ -299,9 +299,9 @@ class TestOID4VCIRevocation:
             # Check the bit at status_list_index
             # Note: bitarray indexing might be different from what we expect?
             # But usually it's straightforward.
-    
-        assert ba[status_list_index] == 1
-        LOGGER.info("Credential successfully revoked (bit set to 1)")
 
-        LOGGER.info(f"Status List VC: {json.dumps(payload, indent=2)}")
-        LOGGER.info("Revocation status verified successfully")
+            assert ba[status_list_index] == 1
+            LOGGER.info("Credential successfully revoked (bit set to 1)")
+
+            LOGGER.info(f"Status List VC: {json.dumps(payload, indent=2)}")
+            LOGGER.info("Revocation status verified successfully")

@@ -3,9 +3,137 @@
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, Dict, List, Optional, Set
 
 import httpx
+
+
+def assert_claims_present(
+    matched_credentials: Dict[str, Any],
+    query_id: str,
+    expected_claims: List[str],
+    *,
+    check_nested: bool = True,
+) -> None:
+    """Assert that expected claims are present in matched credentials.
+
+    Args:
+        matched_credentials: The matched_credentials dict from presentation result
+        query_id: The credential query ID (e.g., "employee_verification")
+        expected_claims: List of claim names that MUST be present
+        check_nested: If True, search recursively in nested dicts
+
+    Raises:
+        AssertionError: If query_id not found or any expected claim is missing
+    """
+    assert matched_credentials is not None, "matched_credentials is None"
+    assert query_id in matched_credentials, (
+        f"Query ID '{query_id}' not found in matched_credentials. "
+        f"Available keys: {list(matched_credentials.keys())}"
+    )
+
+    disclosed_payload = matched_credentials[query_id]
+
+    def find_claim(data: Any, claim_name: str) -> bool:
+        """Recursively search for a claim in nested structure."""
+        if isinstance(data, dict):
+            if claim_name in data:
+                return True
+            if check_nested:
+                return any(find_claim(v, claim_name) for v in data.values())
+        return False
+
+    missing_claims = [
+        claim for claim in expected_claims if not find_claim(disclosed_payload, claim)
+    ]
+
+    assert not missing_claims, (
+        f"Expected claims not found in presentation: {missing_claims}. "
+        f"Disclosed payload keys: {_get_all_keys(disclosed_payload)}"
+    )
+
+
+def assert_claims_absent(
+    matched_credentials: Dict[str, Any],
+    query_id: str,
+    excluded_claims: List[str],
+    *,
+    check_nested: bool = True,
+) -> None:
+    """Assert that sensitive claims are NOT disclosed in the presentation.
+
+    Args:
+        matched_credentials: The matched_credentials dict from presentation result
+        query_id: The credential query ID (e.g., "employee_verification")
+        excluded_claims: List of claim names that MUST NOT be present
+        check_nested: If True, search recursively in nested dicts
+
+    Raises:
+        AssertionError: If query_id not found or any excluded claim is present
+    """
+    assert matched_credentials is not None, "matched_credentials is None"
+    assert query_id in matched_credentials, (
+        f"Query ID '{query_id}' not found in matched_credentials. "
+        f"Available keys: {list(matched_credentials.keys())}"
+    )
+
+    disclosed_payload = matched_credentials[query_id]
+
+    def find_claim(data: Any, claim_name: str) -> bool:
+        """Recursively search for a claim in nested structure."""
+        if isinstance(data, dict):
+            if claim_name in data:
+                return True
+            if check_nested:
+                return any(find_claim(v, claim_name) for v in data.values())
+        return False
+
+    leaked_claims = [
+        claim for claim in excluded_claims if find_claim(disclosed_payload, claim)
+    ]
+
+    assert not leaked_claims, (
+        f"Sensitive claims were disclosed but should NOT be: {leaked_claims}. "
+        f"These claims should have been excluded via selective disclosure."
+    )
+
+
+def _get_all_keys(data: Any, prefix: str = "") -> Set[str]:
+    """Get all keys from a nested dict structure for error reporting."""
+    keys: Set[str] = set()
+    if isinstance(data, dict):
+        for k, v in data.items():
+            full_key = f"{prefix}.{k}" if prefix else k
+            keys.add(full_key)
+            keys.update(_get_all_keys(v, full_key))
+    return keys
+
+
+def assert_selective_disclosure(
+    matched_credentials: Dict[str, Any],
+    query_id: str,
+    *,
+    must_have: Optional[List[str]] = None,
+    must_not_have: Optional[List[str]] = None,
+    check_nested: bool = True,
+) -> None:
+    """Convenience function to verify both present and absent claims.
+
+    Args:
+        matched_credentials: The matched_credentials dict from presentation result
+        query_id: The credential query ID
+        must_have: Claims that MUST be disclosed
+        must_not_have: Claims that MUST NOT be disclosed
+        check_nested: If True, search recursively in nested dicts
+    """
+    if must_have:
+        assert_claims_present(
+            matched_credentials, query_id, must_have, check_nested=check_nested
+        )
+    if must_not_have:
+        assert_claims_absent(
+            matched_credentials, query_id, must_not_have, check_nested=check_nested
+        )
 from acapy_agent.did.did_key import DIDKey
 from acapy_agent.wallet.key_type import P256
 from aries_askar import Key
