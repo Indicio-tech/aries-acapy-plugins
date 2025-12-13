@@ -206,7 +206,11 @@ async def verify_pres_def_presentation(
     pres_def_id: str,
     presentation: OID4VPPresentation,
 ):
-    """Verify a received presentation."""
+    """Verify a received presentation.
+
+    Supports presentations with multiple descriptor maps, allowing for
+    multi-credential presentations where a single VP contains multiple VCs.
+    """
 
     LOGGER.debug("Got: %s %s", submission, vp_token)
 
@@ -216,13 +220,22 @@ async def verify_pres_def_presentation(
             reason="Descriptor map of submission must not be empty"
         )
 
-    # TODO: Support longer descriptor map arrays
-    # if len(submission.descriptor_maps) != 1:
-    #     raise web.HTTPBadRequest(
-    #         reason="Descriptor map of length greater than 1 is not supported at this time"
-    #     )
+    # Determine the presentation format from descriptor maps
+    # All descriptor maps should use the same presentation format at the top level
+    descriptor_formats = {dm.fmt for dm in submission.descriptor_maps}
+    if len(descriptor_formats) > 1:
+        LOGGER.warning(
+            "Multiple presentation formats in descriptor maps: %s. "
+            "Using first format for VP verification.",
+            descriptor_formats,
+        )
 
     LOGGER.info(f"Available pres_verifiers: {list(processors.pres_verifiers.keys())}")
+    LOGGER.info(
+        f"Processing {len(submission.descriptor_maps)} descriptor map(s)"
+    )
+    
+    # Use the first format for VP-level verification
     verifier = processors.pres_verifier_for_format(submission.descriptor_maps[0].fmt)
     LOGGER.debug("VERIFIER: %s", verifier)
 

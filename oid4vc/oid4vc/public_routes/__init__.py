@@ -30,9 +30,11 @@ from .credential import (
 from .metadata import (
     BatchCredentialIssuanceSchema,
     CredentialIssuerMetadataSchema,
+    OpenIDConfigurationSchema,
     credential_issuer_metadata,
     credential_issuer_metadata_deprecated,
     deprecated_credential_issuer_metadata,
+    openid_configuration,
 )
 from .presentation import (
     OID4VPPresentationIDMatchSchema,
@@ -70,9 +72,11 @@ __all__ = [
     # Metadata
     "BatchCredentialIssuanceSchema",
     "CredentialIssuerMetadataSchema",
+    "OpenIDConfigurationSchema",
     "credential_issuer_metadata",
     "credential_issuer_metadata_deprecated",
     "deprecated_credential_issuer_metadata",
+    "openid_configuration",
     # Credential
     "NotificationSchema",
     "IssueCredentialRequestSchema",
@@ -126,6 +130,11 @@ async def register(app: web.Application, multitenant: bool, context: InjectionCo
             deprecated_credential_issuer_metadata,
             allow_head=False,
         ),
+        web.get(
+            f"{subpath}/.well-known/openid-configuration",
+            openid_configuration,
+            allow_head=False,
+        ),
         # TODO Add .well-known/did-configuration.json
         # Spec: https://identity.foundation/.well-known/resources/did-configuration/
         web.post(f"{subpath}/token", token),
@@ -147,6 +156,11 @@ async def register(app: web.Application, multitenant: bool, context: InjectionCo
             web.get(
                 f"{v1_subpath}/.well-known/openid-credential-issuer",
                 credential_issuer_metadata,
+                allow_head=False,
+            ),
+            web.get(
+                f"{v1_subpath}/.well-known/openid-configuration",
+                openid_configuration,
                 allow_head=False,
             ),
             web.post(f"{v1_subpath}/token", token),

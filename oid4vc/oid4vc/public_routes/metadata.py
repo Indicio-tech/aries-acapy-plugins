@@ -1,4 +1,4 @@
-"""Credential issuer metadata endpoints for OID4VCI."""
+"""Credential issuer metadata endpoints for OID4VCI and OpenID Connect Discovery."""
 
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.messaging.models.openapi import OpenAPISchema
@@ -10,6 +10,146 @@ from ..config import Config
 from ..models.supported_cred import SupportedCredential
 from ..utils import get_tenant_subpath
 from .constants import LOGGER
+
+
+class OpenIDConfigurationSchema(OpenAPISchema):
+    """OpenID Provider Configuration schema.
+
+    OpenID Connect Discovery 1.0 § 3: OpenID Provider Metadata
+    https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
+
+    Also incorporates OAuth 2.0 Authorization Server Metadata (RFC 8414).
+    """
+
+    issuer = fields.Str(
+        required=True,
+        metadata={
+            "description": "URL using the https scheme with no query or fragment "
+            "component that the OP asserts as its Issuer Identifier. REQUIRED."
+        },
+    )
+    authorization_endpoint = fields.Str(
+        required=False,
+        metadata={
+            "description": "URL of the OP's OAuth 2.0 Authorization Endpoint. "
+            "REQUIRED for Authorization Code Flow, OPTIONAL for pre-authorized code."
+        },
+    )
+    token_endpoint = fields.Str(
+        required=True,
+        metadata={
+            "description": "URL of the OP's OAuth 2.0 Token Endpoint. REQUIRED."
+        },
+    )
+    jwks_uri = fields.Str(
+        required=False,
+        metadata={
+            "description": "URL of the OP's JWK Set document. OPTIONAL."
+        },
+    )
+    registration_endpoint = fields.Str(
+        required=False,
+        metadata={
+            "description": "URL of the OP's Dynamic Client Registration Endpoint. OPTIONAL."
+        },
+    )
+    scopes_supported = fields.List(
+        fields.Str(),
+        required=False,
+        metadata={
+            "description": "JSON array containing a list of the OAuth 2.0 scope values "
+            "that this server supports. RECOMMENDED."
+        },
+    )
+    response_types_supported = fields.List(
+        fields.Str(),
+        required=True,
+        metadata={
+            "description": "JSON array containing a list of the OAuth 2.0 response_type "
+            "values that this OP supports. REQUIRED."
+        },
+    )
+    response_modes_supported = fields.List(
+        fields.Str(),
+        required=False,
+        metadata={
+            "description": "JSON array containing a list of the OAuth 2.0 response_mode "
+            "values that this OP supports. OPTIONAL."
+        },
+    )
+    grant_types_supported = fields.List(
+        fields.Str(),
+        required=False,
+        metadata={
+            "description": "JSON array containing a list of the OAuth 2.0 Grant Type "
+            "values that this OP supports. OPTIONAL."
+        },
+    )
+    subject_types_supported = fields.List(
+        fields.Str(),
+        required=False,
+        metadata={
+            "description": "JSON array containing a list of the Subject Identifier types "
+            "that this OP supports. Valid types include 'pairwise' and 'public'. OPTIONAL."
+        },
+    )
+    id_token_signing_alg_values_supported = fields.List(
+        fields.Str(),
+        required=False,
+        metadata={
+            "description": "JSON array containing a list of the JWS signing algorithms "
+            "supported by the OP for the ID Token. OPTIONAL."
+        },
+    )
+    token_endpoint_auth_methods_supported = fields.List(
+        fields.Str(),
+        required=False,
+        metadata={
+            "description": "JSON array containing a list of Client Authentication methods "
+            "supported by this Token Endpoint. OPTIONAL."
+        },
+    )
+    credential_issuer = fields.Str(
+        required=False,
+        metadata={
+            "description": "URL of the Credential Issuer. Included for OID4VCI compatibility."
+        },
+    )
+    credential_endpoint = fields.Str(
+        required=False,
+        metadata={
+            "description": "URL of the Credential Endpoint. Included for OID4VCI compatibility."
+        },
+    )
+    credential_configurations_supported = fields.Dict(
+        required=False,
+        metadata={
+            "description": "Credential configurations supported by this issuer. "
+            "Included for OID4VCI compatibility."
+        },
+    )
+    request_parameter_supported = fields.Bool(
+        required=False,
+        metadata={
+            "description": "Boolean value specifying whether the OP supports use of the "
+            "request parameter. OPTIONAL. Defaults to false."
+        },
+    )
+    request_uri_parameter_supported = fields.Bool(
+        required=False,
+        metadata={
+            "description": "Boolean value specifying whether the OP supports use of the "
+            "request_uri parameter. OPTIONAL. Defaults to true."
+        },
+    )
+    code_challenge_methods_supported = fields.List(
+        fields.Str(),
+        required=False,
+        metadata={
+            "description": "JSON array containing a list of PKCE code challenge methods "
+            "supported by this authorization server. OPTIONAL."
+        },
+    )
 
 
 class BatchCredentialIssuanceSchema(OpenAPISchema):
@@ -180,3 +320,86 @@ async def deprecated_credential_issuer_metadata(request: web.Request):
         "Sunset"
     ] = "Thu, 31 Dec 2026 23:59:59 GMT"  # TODO: Set appropriate sunset date
     return response
+
+
+@docs(tags=["oid4vc"], summary="Get OpenID Provider configuration")
+@response_schema(OpenIDConfigurationSchema())
+async def openid_configuration(request: web.Request):
+    """OpenID Provider Configuration endpoint.
+
+    OpenID Connect Discovery 1.0 § 4: Obtaining OpenID Provider Configuration Information
+    https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig
+
+    This endpoint serves the standard OpenID Connect Discovery metadata at
+    /.well-known/openid-configuration. It combines OpenID Connect Discovery 1.0
+    metadata with OAuth 2.0 Authorization Server Metadata (RFC 8414) and
+    OID4VCI-specific extensions.
+
+    The response includes:
+    - Standard OIDC Discovery fields (issuer, token_endpoint, etc.)
+    - OAuth 2.0 AS metadata (grant_types_supported, response_types_supported)
+    - OID4VCI extensions (credential_issuer, credential_endpoint, etc.)
+    """
+    context: AdminRequestContext = request["context"]
+    config = Config.from_settings(context.settings)
+    public_url = config.endpoint
+
+    async with context.session() as session:
+        # Get supported credentials for OID4VCI compatibility
+        credentials_supported = await SupportedCredential.query(session)
+
+        wallet_id = request.match_info.get("wallet_id")
+        subpath = f"/tenant/{wallet_id}" if wallet_id else ""
+
+        # Check for version in path
+        version_path = ""
+        if "/v1/" in request.path:
+            version_path = "/v1"
+
+        issuer_url = f"{public_url}{subpath}{version_path}"
+
+        # Build OpenID Provider Configuration metadata
+        # Per OpenID Connect Discovery 1.0 § 3
+        metadata = {
+            # REQUIRED fields per OIDC Discovery
+            "issuer": issuer_url,
+            "token_endpoint": f"{issuer_url}/token",
+            "response_types_supported": [
+                "code",  # For future Authorization Code Flow support
+                "token",  # For pre-authorized code flow
+            ],
+            # RECOMMENDED fields
+            "scopes_supported": ["openid"],
+            # OAuth 2.0 AS Metadata (RFC 8414)
+            "grant_types_supported": [
+                "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+                # "authorization_code",  # TODO: Add when Authorization Code Flow is implemented
+            ],
+            "response_modes_supported": ["query", "fragment", "direct_post"],
+            "token_endpoint_auth_methods_supported": ["none"],
+            # PKCE support
+            "code_challenge_methods_supported": ["S256"],
+            # OID4VCI compatibility - include credential issuer metadata
+            "credential_issuer": issuer_url,
+            "credential_endpoint": f"{issuer_url}/credential",
+            "notification_endpoint": f"{issuer_url}/notification",
+            "credential_configurations_supported": {
+                supported.identifier: supported.to_issuer_metadata()
+                for supported in credentials_supported
+            },
+        }
+
+        # Add authorization server URL if configured
+        if config.auth_server_url:
+            auth_tenant_subpath = get_tenant_subpath(context.profile)
+            metadata["authorization_servers"] = [
+                f"{config.auth_server_url}{auth_tenant_subpath}"
+            ]
+            # If there's an external auth server, include its authorization endpoint
+            metadata["authorization_endpoint"] = (
+                f"{config.auth_server_url}{auth_tenant_subpath}/authorize"
+            )
+
+    LOGGER.debug("OpenID Configuration: %s", metadata)
+
+    return web.json_response(metadata)

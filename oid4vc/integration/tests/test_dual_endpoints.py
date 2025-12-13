@@ -1,12 +1,16 @@
 """
 Test for dual OID4VCI well-known endpoints compatibility.
 
-This test validates that our ACA-Py OID4VC plugin serves both:
+This test validates that our ACA-Py OID4VC plugin serves:
 1. /.well-known/openid-credential-issuer (OID4VCI v1.0 standard)
 2. /.well-known/openid_credential_issuer (deprecated, for Credo compatibility)
+3. /.well-known/openid-configuration (OpenID Connect Discovery 1.0)
 
-Both endpoints should return identical data, but the deprecated one should include
-appropriate deprecation headers.
+Both OID4VCI endpoints should return identical data, but the deprecated one should
+include appropriate deprecation headers.
+
+The openid-configuration endpoint provides standard OIDC Discovery metadata combined
+with OID4VCI credential issuer metadata for interoperability.
 """
 
 import asyncio
@@ -183,6 +187,118 @@ async def test_oid4vci_server_endpoints():
         print("✅ Token endpoint is available")
 
         print("✅ All OID4VCI server endpoints are properly exposed")
+
+
+@pytest.mark.asyncio
+async def test_openid_configuration_endpoint():
+    """Test the /.well-known/openid-configuration endpoint.
+
+    This endpoint provides OpenID Connect Discovery 1.0 metadata combined with
+    OID4VCI credential issuer metadata for maximum interoperability.
+    """
+
+    acapy_oid4vci_base = "http://acapy-issuer:8022"
+
+    async with httpx.AsyncClient() as client:
+        print("🧪 Testing OpenID Configuration endpoint...")
+
+        response = await client.get(
+            f"{acapy_oid4vci_base}/.well-known/openid-configuration"
+        )
+
+        assert (
+            response.status_code == 200
+        ), f"openid-configuration endpoint failed: {response.status_code}"
+
+        config = response.json()
+        print(f"✅ openid-configuration returned: {json.dumps(config, indent=2)}")
+
+        # Verify required OIDC Discovery fields
+        assert "issuer" in config, "Missing required 'issuer' field"
+        assert "token_endpoint" in config, "Missing required 'token_endpoint' field"
+        assert (
+            "response_types_supported" in config
+        ), "Missing required 'response_types_supported' field"
+
+        print("✅ Required OIDC Discovery fields present")
+
+        # Verify OAuth 2.0 AS Metadata fields
+        assert (
+            "grant_types_supported" in config
+        ), "Missing 'grant_types_supported' field"
+        assert (
+            "urn:ietf:params:oauth:grant-type:pre-authorized_code"
+            in config["grant_types_supported"]
+        ), "Missing pre-authorized_code grant type"
+
+        print("✅ OAuth 2.0 AS Metadata fields present")
+
+        # Verify OID4VCI compatibility fields
+        assert "credential_issuer" in config, "Missing 'credential_issuer' field"
+        assert "credential_endpoint" in config, "Missing 'credential_endpoint' field"
+        assert (
+            "credential_configurations_supported" in config
+        ), "Missing 'credential_configurations_supported' field"
+
+        print("✅ OID4VCI compatibility fields present")
+
+        # Verify issuer URLs are consistent
+        assert (
+            config["issuer"] == config["credential_issuer"]
+        ), "issuer and credential_issuer should match"
+
+        print("✅ Issuer URLs are consistent")
+
+        # Verify recommended fields
+        if "scopes_supported" in config:
+            assert "openid" in config["scopes_supported"], "'openid' scope should be supported"
+            print("✅ 'openid' scope is supported")
+
+        if "code_challenge_methods_supported" in config:
+            assert "S256" in config["code_challenge_methods_supported"], "PKCE S256 should be supported"
+            print("✅ PKCE S256 is supported")
+
+        print("✅ OpenID Configuration endpoint is fully compliant")
+
+
+@pytest.mark.asyncio
+async def test_openid_configuration_vs_credential_issuer_consistency():
+    """Test that openid-configuration and openid-credential-issuer return consistent data."""
+
+    acapy_oid4vci_base = "http://acapy-issuer:8022"
+
+    async with httpx.AsyncClient() as client:
+        print("🧪 Testing consistency between discovery endpoints...")
+
+        # Get both metadata documents
+        oidc_response = await client.get(
+            f"{acapy_oid4vci_base}/.well-known/openid-configuration"
+        )
+        oid4vci_response = await client.get(
+            f"{acapy_oid4vci_base}/.well-known/openid-credential-issuer"
+        )
+
+        assert oidc_response.status_code == 200
+        assert oid4vci_response.status_code == 200
+
+        oidc_config = oidc_response.json()
+        oid4vci_config = oid4vci_response.json()
+
+        # Verify credential-related fields are consistent
+        assert (
+            oidc_config.get("credential_issuer") == oid4vci_config.get("credential_issuer")
+        ), "credential_issuer should be consistent"
+
+        assert (
+            oidc_config.get("credential_endpoint") == oid4vci_config.get("credential_endpoint")
+        ), "credential_endpoint should be consistent"
+
+        assert (
+            oidc_config.get("credential_configurations_supported")
+            == oid4vci_config.get("credential_configurations_supported")
+        ), "credential_configurations_supported should be consistent"
+
+        print("✅ Discovery endpoints return consistent credential metadata")
 
 
 if __name__ == "__main__":
