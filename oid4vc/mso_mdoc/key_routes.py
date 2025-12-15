@@ -112,9 +112,9 @@ async def list_keys(request: web.BaseRequest):
         safe_keys = []
         for key in keys:
             safe_key = {
-                "key_id": key["key_id"],
-                "key_type": key["key_type"],
-                "created_at": key["created_at"],
+                "key_id": key.get("key_id", "unknown"),
+                "key_type": key.get("key_type", "ES256"),  # Default to ES256 if not set
+                "created_at": key.get("created_at"),
                 "metadata": {
                     k: v for k, v in key.get("metadata", {}).items() if k != "jwk"
                 },

@@ -1,8 +1,23 @@
 services:
+  # ==========================================================================
+  # Shared Base Image - Built once, used by issuer and verifier
+  # ==========================================================================
+  oid4vc-base:
+    build:
+      dockerfile: oid4vc/docker/Dockerfile.base
+      context: ../../
+      args:
+        ACAPY_VERSION: 1.4.0
+        ISOMDL_BRANCH: feat/intermediate-chaining
+    image: oid4vc-base:latest
+    profiles:
+      - base-only  # Only build when explicitly requested
+
   # Credo Holder/Verifier - Receives credentials from ACA-Py
   credo-agent:
     build:
       context: ./credo
+      # Use BuildKit cache from previous builds
     ports:
       - "3020:3020"
     environment:
@@ -34,6 +49,7 @@ services:
       context: ../../
       args:
         ACAPY_VERSION: 1.4.0
+        ISOMDL_BRANCH: feat/intermediate-chaining
     ports:
       - "8020:8020"  # inbound transport
       - "8083:8021"  # admin (mapped to 8083)
@@ -73,6 +89,7 @@ services:
       context: ../../
       args:
         ACAPY_VERSION: 1.4.0
+        ISOMDL_BRANCH: feat/intermediate-chaining
     ports:
       - "8030:8030"  # inbound transport
       - "8031:8031"  # admin
@@ -131,6 +148,7 @@ services:
     volumes:
       - ./test-results:/usr/src/app/test-results
       - ./tests:/usr/src/app/tests
+      - ./pyproject.toml:/usr/src/app/pyproject.toml
       # Static cert mounts removed - certs generated dynamically in tests
     depends_on:
       credo-agent:
@@ -147,6 +165,134 @@ services:
       uv run pytest tests/ --verbose --tb=short --junit-xml=test-results/junit-quick.xml --durations=5
       "
 
+  # ============================================================================
+  # Walt.id Web Wallet Stack - For Playwright E2E Testing
+  # ============================================================================
+  #
+  # NOTE: walt.id Docker images are linux/amd64 only. For ARM64 (Apple Silicon),
+  # you must either:
+  #   1. Run with Docker Desktop's Rosetta emulation (slower)
+  #   2. Build images locally from walt-id/waltid-identity repo
+  #
+  # To run on Apple Silicon:
+  #   DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose --profile waltid up
+  #
+  # ============================================================================
+
+  # PostgreSQL for walt.id wallet
+  waltid-postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: waltid
+      POSTGRES_PASSWORD: waltid
+      POSTGRES_DB: waltid
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U waltid -d waltid"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    profiles:
+      - waltid
+
+  # Valkey (Redis-compatible) for walt.id session tokens
+  waltid-valkey:
+    image: valkey/valkey:8-alpine
+    command: valkey-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    profiles:
+      - waltid
+
+  # Walt.id Wallet API
+  waltid-wallet-api:
+    image: waltid/wallet-api:latest
+    platform: linux/amd64
+    ports:
+      - "7001:7001"
+    environment:
+      - WALTID_WALLET_BACKEND_BIND_ADDRESS=0.0.0.0
+      # Database config
+      - POSTGRES_DB_HOST=waltid-postgres
+      - POSTGRES_DB_PORT=5432
+      - DB_NAME=waltid
+      - DB_USERNAME=waltid
+      - DB_PASSWORD=waltid
+    volumes:
+      - ./playwright/waltid-config:/waltid-wallet-api/config:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:7001/wallet-api/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 120s
+    depends_on:
+      waltid-postgres:
+        condition: service_healthy
+      waltid-valkey:
+        condition: service_healthy
+    networks:
+      default:
+        aliases:
+          - waltid-wallet-api.local
+    profiles:
+      - waltid
+
+  # Walt.id Web Wallet Frontend
+  waltid-web-wallet:
+    image: waltid/waltid-web-wallet:latest
+    platform: linux/amd64
+    ports:
+      - "7101:7101"
+    environment:
+      - PORT=7101
+      - NUXT_PUBLIC_ISSUER_CALLBACK_URL=http://localhost:7101
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7101"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+    depends_on:
+      waltid-wallet-api:
+        condition: service_healthy
+    networks:
+      default:
+        aliases:
+          - waltid-wallet.local
+    profiles:
+      - waltid
+
+  # Playwright Test Runner
+  playwright-runner:
+    build:
+      context: ./playwright
+      dockerfile: Dockerfile
+    working_dir: /app
+    environment:
+      - WALTID_WEB_WALLET_URL=http://waltid-web-wallet:7101
+      - WALTID_WALLET_API_URL=http://waltid-wallet-api:7001
+      - ACAPY_ISSUER_ADMIN_URL=http://acapy-issuer:8021
+      - ACAPY_ISSUER_OID4VCI_URL=http://acapy-issuer.local:8022
+      - ACAPY_VERIFIER_ADMIN_URL=http://acapy-verifier:8031
+      - ACAPY_VERIFIER_OID4VP_URL=http://acapy-verifier.local:8032
+      - CI=true
+    volumes:
+      - ./test-results:/app/test-results
+      - ./playwright/tests:/app/tests
+      - ./playwright/helpers:/app/helpers
+      - ./playwright/certs:/app/certs:ro
+    depends_on:
+      waltid-web-wallet:
+        condition: service_healthy
+      acapy-issuer:
+        condition: service_healthy
+      acapy-verifier:
+        condition: service_healthy
+    profiles:
+      - waltid
+
 volumes:
   test-results:
-        

@@ -1,44 +1,62 @@
+# =============================================================================
+# Stage 1: Build isomdl-uniffi wheel (requires Rust)
+# =============================================================================
 FROM python:3.12-slim-bookworm AS isomdl-build
+
 WORKDIR /build
-RUN apt-get update && apt-get install -y curl git build-essential
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust toolchain (minimal profile to save space)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
 ENV PATH="/root/.cargo/bin:${PATH}"
 
+# Clone isomdl-uniffi with shallow clone
 ARG ISOMDL_BRANCH=feat/intermediate-chaining
-RUN git clone https://github.com/Indicio-tech/isomdl-uniffi.git /build/isomdl-uniffi
-WORKDIR /build/isomdl-uniffi
-RUN git checkout ${ISOMDL_BRANCH}
-
-# Ensure build script is executable
-RUN chmod +x python/precommit/build-bindings.sh
+RUN git clone --depth 1 --branch ${ISOMDL_BRANCH} \
+    https://github.com/Indicio-tech/isomdl-uniffi.git /build/isomdl-uniffi
 
 WORKDIR /build/isomdl-uniffi/python
-# Create package directory and __init__.py to ensure find_packages() works
-RUN mkdir -p isomdl_uniffi && \
-    echo "try:\n    from .isomdl_uniffi import *\nexcept ImportError:\n    pass" > isomdl_uniffi/__init__.py
-RUN pip install build wheel setuptools
-RUN python setup.py bdist_wheel || { echo "Build failed"; ls -R /build/isomdl-uniffi; exit 1; }
-RUN ls -R /build/isomdl-uniffi/python/dist
 
+# Create package directory and __init__.py
+RUN mkdir -p isomdl_uniffi && \
+    printf 'try:\n    from .isomdl_uniffi import *\nexcept ImportError:\n    pass\n' > isomdl_uniffi/__init__.py
+
+# Build wheel
+RUN pip install --no-cache-dir build wheel setuptools
+RUN python setup.py bdist_wheel
+
+# =============================================================================
+# Stage 2: Install ACA-Py and plugin dependencies
+# =============================================================================
 FROM python:3.12-slim-bookworm AS base
+
 WORKDIR /usr/src/app
 
-# Install dependencies including git and rust
-RUN apt-get update && apt-get install -y curl jq git build-essential && apt-get clean
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
+# Install only required build/runtime dependencies (no Rust needed here)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    jq \
+    git \
+    && rm -rf /var/lib/apt/lists/*
 
-# Accept build argument for ACA-Py tag
+# Accept build argument for ACA-Py version
 ARG ACAPY_VERSION=1.4.0
 
-# Clone ACA-Py source at specified tag
-RUN git clone https://github.com/openwallet-foundation/acapy.git /usr/src/acapy
-WORKDIR /usr/src/acapy
-RUN git checkout ${ACAPY_VERSION}
+# Clone ACA-Py source with shallow clone
+RUN git clone --depth 1 --branch ${ACAPY_VERSION} \
+    https://github.com/openwallet-foundation/acapy.git /usr/src/acapy
 
-# Install ACA-Py using pip (since it doesn't use Poetry)
-RUN pip install -e . --no-cache-dir
-RUN pip install configargparse
+WORKDIR /usr/src/acapy
+
+# Install ACA-Py
+RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir configargparse
 
 # Setup plugin project structure
 WORKDIR /usr/src/app
@@ -55,12 +73,15 @@ RUN pip install -e ./status_list
 
 # Install isomdl-uniffi from builder stage
 COPY --from=isomdl-build /build/isomdl-uniffi/python/dist/*.whl /tmp/
-RUN pip install /tmp/*.whl
+RUN pip install --no-cache-dir /tmp/*.whl && rm -rf /tmp/*.whl
 
 # Install the plugin (isomdl-uniffi will be skipped since already installed)
-RUN pip install -e . --no-cache-dir
+RUN pip install --no-cache-dir -e .
 
-FROM python:3.12-bookworm
+# =============================================================================
+# Stage 3: Final slim runtime image
+# =============================================================================
+FROM python:3.12-slim-bookworm
 
 WORKDIR /usr/src/app
 
@@ -68,8 +89,12 @@ WORKDIR /usr/src/app
 COPY --from=base /usr/src/acapy /usr/src/acapy
 COPY --from=base /usr/src/app /usr/src/app
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y curl jq && apt-get clean
+# Install only runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    jq \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy the entire Python environment from base stage, including site-packages
 COPY --from=base /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages

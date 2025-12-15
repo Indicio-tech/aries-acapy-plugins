@@ -38,18 +38,24 @@ class CredoWrapper:
         response.raise_for_status()
         return response.json()
 
-    async def openid4vci_accept_offer(self, offer: str):
+    async def openid4vci_accept_offer(self, offer: str, holder_did_method: str = "key"):
         """Accept OpenID4VCI credential offer."""
         response = await self.client.post(
-            f"{self.base_url}/oid4vci/accept-offer", json={"credential_offer": offer}
+            f"{self.base_url}/oid4vci/accept-offer",
+            json={"credential_offer": offer, "holder_did_method": holder_did_method}
         )
         response.raise_for_status()
         return response.json()
 
     async def openid4vp_accept_request(
-        self, request: str, credentials: list[dict] = None
+        self, request: str, credentials: list = None
     ):
-        """Accept OpenID4VP presentation (authorization) request."""
+        """Accept OpenID4VP presentation (authorization) request.
+        
+        Args:
+            request: The presentation request URI
+            credentials: List of credentials to present (can be strings for mso_mdoc or dicts)
+        """
         payload = {"request_uri": request}
         if credentials:
             payload["credentials"] = credentials

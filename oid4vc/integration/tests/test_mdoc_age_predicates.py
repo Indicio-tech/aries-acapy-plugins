@@ -22,16 +22,13 @@ from typing import Any, Dict, Optional
 import httpx
 import pytest
 
-from .test_config import TEST_CONFIG, MDOC_AVAILABLE
+from .test_config import TEST_CONFIG
 
 LOGGER = logging.getLogger(__name__)
 
 
-# Skip all tests if mDOC is not available
-pytestmark = pytest.mark.skipif(
-    not MDOC_AVAILABLE,
-    reason="mDOC support not available in this environment"
-)
+# Mark all tests as mDOC related
+pytestmark = pytest.mark.mdoc
 
 
 class TestMdocAgePredicates:
@@ -66,37 +63,37 @@ class TestMdocAgePredicates:
             "id": f"mDL_AgeTest_{random_suffix}",
             "format": "mso_mdoc",
             "doctype": "org.iso.18013.5.1.mDL",
-            "claims": {
-                "org.iso.18013.5.1": {
-                    "given_name": {"mandatory": True},
-                    "family_name": {"mandatory": True},
-                    "birth_date": {"mandatory": True},
-                    "age_over_18": {"mandatory": False},
-                    "age_over_21": {"mandatory": False},
+            "cryptographic_binding_methods_supported": ["cose_key", "did:key", "did"],
+            "cryptographic_suites_supported": ["ES256"],
+            "proof_types_supported": {
+                "jwt": {
+                    "proof_signing_alg_values_supported": ["ES256"]
                 }
+            },
+            "format_data": {
+                "doctype": "org.iso.18013.5.1.mDL",
+                "claims": {
+                    "org.iso.18013.5.1": {
+                        "given_name": {"mandatory": True},
+                        "family_name": {"mandatory": True},
+                        "birth_date": {"mandatory": True},
+                        "age_over_18": {"mandatory": False},
+                        "age_over_21": {"mandatory": False},
+                    }
+                },
             },
         }
 
-        try:
-            config_response = await acapy_issuer_admin.post(
-                "/oid4vci/credential-supported/create", json=mdoc_config
-            )
-            config_id = config_response["supported_cred_id"]
-        except Exception as e:
-            pytest.skip(f"mDOC credential configuration not supported: {e}")
+        config_response = await acapy_issuer_admin.post(
+            "/oid4vci/credential-supported/create", json=mdoc_config
+        )
+        config_id = config_response["supported_cred_id"]
 
-        # Create mDOC issuer certificate
-        try:
-            cert_response = await acapy_issuer_admin.post(
-                "/mso_mdoc/certificates/create",
-                json={
-                    "common_name": f"Age Test Issuer {random_suffix}",
-                    "valid_days": 365,
-                }
-            )
-            issuer_cert_id = cert_response.get("certificate_id")
-        except Exception as e:
-            pytest.skip(f"mDOC certificate creation not supported: {e}")
+        # Create a DID for the issuer (P-256 for mDOC compatibility)
+        did_response = await acapy_issuer_admin.post(
+            "/wallet/did/create", json={"method": "key", "options": {"key_type": "p256"}}
+        )
+        issuer_did = did_response["result"]["did"]
 
         # Issue credential with birth_date making holder 25 years old
         birth_date = birth_date_for_age(25)
@@ -113,16 +110,13 @@ class TestMdocAgePredicates:
         exchange_request = {
             "supported_cred_id": config_id,
             "credential_subject": credential_subject,
-            "certificate_id": issuer_cert_id,
+            "did": issuer_did,
         }
 
-        try:
-            exchange = await acapy_issuer_admin.post(
-                "/oid4vci/exchange/create", json=exchange_request
-            )
-            exchange_id = exchange["exchange_id"]
-        except Exception as e:
-            pytest.skip(f"mDOC exchange creation not supported: {e}")
+        exchange = await acapy_issuer_admin.post(
+            "/oid4vci/exchange/create", json=exchange_request
+        )
+        exchange_id = exchange["exchange_id"]
 
         # Create DCQL query requesting only age_over_18 (not birth_date)
         dcql_query = {
@@ -143,14 +137,11 @@ class TestMdocAgePredicates:
             ]
         }
 
-        try:
-            dcql_response = await acapy_verifier_admin.post(
-                "/oid4vp/dcql/queries", json=dcql_query
-            )
-            dcql_query_id = dcql_response["dcql_query_id"]
-            LOGGER.info(f"Created DCQL query for age_over_18: {dcql_query_id}")
-        except Exception as e:
-            pytest.skip(f"DCQL query creation not supported: {e}")
+        dcql_response = await acapy_verifier_admin.post(
+            "/oid4vp/dcql/queries", json=dcql_query
+        )
+        dcql_query_id = dcql_response["dcql_query_id"]
+        LOGGER.info(f"Created DCQL query for age_over_18: {dcql_query_id}")
 
         # Note: Full flow requires holder wallet with mDOC support
         # For now, verify the query was created correctly
@@ -197,13 +188,10 @@ class TestMdocAgePredicates:
             ]
         }
 
-        try:
-            dcql_response = await acapy_verifier_admin.post(
-                "/oid4vp/dcql/queries", json=dcql_query
-            )
-            dcql_query_id = dcql_response["dcql_query_id"]
-        except Exception as e:
-            pytest.skip(f"DCQL query creation not supported: {e}")
+        dcql_response = await acapy_verifier_admin.post(
+            "/oid4vp/dcql/queries", json=dcql_query
+        )
+        dcql_query_id = dcql_response["dcql_query_id"]
 
         # Verify query doesn't include birth_date
         # The verifier should be able to verify age_over_18 without seeing birth_date
@@ -254,14 +242,11 @@ class TestMdocAgePredicates:
             ]
         }
 
-        try:
-            dcql_response = await acapy_verifier_admin.post(
-                "/oid4vp/dcql/queries", json=dcql_query
-            )
-            dcql_query_id = dcql_response["dcql_query_id"]
-            LOGGER.info(f"Created multi-age DCQL query: {dcql_query_id}")
-        except Exception as e:
-            pytest.skip(f"DCQL query creation not supported: {e}")
+        dcql_response = await acapy_verifier_admin.post(
+            "/oid4vp/dcql/queries", json=dcql_query
+        )
+        dcql_query_id = dcql_response["dcql_query_id"]
+        LOGGER.info(f"Created multi-age DCQL query: {dcql_query_id}")
 
         assert dcql_query_id is not None
         LOGGER.info("✅ Multiple age predicates query created successfully")
@@ -287,24 +272,31 @@ class TestMdocAgePredicates:
             "id": f"mDL_AgeValues_{random_suffix}",
             "format": "mso_mdoc",
             "doctype": "org.iso.18013.5.1.mDL",
-            "claims": {
-                "org.iso.18013.5.1": {
-                    "given_name": {"mandatory": True},
-                    "birth_date": {"mandatory": True},
-                    "age_over_18": {"mandatory": False},
-                    "age_over_21": {"mandatory": False},
-                    "age_over_65": {"mandatory": False},
+            "cryptographic_binding_methods_supported": ["cose_key", "did:key", "did"],
+            "cryptographic_suites_supported": ["ES256"],
+            "proof_types_supported": {
+                "jwt": {
+                    "proof_signing_alg_values_supported": ["ES256"]
                 }
+            },
+            "format_data": {
+                "doctype": "org.iso.18013.5.1.mDL",
+                "claims": {
+                    "org.iso.18013.5.1": {
+                        "given_name": {"mandatory": True},
+                        "birth_date": {"mandatory": True},
+                        "age_over_18": {"mandatory": False},
+                        "age_over_21": {"mandatory": False},
+                        "age_over_65": {"mandatory": False},
+                    }
+                },
             },
         }
 
-        try:
-            config_response = await acapy_issuer_admin.post(
-                "/oid4vci/credential-supported/create", json=mdoc_config
-            )
-            config_id = config_response["supported_cred_id"]
-        except Exception as e:
-            pytest.skip(f"mDOC credential configuration not supported: {e}")
+        config_response = await acapy_issuer_admin.post(
+            "/oid4vci/credential-supported/create", json=mdoc_config
+        )
+        config_id = config_response["supported_cred_id"]
 
         # Holder is 25 years old
         birth_date = birth_date_for_age(25)
@@ -378,14 +370,11 @@ class TestMdocAamvaAgePredicates:
             ]
         }
 
-        try:
-            dcql_response = await acapy_verifier_admin.post(
-                "/oid4vp/dcql/queries", json=dcql_query
-            )
-            dcql_query_id = dcql_response["dcql_query_id"]
-            LOGGER.info(f"Created AAMVA DCQL query: {dcql_query_id}")
-        except Exception as e:
-            pytest.skip(f"DCQL query creation not supported: {e}")
+        dcql_response = await acapy_verifier_admin.post(
+            "/oid4vp/dcql/queries", json=dcql_query
+        )
+        dcql_query_id = dcql_response["dcql_query_id"]
+        LOGGER.info(f"Created AAMVA DCQL query: {dcql_query_id}")
 
         assert dcql_query_id is not None
         LOGGER.info("✅ AAMVA age/compliance query created successfully")

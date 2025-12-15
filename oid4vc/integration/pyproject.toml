@@ -72,6 +72,8 @@ markers = [
     "slow: Tests that take longer to run",
     "requires_credo: Tests that require Credo agent",
     "requires_acapy: Tests that require ACA-Py agents",
+    "negative: Negative and error handling tests",
+    "trust: Trust anchor and certificate chain validation tests",
 ]
 testpaths = ["tests"]
 asyncio_mode = "strict"
