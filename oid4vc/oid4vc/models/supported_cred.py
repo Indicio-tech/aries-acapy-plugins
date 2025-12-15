@@ -131,23 +131,79 @@ class SupportedCredential(BaseRecord):
         if self.format_data:
             if self.format in ("jwt_vc_json", "jwt_vc"):
                 # For jwt_vc_json, wrap in credential_definition
-                cred_def = self.format_data.copy()
-                context = cred_def.pop("context", None)
+                # OID4VCI 1.0 §11.2.3.1: credential_definition ONLY contains:
+                # - @context (optional)
+                # - type (required)
+                # - credentialSubject (optional)
+                cred_def = {}
+                format_data = self.format_data.copy()
+                
+                # Handle @context
+                context = format_data.pop("context", None) or format_data.pop("@context", None)
                 if context:
                     cred_def["@context"] = context
 
-                # OID4VCI 1.0 §11.2.3: For jwt_vc_json, the field is "type"
-                # (singular) not "types". Rename "types" to "type" if present
-                if "types" in cred_def:
-                    cred_def["type"] = cred_def.pop("types")
+                # Handle type/types
+                types_value = format_data.pop("types", None) or format_data.pop("type", None)
+                if types_value:
+                    cred_def["type"] = types_value
+                    # Backward compatibility: Also add "types" at top level
+                    # Some wallet implementations (e.g. walt.id) expect the older
+                    # draft 11 format with "types" at the credential config level
+                    issuer_metadata["types"] = types_value
 
-                # Filter None values
-                cred_def = {k: v for k, v in cred_def.items() if v is not None}
+                # Handle credentialSubject - can come from "credentialSubject" or "claims"
+                # OID4VCI 1.0 uses "credentialSubject" for jwt_vc_json format (flat map)
+                # Some implementations incorrectly put "claims" here
+                cred_subject = format_data.pop("credentialSubject", None)
+                if not cred_subject:
+                    # If claims is a flat map (not namespaced), treat it as credentialSubject
+                    claims = format_data.pop("claims", None)
+                    if claims:
+                        cred_subject = claims
+                if cred_subject:
+                    cred_def["credentialSubject"] = cred_subject
 
-                issuer_metadata["credential_definition"] = cred_def
+                # Handle display - MUST be at top level, not inside credential_definition
+                display_from_format_data = format_data.pop("display", None)
+                if display_from_format_data and "display" not in issuer_metadata:
+                    issuer_metadata["display"] = display_from_format_data
+
+                # Handle fields that belong at top level of credential config, not in cred_def
+                # These may have been incorrectly placed in format_data
+                top_level_fields = [
+                    "cryptographic_binding_methods_supported",
+                    "cryptographic_suites_supported",
+                    "proof_types_supported",
+                    "scope",
+                ]
+                for field in top_level_fields:
+                    if field in format_data and field not in issuer_metadata:
+                        value = format_data.pop(field)
+                        if field == "cryptographic_suites_supported":
+                            # Rename to spec-compliant name
+                            issuer_metadata["credential_signing_alg_values_supported"] = value
+                        else:
+                            issuer_metadata[field] = value
+
+                if cred_def:
+                    issuer_metadata["credential_definition"] = cred_def
             else:
-                # For other formats (e.g. mso_mdoc), flatten
-                issuer_metadata.update(self.format_data)
+                # For other formats (e.g. mso_mdoc, vc+sd-jwt), flatten
+                # But first handle display which must be at top level
+                format_data = self.format_data.copy()
+                display_from_format_data = format_data.pop("display", None)
+                if display_from_format_data and "display" not in issuer_metadata:
+                    issuer_metadata["display"] = display_from_format_data
+                
+                # For vc+sd-jwt format, walt.id expects "credentialSubject" not "claims"
+                # The claims field is used internally for validation, but the output
+                # should use credentialSubject for wallet compatibility
+                if self.format == "vc+sd-jwt" and "claims" in format_data:
+                    claims = format_data.pop("claims")
+                    format_data["credentialSubject"] = claims
+                
+                issuer_metadata.update(format_data)
         return issuer_metadata
 
 

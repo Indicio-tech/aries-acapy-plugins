@@ -214,20 +214,25 @@ services:
       - "7001:7001"
     environment:
       - WALTID_WALLET_BACKEND_BIND_ADDRESS=0.0.0.0
+      # Web server config
+      - WALLET_BACKEND_PORT=7001
+      - SERVICE_HOST=waltid-wallet-api.local
       # Database config
       - POSTGRES_DB_HOST=waltid-postgres
       - POSTGRES_DB_PORT=5432
       - DB_NAME=waltid
       - DB_USERNAME=waltid
       - DB_PASSWORD=waltid
+      # OIDC config (optional - use local auth)
+      - DEMO_WALLET_FRONTEND_PORT=7101
     volumes:
       - ./playwright/waltid-config:/waltid-wallet-api/config:ro
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:7001/wallet-api/health"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:7001/wallet-api/auth/login -X POST -d '{}' -H 'Content-Type: application/json' || exit 0"]
       interval: 10s
       timeout: 10s
       retries: 30
-      start_period: 120s
+      start_period: 60s
     depends_on:
       waltid-postgres:
         condition: service_healthy
@@ -240,12 +245,29 @@ services:
     profiles:
       - waltid
 
-  # Walt.id Web Wallet Frontend
-  waltid-web-wallet:
+  # Nginx Reverse Proxy for Walt.id (proxies /wallet-api/ to wallet-api service)
+  waltid-proxy:
+    image: nginx:alpine
+    ports:
+      - "7101:80"
+    volumes:
+      - ./playwright/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      waltid-wallet-api:
+        condition: service_healthy
+      waltid-web-wallet-backend:
+        condition: service_started
+    networks:
+      default:
+        aliases:
+          - waltid-web-wallet
+    profiles:
+      - waltid
+
+  # Walt.id Web Wallet Frontend (internal, accessed via proxy)
+  waltid-web-wallet-backend:
     image: waltid/waltid-web-wallet:latest
     platform: linux/amd64
-    ports:
-      - "7101:7101"
     environment:
       - PORT=7101
       - NUXT_PUBLIC_ISSUER_CALLBACK_URL=http://localhost:7101
@@ -272,7 +294,9 @@ services:
       dockerfile: Dockerfile
     working_dir: /app
     environment:
-      - WALTID_WEB_WALLET_URL=http://waltid-web-wallet:7101
+      # Use the nginx proxy which routes /wallet-api/ to wallet-api service
+      - WALTID_WEB_WALLET_URL=http://waltid-web-wallet:80
+      - WALTID_WALLET_URL=http://waltid-web-wallet:80
       - WALTID_WALLET_API_URL=http://waltid-wallet-api:7001
       - ACAPY_ISSUER_ADMIN_URL=http://acapy-issuer:8021
       - ACAPY_ISSUER_OID4VCI_URL=http://acapy-issuer.local:8022
@@ -285,8 +309,8 @@ services:
       - ./playwright/helpers:/app/helpers
       - ./playwright/certs:/app/certs:ro
     depends_on:
-      waltid-web-wallet:
-        condition: service_healthy
+      waltid-proxy:
+        condition: service_started
       acapy-issuer:
         condition: service_healthy
       acapy-verifier:
