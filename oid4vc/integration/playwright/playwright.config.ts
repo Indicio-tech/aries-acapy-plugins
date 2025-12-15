@@ -39,8 +39,8 @@ export default defineConfig({
     /* Collect trace on failure for debugging */
     trace: 'retain-on-failure',
     
-    /* Record video for all tests */
-    video: 'on',
+    /* Record video on failure */
+    video: 'retain-on-failure',
     
     /* Screenshot on failure */
     screenshot: 'only-on-failure',
