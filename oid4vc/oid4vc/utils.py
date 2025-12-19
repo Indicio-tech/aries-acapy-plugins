@@ -3,6 +3,7 @@
 import argparse
 import json
 import secrets
+import sys
 from types import SimpleNamespace
 from typing import Dict
 
@@ -199,4 +200,5 @@ if __name__ == "__main__":
 
     jwk = verkey_to_jwk(args.verkey)
     jwks = {"keys": [jwk]}
-    print(json.dumps(jwks))
+    sys.stdout.write(json.dumps(jwks))
+    sys.stdout.write("\n")

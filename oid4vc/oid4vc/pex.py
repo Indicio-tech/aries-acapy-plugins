@@ -321,6 +321,112 @@ class PresentationExchangeEvaluator:
         ]
         return cls(definition.id, descriptors)
 
+    def _extract_vc_from_presentation(
+        self,
+        item: DescriptorMap,
+        presentation: Mapping[str, Any],
+    ) -> tuple[Any, str]:
+        """Extract the verifiable credential from the presentation.
+
+        Args:
+            item: The descriptor map item
+            presentation: The presentation mapping
+
+        Returns:
+            Tuple of (vc, format) where vc is the extracted credential
+        """
+        if item.path_nested:
+            assert item.path_nested.path
+            path = jsonpath.parse(item.path_nested.path)
+            values = path.find(presentation)
+            if len(values) != 1:
+                raise ValueError(
+                    f"More than one value found for path {item.path_nested.path}"
+                )
+            return values[0].value, item.path_nested.fmt
+
+        if item.path:
+            try:
+                path = jsonpath.parse(item.path)
+                values = path.find(presentation)
+                if len(values) == 1:
+                    return values[0].value, item.fmt
+            except Exception:
+                pass
+
+        return presentation, item.fmt
+
+    async def _try_extract_mdoc_from_vp(
+        self,
+        profile: Profile,
+        result: CredVerifyResult,
+        evaluator: DescriptorEvaluator,
+    ) -> CredVerifyResult:
+        """Try to extract and verify mso_mdoc from a VP payload.
+
+        Args:
+            profile: The profile for credential processing
+            result: The initial verification result
+            evaluator: The descriptor evaluator
+
+        Returns:
+            Updated verification result if mso_mdoc found, original otherwise
+        """
+        if "mso_mdoc" not in evaluator.formats:
+            return result
+
+        vp_payload = result.payload
+        LOGGER.info(f"PEX: Checking VP payload for mso_mdoc: {type(vp_payload)}")
+
+        if not vp_payload or not isinstance(vp_payload, dict):
+            return result
+
+        vcs = vp_payload.get("vp", {}).get(
+            "verifiableCredential"
+        ) or vp_payload.get("verifiableCredential")
+
+        LOGGER.info(
+            f"PEX: Extracted vcs from VP: {type(vcs)}, "
+            f"value preview: {str(vcs)[:200] if vcs else 'None'}"
+        )
+
+        if not vcs:
+            return result
+
+        if not isinstance(vcs, list):
+            vcs = [vcs]
+
+        processors = profile.inject(CredProcessors)
+        mdoc_processor = processors.cred_verifier_for_format("mso_mdoc")
+        LOGGER.info(f"PEX: mdoc_processor: {mdoc_processor}")
+
+        if not mdoc_processor:
+            return result
+
+        LOGGER.info("PEX: Attempting to extract and verify mso_mdoc from VP")
+        for inner_vc in vcs:
+            LOGGER.info(
+                f"PEX: Processing inner vc: {type(inner_vc)}, "
+                f"preview: {str(inner_vc)[:100]}"
+            )
+            try:
+                inner_result = await mdoc_processor.verify_credential(profile, inner_vc)
+                LOGGER.info(
+                    f"PEX: Inner verification result: verified={inner_result.verified}"
+                )
+                if inner_result.verified:
+                    LOGGER.info(
+                        f"PEX: Successfully verified inner mso_mdoc, "
+                        f"payload keys: {inner_result.payload.keys() if inner_result.payload else 'None'}"
+                    )
+                    return inner_result
+            except Exception as e:
+                LOGGER.warning(f"PEX: Failed to verify inner credential: {e}")
+                import traceback
+                LOGGER.warning(f"PEX: Traceback: {traceback.format_exc()}")
+
+        return result
+
     async def verify(
         self,
         profile: Profile,
@@ -340,6 +446,7 @@ class PresentationExchangeEvaluator:
 
         descriptor_id_to_claims = {}
         descriptor_id_to_fields = {}
+
         for item in submission.descriptor_maps or []:
             # TODO Check JWT VP generally, if format is jwt_vp
             evaluator = self._id_to_descriptor.get(item.id)
@@ -349,108 +456,40 @@ class PresentationExchangeEvaluator:
                 )
 
             LOGGER.info(
-                f"PEX: Processing descriptor map item: id={item.id}, fmt={item.fmt}, path={item.path}"
+                f"PEX: Processing descriptor map item: "
+                f"id={item.id}, fmt={item.fmt}, path={item.path}"
             )
 
+            # Extract VC from presentation
+            try:
+                vc, fmt = self._extract_vc_from_presentation(item, presentation)
+            except ValueError as e:
+                return PexVerifyResult(details=str(e))
+
+            # Verify the credential
             processors = profile.inject(CredProcessors)
-            if item.path_nested:
-                assert item.path_nested.path
-                path = jsonpath.parse(item.path_nested.path)
-                values = path.find(presentation)
-                if len(values) != 1:
-                    return PexVerifyResult(
-                        details="More than one value found for path "
-                        f"{item.path_nested.path}"
-                    )
-
-                vc = values[0].value
-                processor = processors.cred_verifier_for_format(item.path_nested.fmt)
-            else:
-                if item.path:
-                    try:
-                        path = jsonpath.parse(item.path)
-                        values = path.find(presentation)
-                        if len(values) == 1:
-                            vc = values[0].value
-                        else:
-                            vc = presentation
-                    except Exception:
-                        vc = presentation
-                else:
-                    vc = presentation
-                processor = processors.cred_verifier_for_format(item.fmt)
-
+            processor = processors.cred_verifier_for_format(fmt)
             LOGGER.info(
                 f"PEX: Verifying credential type {type(vc)} with processor {processor}"
             )
             result = await processor.verify_credential(profile, vc)
             LOGGER.info(f"PEX: Verification result: {result.verified}")
+
             if result.verified:
                 LOGGER.info(
-                    f"PEX: Payload keys: {result.payload.keys() if result.payload else 'None'}"
+                    f"PEX: Payload keys: "
+                    f"{result.payload.keys() if result.payload else 'None'}"
                 )
                 LOGGER.debug(
-                    f"PEX Payload: {json.dumps(result.payload) if result.payload else 'None'}"
+                    f"PEX Payload: "
+                    f"{json.dumps(result.payload) if result.payload else 'None'}"
                 )
 
-            LOGGER.info(
-                f"PEX: mso_mdoc extraction check: verified={result.verified}, path_nested={item.path_nested}, formats={evaluator.formats}"
-            )
-            if (
-                result.verified
-                and not item.path_nested
-                and "mso_mdoc" in evaluator.formats
-            ):
-                # Check if we have a VP that contains mDoc
-                vp_payload = result.payload
-                LOGGER.info(
-                    f"PEX: Checking VP payload for mso_mdoc: {type(vp_payload)}"
+            # Try to extract mso_mdoc from VP if applicable
+            if result.verified and not item.path_nested:
+                result = await self._try_extract_mdoc_from_vp(
+                    profile, result, evaluator
                 )
-                if vp_payload and isinstance(vp_payload, dict):
-                    vcs = vp_payload.get("vp", {}).get(
-                        "verifiableCredential"
-                    ) or vp_payload.get("verifiableCredential")
-                    LOGGER.info(
-                        f"PEX: Extracted vcs from VP: {type(vcs)}, value preview: {str(vcs)[:200] if vcs else 'None'}"
-                    )
-                    if vcs:
-                        if not isinstance(vcs, list):
-                            vcs = [vcs]
-
-                        mdoc_processor = processors.cred_verifier_for_format("mso_mdoc")
-                        LOGGER.info(f"PEX: mdoc_processor: {mdoc_processor}")
-                        if mdoc_processor:
-                            LOGGER.info(
-                                "PEX: Attempting to extract and verify mso_mdoc from VP"
-                            )
-                            for inner_vc in vcs:
-                                LOGGER.info(
-                                    f"PEX: Processing inner vc: {type(inner_vc)}, preview: {str(inner_vc)[:100]}"
-                                )
-                                try:
-                                    inner_result = (
-                                        await mdoc_processor.verify_credential(
-                                            profile, inner_vc
-                                        )
-                                    )
-                                    LOGGER.info(
-                                        f"PEX: Inner verification result: verified={inner_result.verified}"
-                                    )
-                                    if inner_result.verified:
-                                        LOGGER.info(
-                                            f"PEX: Successfully verified inner mso_mdoc, payload keys: {inner_result.payload.keys() if inner_result.payload else 'None'}"
-                                        )
-                                        result = inner_result
-                                        break
-                                except Exception as e:
-                                    LOGGER.warning(
-                                        f"PEX: Failed to verify inner credential: {e}"
-                                    )
-                                    import traceback
-
-                                    LOGGER.warning(
-                                        f"PEX: Traceback: {traceback.format_exc()}"
-                                    )
 
             if not result.verified:
                 LOGGER.debug(f"Credential verification failed: {result.payload}")

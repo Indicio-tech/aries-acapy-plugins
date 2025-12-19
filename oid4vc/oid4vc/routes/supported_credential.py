@@ -22,6 +22,87 @@ from ..models.supported_cred import SupportedCredential, SupportedCredentialSche
 from ..utils import supported_cred_is_unique
 from .constants import LOGGER
 
+# Fields allowed in SupportedCredential constructor
+_ALLOWED_SUPPORTED_CRED_FIELDS = {
+    "format",
+    "identifier",
+    "cryptographic_binding_methods_supported",
+    "cryptographic_suites_supported",
+    "proof_types_supported",
+    "display",
+    "format_data",
+    "vc_additional_data",
+}
+
+
+def _move_fields_to_vc_additional_data(body: Dict[str, Any]) -> None:
+    """Move top-level type/@context fields into vc_additional_data.
+
+    Args:
+        body: The request body (modified in-place)
+    """
+    vc_additional_data = body.get("vc_additional_data", {})
+    for field in ["type", "@context"]:
+        if field in body:
+            vc_additional_data[field] = body.pop(field)
+    if vc_additional_data:
+        body["vc_additional_data"] = vc_additional_data
+
+
+def _derive_jwt_vc_format_data(body: Dict[str, Any]) -> None:
+    """Derive format_data for jwt_vc_json from vc_additional_data.
+
+    Args:
+        body: The request body (modified in-place)
+    """
+    if body.get("format") != "jwt_vc_json" or body.get("format_data"):
+        return
+
+    derived_format_data = {}
+    if "vc_additional_data" in body:
+        if "type" in body["vc_additional_data"]:
+            derived_format_data["types"] = body["vc_additional_data"]["type"]
+        if "@context" in body["vc_additional_data"]:
+            derived_format_data["context"] = body["vc_additional_data"]["@context"]
+
+    if "credentialSubject" in body:
+        derived_format_data["credentialSubject"] = body.pop("credentialSubject")
+
+    if derived_format_data:
+        body["format_data"] = derived_format_data
+
+
+def _ensure_jwt_vc_additional_data(body: Dict[str, Any]) -> None:
+    """Ensure vc_additional_data has required fields for jwt_vc_json.
+
+    Args:
+        body: The request body (modified in-place)
+    """
+    if body.get("format") != "jwt_vc_json" or not body.get("format_data"):
+        return
+
+    format_data = body.get("format_data", {})
+    if "vc_additional_data" not in body:
+        body["vc_additional_data"] = {}
+
+    vc_additional = body["vc_additional_data"]
+
+    # Copy type/types from format_data if not already set
+    if "type" not in vc_additional:
+        if "type" in format_data:
+            vc_additional["type"] = format_data["type"]
+        elif "types" in format_data:
+            vc_additional["type"] = format_data["types"]
+
+    # Copy @context from format_data if not already set
+    if "@context" not in vc_additional:
+        if "context" in format_data:
+            vc_additional["@context"] = format_data["context"]
+        elif "@context" in format_data:
+            vc_additional["@context"] = format_data["@context"]
+        else:
+            vc_additional["@context"] = ["https://www.w3.org/2018/credentials/v1"]
+
 
 class SupportedCredCreateRequestSchema(OpenAPISchema):
     """Schema for SupportedCredCreateRequestSchema."""
@@ -123,72 +204,17 @@ async def supported_credential_create(request: web.Request):
             "`vct` is for SD JWT and `type` is for JWT VC"
         )
 
-    # Filter body to only include fields that SupportedCredential constructor expects
-    allowed_fields = {
-        "format",
-        "identifier",
-        "cryptographic_binding_methods_supported",
-        "cryptographic_suites_supported",
-        "proof_types_supported",
-        "display",
-        "format_data",
-        "vc_additional_data",
-    }
-
-    # Move top-level fields that should be in vc_additional_data
-    vc_additional_data = body.get("vc_additional_data", {})
-    for field in ["type", "@context"]:
-        if field in body:
-            vc_additional_data[field] = body.pop(field)
-
-    if vc_additional_data:
-        body["vc_additional_data"] = vc_additional_data
-
-    # If no explicit format_data provided for jwt_vc_json, derive a minimal one
-    # from the top-level fields commonly used by tests (type and @context).
-    if body.get("format") == "jwt_vc_json" and not body.get("format_data"):
-        derived_format_data = {}
-        if "vc_additional_data" in body:
-            if "type" in body["vc_additional_data"]:
-                derived_format_data["types"] = body["vc_additional_data"]["type"]
-            if "@context" in body["vc_additional_data"]:
-                derived_format_data["context"] = body["vc_additional_data"]["@context"]
-        # Include any provided credentialSubject structure if present under a
-        # common alias in body (some clients send it outside format_data)
-        if "credentialSubject" in body:
-            derived_format_data["credentialSubject"] = body.pop("credentialSubject")
-        if derived_format_data:
-            body["format_data"] = derived_format_data
-
-    # For jwt_vc_json with format_data, ensure vc_additional_data has required fields
-    # The JWT VC JSON credential must include @context and type in the vc claim
-    if body.get("format") == "jwt_vc_json" and body.get("format_data"):
-        if "vc_additional_data" not in body:
-            body["vc_additional_data"] = {}
-        # Copy type/types from format_data to vc_additional_data if not already set
-        if "type" not in body["vc_additional_data"]:
-            if "type" in format_data:
-                body["vc_additional_data"]["type"] = format_data["type"]
-            elif "types" in format_data:
-                body["vc_additional_data"]["type"] = format_data["types"]
-        # Copy @context from format_data to vc_additional_data if not already set
-        if "@context" not in body["vc_additional_data"]:
-            if "context" in format_data:
-                body["vc_additional_data"]["@context"] = format_data["context"]
-            elif "@context" in format_data:
-                body["vc_additional_data"]["@context"] = format_data["@context"]
-            else:
-                # Provide default W3C VC context if none specified
-                body["vc_additional_data"]["@context"] = [
-                    "https://www.w3.org/2018/credentials/v1"
-                ]
+    # Process body fields
+    _move_fields_to_vc_additional_data(body)
+    _derive_jwt_vc_format_data(body)
+    _ensure_jwt_vc_additional_data(body)
 
     # Filter to only allowed fields
-    filtered_body = {k: v for k, v in body.items() if k in allowed_fields}
+    filtered_body = {
+        k: v for k, v in body.items() if k in _ALLOWED_SUPPORTED_CRED_FIELDS
+    }
 
-    record = SupportedCredential(
-        **filtered_body,
-    )
+    record = SupportedCredential(**filtered_body)
 
     registered_processors = context.inject(CredProcessors)
     if record.format not in registered_processors.issuers:

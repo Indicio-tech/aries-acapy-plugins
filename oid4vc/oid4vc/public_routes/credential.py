@@ -153,6 +153,273 @@ def types_are_subset(request: Optional[List[str]], supported: Optional[List[str]
     return set(request).issubset(set(supported))
 
 
+class ExchangeContext:
+    """Container for exchange-related data retrieved during credential issuance."""
+
+    def __init__(
+        self,
+        ex_record: OID4VCIExchangeRecord,
+        supported: SupportedCredential,
+        is_offer: bool,
+    ):
+        """Initialize exchange context."""
+        self.ex_record = ex_record
+        self.supported = supported
+        self.is_offer = is_offer
+
+
+async def _retrieve_exchange_and_supported(
+    context: AdminRequestContext, refresh_id: str
+) -> ExchangeContext:
+    """Retrieve exchange record and supported credential.
+
+    Args:
+        context: The admin request context
+        refresh_id: The refresh ID from the token
+
+    Returns:
+        ExchangeContext with exchange record, supported credential, and is_offer flag
+
+    Raises:
+        web.HTTPNotFound: If no exchange record found
+        web.HTTPBadRequest: If storage error or missing format
+    """
+    try:
+        async with context.profile.session() as session:
+            ex_record = await OID4VCIExchangeRecord.retrieve_by_refresh_id(
+                session, refresh_id=refresh_id
+            )
+            if not ex_record:
+                raise StorageNotFoundError("No exchange record found")
+            is_offer = ex_record.state == OID4VCIExchangeRecord.STATE_OFFER_CREATED
+            supported = await SupportedCredential.retrieve_by_id(
+                session, ex_record.supported_cred_id
+            )
+    except StorageNotFoundError as err:
+        raise web.HTTPNotFound(reason="No credential offer available.") from err
+    except (StorageError, BaseModelError) as err:
+        raise web.HTTPBadRequest(reason=err.roll_up) from err
+
+    if not supported.format:
+        LOGGER.error("SupportedCredential missing format identifier.")
+        raise web.HTTPBadRequest(
+            reason="SupportedCredential missing format identifier."
+        )
+
+    return ExchangeContext(ex_record, supported, is_offer)
+
+
+def _validate_authorization(
+    token_payload: dict, supported_identifier: str, format_param: Optional[str]
+) -> None:
+    """Validate authorization details from token.
+
+    Args:
+        token_payload: The decoded token payload
+        supported_identifier: The supported credential identifier
+        format_param: The format parameter from request
+
+    Raises:
+        web.HTTPBadRequest: If authorization validation fails
+    """
+    authorization_details = token_payload.get("authorization_details", None)
+    if authorization_details:
+        found = any(
+            isinstance(ad, dict)
+            and ad.get("credential_configuration_id") == supported_identifier
+            for ad in authorization_details
+        )
+        if not found:
+            LOGGER.error(f"{supported_identifier} is not authorized by the token.")
+            raise web.HTTPBadRequest(
+                reason=f"{supported_identifier} is not authorized by the token."
+            )
+
+
+def _validate_credential_request(
+    credential_identifier: Optional[str], format_param: Optional[str]
+) -> Optional[web.Response]:
+    """Validate credential_identifier and format parameters.
+
+    Args:
+        credential_identifier: The credential identifier from request
+        format_param: The format parameter from request
+
+    Returns:
+        Error response if validation fails, None if valid
+    """
+    if not credential_identifier and not format_param:
+        LOGGER.error("Either credential_identifier or format parameter must be present")
+        return web.json_response(
+            {
+                "message": "Either credential_identifier or format parameter "
+                "must be present"
+            },
+            status=400,
+        )
+
+    if credential_identifier and format_param:
+        LOGGER.error("credential_identifier and format are mutually exclusive")
+        return web.json_response(
+            {"message": "credential_identifier and format are mutually exclusive"},
+            status=400,
+        )
+
+    return None
+
+
+def _derive_jwt_vc_format_data(supported: SupportedCredential) -> Optional[dict]:
+    """Derive format_data for jwt_vc_json format.
+
+    Args:
+        supported: The supported credential
+
+    Returns:
+        Derived format_data dict, or None if cannot derive
+    """
+    derived = {}
+    vad = getattr(supported, "vc_additional_data", None)
+    if isinstance(vad, dict):
+        if "type" in vad:
+            derived["types"] = vad["type"]
+        if "@context" in vad:
+            derived["context"] = vad["@context"]
+    return derived if derived else None
+
+
+def _ensure_format_data(
+    supported: SupportedCredential, body: dict
+) -> Optional[web.Response]:
+    """Ensure format_data exists, deriving it if necessary.
+
+    Args:
+        supported: The supported credential (may be modified)
+        body: The request body
+
+    Returns:
+        Error response if format_data cannot be derived, None if successful
+    """
+    if supported.format_data is not None:
+        return None
+
+    if supported.format == "jwt_vc_json":
+        derived = _derive_jwt_vc_format_data(supported)
+        if derived:
+            supported.format_data = derived
+        else:
+            LOGGER.error(
+                "No format_data for supported credential jwt_vc_json and "
+                "could not derive from vc_additional_data."
+            )
+            return web.json_response(
+                {"message": "No format_data for supported credential jwt_vc_json"},
+                status=400,
+            )
+    elif supported.format == "mso_mdoc":
+        req_doctype = body.get("doctype")
+        if req_doctype:
+            supported.format_data = {"doctype": req_doctype}
+        else:
+            LOGGER.error(
+                "No format_data for supported credential mso_mdoc and "
+                "missing doctype in request."
+            )
+            return web.json_response(
+                {
+                    "message": (
+                        "No format_data for supported credential mso_mdoc and "
+                        "missing doctype in request"
+                    )
+                },
+                status=400,
+            )
+    else:
+        LOGGER.error(
+            f"No format_data for supported credential {supported.format}."
+        )
+        return web.json_response(
+            {
+                "message": (
+                    f"No format_data for supported credential {supported.format}"
+                )
+            },
+            status=400,
+        )
+
+    return None
+
+
+async def _handle_proof(
+    context: AdminRequestContext,
+    proof_obj: Optional[dict],
+    c_nonce: str,
+    format_type: str,
+    ex_record: OID4VCIExchangeRecord,
+) -> tuple[Optional[PopResult], Optional[web.Response]]:
+    """Handle proof of possession verification.
+
+    Args:
+        context: The admin request context
+        proof_obj: The proof object from request
+        c_nonce: The challenge nonce
+        format_type: The credential format type
+        ex_record: The exchange record
+
+    Returns:
+        Tuple of (PopResult, None) on success, or (None, error_response) on failure
+    """
+    if format_type == "mso_mdoc":
+        if not isinstance(proof_obj, dict):
+            LOGGER.error("proof is required for mso_mdoc")
+            return None, web.json_response(
+                {"message": "proof is required for mso_mdoc"}, status=400
+            )
+
+        if "jwt" in proof_obj:
+            try:
+                pop = await handle_proof_of_posession(
+                    context.profile, proof_obj, c_nonce
+                )
+                return pop, None
+            except web.HTTPBadRequest as exc:
+                LOGGER.error(f"Proof verification failed (mso_mdoc/jwt): {exc.reason}")
+                return None, web.json_response({"message": exc.reason}, status=400)
+        elif "cwt" in proof_obj or proof_obj.get("proof_type") == "cwt":
+            try:
+                pop = await handle_proof_of_posession(
+                    context.profile, proof_obj, c_nonce
+                )
+                return pop, None
+            except web.HTTPBadRequest as exc:
+                LOGGER.error(f"Proof verification failed (mso_mdoc/cwt): {exc.reason}")
+                return None, web.json_response({"message": exc.reason}, status=400)
+        else:
+            LOGGER.error("Unsupported proof type")
+            return None, web.json_response(
+                {"message": "Unsupported proof type"}, status=400
+            )
+    else:
+        # jwt_vc_json and other formats: proof is optional
+        if isinstance(proof_obj, dict) and "jwt" in proof_obj:
+            try:
+                pop = await handle_proof_of_posession(
+                    context.profile, proof_obj, c_nonce
+                )
+                return pop, None
+            except web.HTTPBadRequest as exc:
+                LOGGER.error(f"Proof verification failed (jwt_vc_json): {exc.reason}")
+                return None, web.json_response({"message": exc.reason}, status=400)
+
+        # No proof or no holder key material - use exchange's verification method
+        return PopResult(
+            headers={},
+            payload={},
+            verified=True,
+            holder_kid=ex_record.verification_method,
+            holder_jwk=None,
+        ), None
+
+
 class IssueCredentialRequestSchema(OpenAPISchema):
     """Request schema for the /credential endpoint.
 
@@ -224,51 +491,23 @@ async def issue_cred(request: web.Request):
     credential_identifier = body.get("credential_identifier")
     format_param = body.get("format")
 
-    try:
-        async with context.profile.session() as session:
-            ex_record = await OID4VCIExchangeRecord.retrieve_by_refresh_id(
-                session, refresh_id=refresh_id
-            )
-            if not ex_record:
-                raise StorageNotFoundError("No exchange record found")
-            is_offer = (
-                True
-                if ex_record.state == OID4VCIExchangeRecord.STATE_OFFER_CREATED
-                else False
-            )
-            supported = await SupportedCredential.retrieve_by_id(
-                session, ex_record.supported_cred_id
-            )
-    except StorageNotFoundError as err:
-        raise web.HTTPNotFound(reason="No credential offer available.") from err
-    except (StorageError, BaseModelError) as err:
-        raise web.HTTPBadRequest(reason=err.roll_up) from err
+    # Retrieve exchange record and supported credential
+    exchange_ctx = await _retrieve_exchange_and_supported(context, refresh_id)
+    ex_record = exchange_ctx.ex_record
+    supported = exchange_ctx.supported
+    is_offer = exchange_ctx.is_offer
 
-    if not supported.format:
-        LOGGER.error("SupportedCredential missing format identifier.")
-        raise web.HTTPBadRequest(
-            reason="SupportedCredential missing format identifier."
-        )
-
+    # Validate format matches
     if format_param and supported.format != format_param:
         LOGGER.error(
             f"Requested format {format_param} does not match offer {supported.format}."
         )
         raise web.HTTPBadRequest(reason="Requested format does not match offer.")
 
-    authorization_details = token_result.payload.get("authorization_details", None)
-    if authorization_details:
-        found = any(
-            isinstance(ad, dict)
-            and ad.get("credential_configuration_id") == supported.identifier
-            for ad in authorization_details
-        )
-        if not found:
-            LOGGER.error(f"{supported.identifier} is not authorized by the token.")
-            raise web.HTTPBadRequest(
-                reason=f"{supported.identifier} is not authorized by the token."
-            )
+    # Validate authorization details
+    _validate_authorization(token_result.payload, supported.identifier, format_param)
 
+    # Validate nonce exists
     c_nonce = token_result.payload.get("c_nonce") or ex_record.nonce
     if c_nonce is None:
         LOGGER.error("Invalid exchange; no offer created for this request")
@@ -276,45 +515,15 @@ async def issue_cred(request: web.Request):
             reason="Invalid exchange; no offer created for this request"
         )
 
-    if not credential_identifier and not format_param:
-        LOGGER.error("Either credential_identifier or format parameter must be present")
-        return web.json_response(
-            {
-                "message": "Either credential_identifier or format parameter "
-                "must be present"
-            },
-            status=400,
-        )
+    # Validate credential_identifier and format parameters
+    error_response = _validate_credential_request(credential_identifier, format_param)
+    if error_response:
+        return error_response
 
-    if credential_identifier and format_param:
-        LOGGER.error("credential_identifier and format are mutually exclusive")
-        return web.json_response(
-            {"message": "credential_identifier and format are mutually exclusive"},
-            status=400,
-        )
-
-    # Select the supported credential to issue based on the request, if possible.
-    # If not found, fall back to the exchange's supported credential.
-    async with context.profile.session() as session:
-        selected_supported = supported
-        if credential_identifier:
-            try:
-                matches = await SupportedCredential.query(
-                    session, tag_filter={"identifier": credential_identifier}
-                )
-                if matches:
-                    selected_supported = matches[0]
-            except Exception:
-                selected_supported = supported
-        # elif format_param:
-        #     try:
-        #         matches = await SupportedCredential.query(
-        #             session, tag_filter={"format": format_param}
-        #         )
-        #         if matches:
-        #             selected_supported = matches[0]
-        #     except Exception:
-        #         selected_supported = supported
+    # Select the supported credential to issue based on the request
+    selected_supported = await _select_supported_credential(
+        context, credential_identifier, supported
+    )
 
     if not selected_supported.format:
         LOGGER.error("Supported credential has no format")
@@ -322,142 +531,35 @@ async def issue_cred(request: web.Request):
             {"message": "Supported credential has no format"}, status=500
         )
 
-    if credential_identifier:
-        if credential_identifier != selected_supported.identifier:
-            LOGGER.error(
-                f"Requested credential_identifier {credential_identifier} "
-                f"does not match offered credential {selected_supported.identifier}"
-            )
-            return web.json_response(
-                {
-                    "error": "invalid_request",
-                    "message": f"Requested credential_identifier {credential_identifier} "
-                    f"does not match offered credential {selected_supported.identifier}",
-                },
-                status=400,
-            )
-
-    if c_nonce is None:
+    # Validate credential_identifier matches selected credential
+    if credential_identifier and credential_identifier != selected_supported.identifier:
+        LOGGER.error(
+            f"Requested credential_identifier {credential_identifier} "
+            f"does not match offered credential {selected_supported.identifier}"
+        )
         return web.json_response(
-            {"message": "Invalid exchange; no offer created for this request"},
+            {
+                "error": "invalid_request",
+                "message": f"Requested credential_identifier {credential_identifier} "
+                f"does not match offered credential {selected_supported.identifier}",
+            },
             status=400,
         )
 
-    # Ensure format_data exists; derive minimal data for known formats if missing
-    if selected_supported.format_data is None:
-        if selected_supported.format == "jwt_vc_json":
-            derived = {}
-            # Try to derive from vc_additional_data if available
-            vad = getattr(selected_supported, "vc_additional_data", None)
-            if isinstance(vad, dict):
-                if "type" in vad:
-                    derived["types"] = vad["type"]
-                if "@context" in vad:
-                    derived["context"] = vad["@context"]
-            if derived:
-                selected_supported.format_data = derived
-            else:
-                LOGGER.error(
-                    "No format_data for supported credential jwt_vc_json and "
-                    "could not derive from vc_additional_data."
-                )
-                return web.json_response(
-                    {
-                        "message": "No format_data for supported credential jwt_vc_json",
-                    },
-                    status=400,
-                )
-        elif selected_supported.format == "mso_mdoc":
-            # For mso_mdoc, derive minimal format_data from request doctype if present
-            req_doctype = body.get("doctype")
-            if req_doctype:
-                selected_supported.format_data = {"doctype": req_doctype}
-            else:
-                LOGGER.error(
-                    "No format_data for supported credential mso_mdoc and "
-                    "missing doctype in request."
-                )
-                return web.json_response(
-                    {
-                        "message": (
-                            "No format_data for supported credential mso_mdoc and "
-                            "missing doctype in request"
-                        )
-                    },
-                    status=400,
-                )
-        else:
-            LOGGER.error(
-                f"No format_data for supported credential {selected_supported.format}."
-            )
-            return web.json_response(
-                {
-                    "message": (
-                        "No format_data for supported credential "
-                        f"{selected_supported.format}"
-                    )
-                },
-                status=400,
-            )
+    # Ensure format_data exists
+    error_response = _ensure_format_data(selected_supported, body)
+    if error_response:
+        return error_response
 
-    # OID4VCI 1.0 § 7.2.1: Proof of possession handling
-    # - For mso_mdoc: proof is REQUIRED, but we currently do not parse CWT in detail.
-    # - For jwt_vc_json: proof MAY be provided. When a JWT is present, enforce
-    #   full OID4VCI v1.0 verification (typ, nonce, and signature).
+    # Handle proof of possession
     proof_obj = body.get("proof")
-    pop: Optional[PopResult] = None
+    pop, error_response = await _handle_proof(
+        context, proof_obj, c_nonce, selected_supported.format, ex_record
+    )
+    if error_response:
+        return error_response
 
-    if selected_supported.format == "mso_mdoc":
-        # Require a proof object for mso_mdoc
-        if not isinstance(proof_obj, dict):
-            LOGGER.error("proof is required for mso_mdoc")
-            return web.json_response(
-                {"message": "proof is required for mso_mdoc"}, status=400
-            )
-        # Accept either JWT (with proper typ) or CWT placeholder without deep verification
-        if "jwt" in proof_obj:
-            # Strictly verify the JWT proof (typ, nonce, signature)
-            try:
-                pop = await handle_proof_of_posession(
-                    context.profile, proof_obj, c_nonce
-                )
-            except web.HTTPBadRequest as exc:
-                LOGGER.error(f"Proof verification failed (mso_mdoc/jwt): {exc.reason}")
-                return web.json_response({"message": exc.reason}, status=400)
-        elif "cwt" in proof_obj or proof_obj.get("proof_type") == "cwt":
-            # Strictly verify the CWT proof
-            try:
-                pop = await handle_proof_of_posession(
-                    context.profile, proof_obj, c_nonce
-                )
-            except web.HTTPBadRequest as exc:
-                LOGGER.error(f"Proof verification failed (mso_mdoc/cwt): {exc.reason}")
-                return web.json_response({"message": exc.reason}, status=400)
-        else:
-            LOGGER.error("Unsupported proof type")
-            return web.json_response({"message": "Unsupported proof type"}, status=400)
-    else:
-        # jwt_vc_json and other formats: proof is optional.
-        if isinstance(proof_obj, dict) and "jwt" in proof_obj:
-            # Strictly verify the JWT proof (typ, nonce, signature)
-            try:
-                pop = await handle_proof_of_posession(
-                    context.profile, proof_obj, c_nonce
-                )
-            except web.HTTPBadRequest as exc:
-                LOGGER.error(f"Proof verification failed (jwt_vc_json): {exc.reason}")
-                return web.json_response({"message": exc.reason}, status=400)
-        # If no proof or no holder key material, fall back to using the exchange's
-        # verification method
-        if pop is None:
-            pop = PopResult(
-                headers={},
-                payload={},
-                verified=True,
-                holder_kid=ex_record.verification_method,
-                holder_jwk=None,
-            )
-
+    # Issue the credential
     try:
         processors = context.inject(CredProcessors)
         processor = processors.issuer_for_format(selected_supported.format)
@@ -466,20 +568,16 @@ async def issue_cred(request: web.Request):
             body, selected_supported, ex_record, pop, context
         )
     except CredProcessorError as e:
-        # Ensure the underlying error text is returned for debugging
         LOGGER.error(f"Credential processing failed: {e}")
         return web.json_response({"message": str(e)}, status=400)
-    except Exception as e:  # Ensure JSON error body for unexpected failures
+    except Exception as e:
         LOGGER.exception("Unexpected error during credential issuance")
         return web.json_response({"message": str(e)}, status=500)
 
+    # Update exchange record state
     async with context.session() as session:
         ex_record.state = OID4VCIExchangeRecord.STATE_ISSUED
-        # Cause webhook to be emitted
         await ex_record.save(session, reason="Credential issued")
-        # Exchange is completed, record can be cleaned up
-        # But we'll leave it to the controller
-        # await ex_record.delete_record(session)
 
     cred_response = {
         "format": supported.format,
@@ -491,3 +589,34 @@ async def issue_cred(request: web.Request):
 
     LOGGER.info(f"Sending credential response: {cred_response}")
     return web.json_response(cred_response)
+
+
+async def _select_supported_credential(
+    context: AdminRequestContext,
+    credential_identifier: Optional[str],
+    default_supported: SupportedCredential,
+) -> SupportedCredential:
+    """Select the supported credential based on credential_identifier.
+
+    Args:
+        context: The admin request context
+        credential_identifier: The credential identifier from request
+        default_supported: The default supported credential from exchange
+
+    Returns:
+        The selected SupportedCredential
+    """
+    if not credential_identifier:
+        return default_supported
+
+    async with context.profile.session() as session:
+        try:
+            matches = await SupportedCredential.query(
+                session, tag_filter={"identifier": credential_identifier}
+            )
+            if matches:
+                return matches[0]
+        except Exception:
+            pass
+
+    return default_supported

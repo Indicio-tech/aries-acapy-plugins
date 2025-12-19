@@ -40,6 +40,99 @@ from isomdl_uniffi import Mdoc  # ISO 18013-5 § 8.3: Mobile document structure
 LOGGER = logging.getLogger(__name__)
 
 
+def _prepare_mdl_namespaces(payload: Mapping[str, Any]) -> dict:
+    """Prepare namespaces for mDL doctype.
+
+    Args:
+        payload: The credential payload
+
+    Returns:
+        Dictionary of namespaces with CBOR-encoded values
+    """
+    namespaces = {}
+
+    # Extract mDL items from payload if wrapped in namespace
+    mdl_payload = payload.get("org.iso.18013.5.1", payload)
+    mdl_ns = {}
+    for k, v in mdl_payload.items():
+        if k == "org.iso.18013.5.1.aamva":
+            continue
+        mdl_ns[k] = cbor2.dumps(v)
+    namespaces["org.iso.18013.5.1"] = mdl_ns
+
+    # Handle AAMVA namespace
+    aamva_payload = payload.get("org.iso.18013.5.1.aamva")
+    if aamva_payload:
+        aamva_ns = {k: cbor2.dumps(v) for k, v in aamva_payload.items()}
+        namespaces["org.iso.18013.5.1.aamva"] = aamva_ns
+
+    return namespaces
+
+
+def _prepare_generic_namespaces(doctype: str, payload: Mapping[str, Any]) -> dict:
+    """Prepare namespaces for generic doctypes.
+
+    Args:
+        doctype: The document type
+        payload: The credential payload
+
+    Returns:
+        Dictionary of namespaces with CBOR-encoded values
+    """
+    encoded_payload = {k: cbor2.dumps(v) for k, v in payload.items()}
+    return {doctype: encoded_payload}
+
+
+def _patch_mdoc_keys(mdoc_b64: str) -> str:
+    """Patch mdoc CBOR keys to match ISO 18013-5 spec.
+
+    Fixes key naming: issuer_auth -> issuerAuth, namespaces -> nameSpaces
+
+    Args:
+        mdoc_b64: Base64url-encoded mdoc
+
+    Returns:
+        Patched base64url-encoded mdoc
+    """
+    # Add padding if needed
+    pad = len(mdoc_b64) % 4
+    mdoc_b64_padded = mdoc_b64 + "=" * (4 - pad) if pad > 0 else mdoc_b64
+
+    mdoc_bytes = base64.urlsafe_b64decode(mdoc_b64_padded)
+    mdoc_map = cbor2.loads(mdoc_bytes)
+
+    patched = False
+    if "issuer_auth" in mdoc_map:
+        LOGGER.info("Patching issuer_auth to issuerAuth in mdoc")
+        mdoc_map["issuerAuth"] = mdoc_map.pop("issuer_auth")
+        patched = True
+
+    if "namespaces" in mdoc_map:
+        LOGGER.info("Patching namespaces to nameSpaces in mdoc")
+        namespaces = mdoc_map.pop("namespaces")
+        fixed_namespaces = {}
+        for ns, items in namespaces.items():
+            if isinstance(items, dict):
+                fixed_namespaces[ns] = list(items.values())
+            else:
+                fixed_namespaces[ns] = items
+        mdoc_map["nameSpaces"] = fixed_namespaces
+        patched = True
+
+    if not patched:
+        return mdoc_b64
+
+    # Construct IssuerSigned object
+    issuer_signed = {}
+    if "issuerAuth" in mdoc_map:
+        issuer_signed["issuerAuth"] = mdoc_map["issuerAuth"]
+    if "nameSpaces" in mdoc_map:
+        issuer_signed["nameSpaces"] = mdoc_map["nameSpaces"]
+
+    patched_bytes = cbor2.dumps(issuer_signed)
+    return base64.urlsafe_b64encode(patched_bytes).decode("ascii").rstrip("=")
+
+
 def isomdl_mdoc_sign(
     jwk: dict,
     headers: Mapping[str, Any],
@@ -83,114 +176,31 @@ def isomdl_mdoc_sign(
         LOGGER.info(f"iaca_cert_pem length: {len(iaca_cert_pem)}")
         LOGGER.info(f"iaca_key_pem length: {len(iaca_key_pem)}")
 
+        # Prepare namespaces based on doctype
         if doctype == "org.iso.18013.5.1.mDL":
-            namespaces = {}
-
-            # Handle mDL namespace
-            # Extract mDL items from payload if wrapped in namespace
-            mdl_payload = payload.get("org.iso.18013.5.1", payload)
-            mdl_ns = {}
-            for k, v in mdl_payload.items():
-                # Skip nested namespaces if we are processing the wrapper
-                if k == "org.iso.18013.5.1.aamva":
-                    continue
-                mdl_ns[k] = cbor2.dumps(v)
-            namespaces["org.iso.18013.5.1"] = mdl_ns
-
-            # Handle AAMVA namespace
-            aamva_payload = payload.get("org.iso.18013.5.1.aamva")
-            if aamva_payload:
-                aamva_ns = {}
-                for k, v in aamva_payload.items():
-                    aamva_ns[k] = cbor2.dumps(v)
-                namespaces["org.iso.18013.5.1.aamva"] = aamva_ns
-
-            LOGGER.info(f"Creating mdoc with namespaces: {list(namespaces.keys())}")
-
-            mdoc = Mdoc.create_and_sign(
-                doctype,
-                namespaces,
-                holder_jwk,
-                iaca_cert_pem,
-                iaca_key_pem,
-            )
+            namespaces = _prepare_mdl_namespaces(payload)
         else:
-            # For generic doctypes, we assume the payload belongs to the namespace
-            # equal to the doctype. This supports the generic use case where claims
-            # are in the main namespace
+            namespaces = _prepare_generic_namespaces(doctype, payload)
 
-            # Encode payload values to CBOR bytes as expected by create_and_sign
-            encoded_payload = {}
-            for k, v in payload.items():
-                encoded_payload[k] = cbor2.dumps(v)
+        LOGGER.info(f"Creating mdoc with namespaces: {list(namespaces.keys())}")
 
-            namespaces = {doctype: encoded_payload}
-
-            mdoc = Mdoc.create_and_sign(
-                doctype,
-                namespaces,
-                holder_jwk,
-                iaca_cert_pem,
-                iaca_key_pem,
-            )
+        mdoc = Mdoc.create_and_sign(
+            doctype,
+            namespaces,
+            holder_jwk,
+            iaca_cert_pem,
+            iaca_key_pem,
+        )
 
         LOGGER.info("Generated mdoc with doctype: %s", mdoc.doctype())
 
-        # Return the stringified CBOR
+        # Get stringified CBOR and patch keys to match spec
         mdoc_b64 = mdoc.stringify()
-
-        # Patch: isomdl returns 'issuer_auth' but spec requires 'issuerAuth'
-        # We decode, fix the key, and re-encode.
         try:
-            # Add padding if needed
-            pad = len(mdoc_b64) % 4
-            if pad > 0:
-                mdoc_b64_padded = mdoc_b64 + "=" * (4 - pad)
-            else:
-                mdoc_b64_padded = mdoc_b64
-
-            mdoc_bytes = base64.urlsafe_b64decode(mdoc_b64_padded)
-            mdoc_map = cbor2.loads(mdoc_bytes)
-
-            patched = False
-            if "issuer_auth" in mdoc_map:
-                LOGGER.info("Patching issuer_auth to issuerAuth in mdoc")
-                mdoc_map["issuerAuth"] = mdoc_map.pop("issuer_auth")
-                patched = True
-
-            if "namespaces" in mdoc_map:
-                LOGGER.info("Patching namespaces to nameSpaces in mdoc")
-                namespaces = mdoc_map.pop("namespaces")
-                # Convert dict of items to list of items as per ISO 18013-5
-                fixed_namespaces = {}
-                for ns, items in namespaces.items():
-                    if isinstance(items, dict):
-                        fixed_namespaces[ns] = list(items.values())
-                    else:
-                        fixed_namespaces[ns] = items
-                mdoc_map["nameSpaces"] = fixed_namespaces
-                patched = True
-
-            if patched:
-                # Construct IssuerSigned object (filter out internal fields like 'id', 'mso')
-                issuer_signed = {}
-                if "issuerAuth" in mdoc_map:
-                    issuer_signed["issuerAuth"] = mdoc_map["issuerAuth"]
-                if "nameSpaces" in mdoc_map:
-                    issuer_signed["nameSpaces"] = mdoc_map["nameSpaces"]
-
-                # Re-encode
-                patched_bytes = cbor2.dumps(issuer_signed)
-                patched_b64 = (
-                    base64.urlsafe_b64encode(patched_bytes).decode("ascii").rstrip("=")
-                )
-                return patched_b64
-
+            return _patch_mdoc_keys(mdoc_b64)
         except Exception as e:
             LOGGER.warning(f"Failed to patch mdoc keys: {e}")
-            # Fallback to original if patching fails
-
-        return mdoc_b64
+            return mdoc_b64
 
     except Exception as ex:
         LOGGER.error("Failed to create mdoc with isomdl: %s", ex)

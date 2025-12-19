@@ -195,6 +195,101 @@ class WalletTrustStore:
         self._cached_anchors = None
 
 
+def _is_preverified_claims_dict(credential: Any) -> bool:
+    """Check if credential is a pre-verified claims dict from presentation.
+
+    Args:
+        credential: The credential to check
+
+    Returns:
+        True if credential is a pre-verified claims dict
+    """
+    if not isinstance(credential, dict):
+        return False
+    return any(
+        key.startswith("org.iso.") or key == "status"
+        for key in credential.keys()
+    )
+
+
+def _parse_string_credential(credential: str) -> Optional[Any]:
+    """Parse a string credential into an Mdoc object.
+
+    Tries multiple formats: hex, base64url IssuerSigned, base64url DeviceResponse.
+
+    Args:
+        credential: String credential to parse
+
+    Returns:
+        Parsed Mdoc object or None if parsing fails
+    """
+    # Try hex first (full DeviceResponse)
+    try:
+        if all(c in "0123456789abcdefABCDEF" for c in credential):
+            LOGGER.debug("Trying to parse credential as hex DeviceResponse")
+            return isomdl_uniffi.Mdoc.from_string(credential)
+    except Exception as hex_err:
+        LOGGER.debug(f"Hex parsing failed: {hex_err}")
+
+    # Try base64url-encoded IssuerSigned
+    try:
+        LOGGER.debug("Trying to parse credential as base64url IssuerSigned")
+        return isomdl_uniffi.Mdoc.new_from_base64url_encoded_issuer_signed(
+            credential, "verified-inner"
+        )
+    except Exception as issuer_signed_err:
+        LOGGER.debug(f"IssuerSigned parsing failed: {issuer_signed_err}")
+
+    # Try base64url decoding to hex, then DeviceResponse parsing
+    try:
+        LOGGER.debug("Trying to parse credential as base64url DeviceResponse")
+        padded = (
+            credential + "=" * (4 - len(credential) % 4)
+            if len(credential) % 4
+            else credential
+        )
+        standard_b64 = padded.replace("-", "+").replace("_", "/")
+        decoded_bytes = base64.b64decode(standard_b64)
+        return isomdl_uniffi.Mdoc.from_string(decoded_bytes.hex())
+    except Exception as b64_err:
+        LOGGER.debug(f"Base64 parsing failed: {b64_err}")
+
+    # Last resort: try direct string parsing
+    try:
+        return isomdl_uniffi.Mdoc.from_string(credential)
+    except Exception:
+        return None
+
+
+def _extract_mdoc_claims(mdoc: Any) -> dict:
+    """Extract claims from an Mdoc object.
+
+    Args:
+        mdoc: The Mdoc object
+
+    Returns:
+        Dictionary of namespaced claims
+    """
+    claims = {}
+    try:
+        details = mdoc.details()
+        LOGGER.debug(f"mdoc details keys: {list(details.keys())}")
+        for namespace, elements in details.items():
+            ns_claims = {}
+            for element in elements:
+                if element.value:
+                    try:
+                        ns_claims[element.identifier] = json.loads(element.value)
+                    except json.JSONDecodeError:
+                        ns_claims[element.identifier] = element.value
+                else:
+                    ns_claims[element.identifier] = None
+            claims[namespace] = ns_claims
+    except Exception as e:
+        LOGGER.warning(f"Failed to extract claims from mdoc: {e}")
+    return claims
+
+
 class MsoMdocCredVerifier(CredVerifier):
     """Verifier for mso_mdoc credentials."""
 
@@ -214,11 +309,6 @@ class MsoMdocCredVerifier(CredVerifier):
         2. Pre-verified claims dict - already verified by verify_presentation,
            contains namespaced claims extracted from DeviceResponse
 
-        The second case occurs because mso_mdoc presentations (DeviceResponse)
-        contain embedded credentials that are verified together with the
-        presentation, unlike JWT-VC where presentation and credential are
-        verified separately.
-
         Args:
             profile: The profile for context
             credential: The credential to verify (bytes, hex string, or claims dict)
@@ -227,79 +317,16 @@ class MsoMdocCredVerifier(CredVerifier):
             VerifyResult: The verification result
         """
         try:
-            # If credential is already a dict with namespaced claims structure,
-            # it was extracted and verified by verify_presentation.
-            # We validate it has the expected structure and return it.
-            if isinstance(credential, dict):
-                # Check for mso_mdoc namespace structure (e.g., "org.iso.18013.5.1")
-                # or verification status markers
-                has_namespace = any(
-                    key.startswith("org.iso.") or key == "status"
-                    for key in credential.keys()
-                )
-                if has_namespace:
-                    LOGGER.debug(
-                        "Credential is pre-verified claims dict from presentation"
-                    )
-                    return VerifyResult(verified=True, payload=credential)
+            # Check if credential is pre-verified claims dict
+            if _is_preverified_claims_dict(credential):
+                LOGGER.debug("Credential is pre-verified claims dict from presentation")
+                return VerifyResult(verified=True, payload=credential)
 
-            # Basic parsing check for raw credential data
+            # Parse credential to Mdoc object
             mdoc = None
             if isinstance(credential, str):
-                # Credential could be:
-                # 1. hex-encoded DeviceResponse CBOR
-                # 2. base64url-encoded DeviceResponse CBOR
-                # 3. base64url-encoded IssuerSigned CBOR (from VP inner credential)
-
-                # Try hex first (full DeviceResponse)
-                try:
-                    if all(c in "0123456789abcdefABCDEF" for c in credential):
-                        LOGGER.debug("Trying to parse credential as hex DeviceResponse")
-                        mdoc = isomdl_uniffi.Mdoc.from_string(credential)
-                    else:
-                        raise ValueError("Not hex, try base64url methods")
-                except Exception as hex_err:
-                    LOGGER.debug(f"Hex parsing failed: {hex_err}")
-
-                    # Try base64url-encoded IssuerSigned (common for VP inner credentials)
-                    try:
-                        LOGGER.debug(
-                            "Trying to parse credential as base64url IssuerSigned"
-                        )
-                        # new_from_base64url_encoded_issuer_signed requires (credential, key_alias)
-                        # key_alias is a simple string identifier, not critical for verification
-                        mdoc = (
-                            isomdl_uniffi.Mdoc.new_from_base64url_encoded_issuer_signed(
-                                credential, "verified-inner"
-                            )
-                        )
-                    except Exception as issuer_signed_err:
-                        LOGGER.debug(
-                            f"IssuerSigned parsing failed: {issuer_signed_err}"
-                        )
-
-                        # Try base64url decoding to hex, then DeviceResponse parsing
-                        try:
-                            LOGGER.debug(
-                                "Trying to parse credential as base64url DeviceResponse"
-                            )
-                            padded = (
-                                credential + "=" * (4 - len(credential) % 4)
-                                if len(credential) % 4
-                                else credential
-                            )
-                            standard_b64 = padded.replace("-", "+").replace("_", "/")
-                            decoded_bytes = base64.b64decode(standard_b64)
-                            mdoc = isomdl_uniffi.Mdoc.from_string(decoded_bytes.hex())
-                        except Exception as b64_err:
-                            LOGGER.warning(
-                                f"All parsing methods failed. Hex: {hex_err}, IssuerSigned: {issuer_signed_err}, Base64: {b64_err}"
-                            )
-                            # Last resort: try direct string parsing
-                            mdoc = isomdl_uniffi.Mdoc.from_string(credential)
-
+                mdoc = _parse_string_credential(credential)
             elif isinstance(credential, bytes):
-                # Convert bytes to hex string for parsing
                 mdoc = isomdl_uniffi.Mdoc.from_string(credential.hex())
 
             if not mdoc:
@@ -307,9 +334,7 @@ class MsoMdocCredVerifier(CredVerifier):
                     verified=False, payload={"error": "Invalid credential format"}
                 )
 
-            # Get trust anchors if available
-            # Note: verify_issuer_signature expects plain PEM strings, NOT JSON
-            # For WalletTrustStore, refresh cache before getting anchors since we're in async context
+            # Refresh trust store cache if needed
             if self.trust_store and isinstance(self.trust_store, WalletTrustStore):
                 await self.trust_store.refresh_cache()
 
@@ -319,48 +344,19 @@ class MsoMdocCredVerifier(CredVerifier):
 
             # Verify issuer signature
             try:
-                # Enable intermediate certificate chaining by default
                 verification_result = mdoc.verify_issuer_signature(trust_anchors, True)
 
                 if verification_result.verified:
-                    # Extract claims from mdoc details
-                    claims = {}
-                    try:
-                        details = mdoc.details()
-                        LOGGER.debug(f"mdoc details keys: {list(details.keys())}")
-                        for namespace, elements in details.items():
-                            # Namespace is a string alias
-                            ns_claims = {}
-                            for element in elements:
-                                # element.value is a JSON string
-                                if element.value:
-                                    try:
-                                        ns_claims[element.identifier] = json.loads(
-                                            element.value
-                                        )
-                                    except json.JSONDecodeError:
-                                        ns_claims[element.identifier] = element.value
-                                else:
-                                    ns_claims[element.identifier] = None
-                            claims[namespace] = ns_claims
-                    except Exception as e:
-                        LOGGER.warning(f"Failed to extract claims from mdoc: {e}")
-
+                    claims = _extract_mdoc_claims(mdoc)
                     payload = {
                         "status": "verified",
                         "doctype": mdoc.doctype(),
                         "id": str(mdoc.id()),
                         "issuer_common_name": verification_result.common_name,
                     }
-                    # Merge claims into payload so they are at the top level for PEX matching
                     payload.update(claims)
-
                     LOGGER.debug(f"Mdoc Payload: {json.dumps(payload)}")
-
-                    return VerifyResult(
-                        verified=True,
-                        payload=payload,
-                    )
+                    return VerifyResult(verified=True, payload=payload)
                 else:
                     return VerifyResult(
                         verified=False,
@@ -385,6 +381,160 @@ class MsoMdocCredVerifier(CredVerifier):
         except Exception as e:
             LOGGER.error(f"Failed to parse mdoc credential: {e}")
             return VerifyResult(verified=False, payload={"error": str(e)})
+
+
+def _normalize_presentation_input(presentation: Any) -> tuple[list, bool]:
+    """Normalize presentation input to a list.
+
+    Args:
+        presentation: The presentation data
+
+    Returns:
+        Tuple of (list of presentations, is_list_input flag)
+    """
+    if isinstance(presentation, str):
+        try:
+            parsed = json.loads(presentation)
+            if isinstance(parsed, list):
+                return parsed, True
+        except json.JSONDecodeError:
+            pass
+        return [presentation], False
+    elif isinstance(presentation, list):
+        return presentation, True
+    return [presentation], False
+
+
+def _decode_presentation_bytes(pres_item: Any) -> bytes:
+    """Decode presentation item to bytes.
+
+    Args:
+        pres_item: The presentation item (string or bytes)
+
+    Returns:
+        Decoded bytes
+
+    Raises:
+        PresVerifierError: If unable to decode to bytes
+    """
+    if isinstance(pres_item, bytes):
+        return pres_item
+
+    if isinstance(pres_item, str):
+        # Try base64url decode
+        try:
+            return base64.urlsafe_b64decode(pres_item + "=" * (-len(pres_item) % 4))
+        except (ValueError, TypeError):
+            pass
+        # Try hex decode
+        try:
+            return bytes.fromhex(pres_item)
+        except (ValueError, TypeError):
+            pass
+
+    raise PresVerifierError("Presentation must be bytes or base64/hex string")
+
+
+async def _get_oid4vp_verification_params(
+    profile: Profile,
+    presentation_record: "OID4VPPresentation",
+) -> tuple[str, str, str]:
+    """Get OID4VP verification parameters.
+
+    Args:
+        profile: The profile
+        presentation_record: The presentation record
+
+    Returns:
+        Tuple of (nonce, client_id, response_uri)
+    """
+    nonce = presentation_record.nonce
+    config = Config.from_settings(profile.settings)
+
+    from oid4vc.did_utils import retrieve_or_create_did_jwk
+
+    async with profile.session() as session:
+        jwk = await retrieve_or_create_did_jwk(session)
+
+    client_id = jwk.did
+
+    wallet_id = (
+        profile.settings.get("wallet.id")
+        if profile.settings.get("multitenant.enabled")
+        else None
+    )
+    subpath = f"/tenant/{wallet_id}" if wallet_id else ""
+    response_uri = (
+        f"{config.endpoint}{subpath}/oid4vp/response/"
+        f"{presentation_record.presentation_id}"
+    )
+
+    return nonce, client_id, response_uri
+
+
+def _verify_single_presentation(
+    response_bytes: bytes,
+    nonce: str,
+    client_id: str,
+    response_uri: str,
+    trust_anchors_json: List[str],
+) -> Optional[dict]:
+    """Verify a single OID4VP presentation.
+
+    Args:
+        response_bytes: The presentation bytes
+        nonce: The nonce
+        client_id: The client ID
+        response_uri: The response URI
+        trust_anchors_json: JSON-encoded trust anchors
+
+    Returns:
+        Verified payload dict if successful, None if failed
+    """
+    LOGGER.info(
+        f"DEBUG: Calling verify_oid4vp_response with:\n"
+        f"  nonce={nonce}\n"
+        f"  client_id={client_id}\n"
+        f"  response_uri={response_uri}\n"
+        f"  response_bytes_len={len(response_bytes)}\n"
+        f"  response_bytes_hex={response_bytes[:50].hex()}..."
+    )
+
+    # Try spec-compliant format (2024) first
+    verified_data = isomdl_uniffi.verify_oid4vp_response(
+        response_bytes,
+        nonce,
+        client_id,
+        response_uri,
+        trust_anchors_json,
+        True,
+    )
+
+    # If device auth failed but issuer is valid, try legacy format
+    if (
+        verified_data.device_authentication != isomdl_uniffi.AuthenticationStatus.VALID
+        and verified_data.issuer_authentication
+        == isomdl_uniffi.AuthenticationStatus.VALID
+    ):
+        if hasattr(isomdl_uniffi, "verify_oid4vp_response_legacy"):
+            LOGGER.info(
+                "Device auth failed with spec-compliant format, "
+                "trying legacy 2023 format"
+            )
+            verified_data = isomdl_uniffi.verify_oid4vp_response_legacy(
+                response_bytes,
+                nonce,
+                client_id,
+                response_uri,
+                trust_anchors_json,
+                True,
+            )
+        else:
+            LOGGER.warning(
+                "Device auth failed and legacy format not available in isomdl_uniffi"
+            )
+
+    return verified_data
 
 
 class MsoMdocPresVerifier(PresVerifier):
@@ -428,73 +578,30 @@ class MsoMdocPresVerifier(PresVerifier):
         """
         try:
             # 1. Prepare Trust Anchors
-            # For WalletTrustStore, refresh cache before getting anchors since we're in async context
             if self.trust_store and isinstance(self.trust_store, WalletTrustStore):
                 await self.trust_store.refresh_cache()
 
             trust_anchors = (
                 self.trust_store.get_trust_anchors() if self.trust_store else []
             )
-            # isomdl-uniffi expects a list of JSON-encoded strings for trust anchors
-            # Each string must be a JSON object representing PemTrustAnchor struct
             trust_anchors_json = [
                 json.dumps({"certificate_pem": a, "purpose": "Iaca"})
                 for a in trust_anchors
             ]
-            LOGGER.info(
-                f"DEBUG: trust_anchors_json (count: {len(trust_anchors_json)}): {[a[:100] + '...' for a in trust_anchors_json] if trust_anchors_json else '[]'}"
+
+            # 2. Get verification parameters
+            nonce, client_id, response_uri = await _get_oid4vp_verification_params(
+                profile, presentation_record
             )
 
-            # 2. Verify OID4VP Response
-            # We need nonce, client_id, response_uri
-            nonce = presentation_record.nonce
-
-            config = Config.from_settings(profile.settings)
-
-            # Get the DID:JWK that was used as client_id when the request was created
-            # Use retrieve_or_create_did_jwk to ensure consistency with request creation
-            from oid4vc.did_utils import retrieve_or_create_did_jwk
-
-            async with profile.session() as session:
-                jwk = await retrieve_or_create_did_jwk(session)
-
-            client_id = jwk.did
-
-            wallet_id = (
-                profile.settings.get("wallet.id")
-                if profile.settings.get("multitenant.enabled")
-                else None
+            # 3. Normalize presentation input
+            presentations_to_verify, is_list_input = _normalize_presentation_input(
+                presentation
             )
-            subpath = f"/tenant/{wallet_id}" if wallet_id else ""
-            response_uri = (
-                f"{config.endpoint}{subpath}/oid4vp/response/"
-                f"{presentation_record.presentation_id}"
-            )
-
-            # 3. Handle Response
-            presentations_to_verify = []
-            is_list_input = False
-
-            if isinstance(presentation, str):
-                try:
-                    parsed = json.loads(presentation)
-                    if isinstance(parsed, list):
-                        presentations_to_verify = parsed
-                        is_list_input = True
-                    else:
-                        presentations_to_verify = [presentation]
-                except json.JSONDecodeError:
-                    presentations_to_verify = [presentation]
-            elif isinstance(presentation, list):
-                presentations_to_verify = presentation
-                is_list_input = True
-            else:
-                presentations_to_verify = [presentation]
 
             verified_payloads = []
 
             for pres_item in presentations_to_verify:
-                # Debug: Log the vp_token format for troubleshooting
                 pres_preview = str(pres_item)[:100] if pres_item else "None"
                 LOGGER.info(
                     f"DEBUG: vp_token type={type(pres_item).__name__}, "
@@ -502,74 +609,15 @@ class MsoMdocPresVerifier(PresVerifier):
                     f"preview={pres_preview}..."
                 )
 
-                response_bytes = pres_item
-                if isinstance(pres_item, str):
-                    # Try to decode if it's base64
-                    try:
-                        response_bytes = base64.urlsafe_b64decode(
-                            pres_item + "=" * (-len(pres_item) % 4)
-                        )
-                    except (ValueError, TypeError):
-                        # Maybe it's hex?
-                        try:
-                            response_bytes = bytes.fromhex(pres_item)
-                        except (ValueError, TypeError):
-                            pass
+                response_bytes = _decode_presentation_bytes(pres_item)
 
-                if not isinstance(response_bytes, bytes):
-                    raise PresVerifierError(
-                        "Presentation must be bytes or base64/hex string"
-                    )
-
-                # 4. Verify using isomdl-uniffi
-                # Try spec-compliant 2024 format first, fall back to legacy 2023 format
-                # for compatibility with older wallets (e.g., Credo)
-                LOGGER.info(
-                    f"DEBUG: Calling verify_oid4vp_response with:\n"
-                    f"  nonce={nonce}\n"
-                    f"  client_id={client_id}\n"
-                    f"  response_uri={response_uri}\n"
-                    f"  response_bytes_len={len(response_bytes)}\n"
-                    f"  response_bytes_hex={response_bytes[:50].hex()}..."
-                )
-
-                # Try spec-compliant format (2024) first
-                verified_data = isomdl_uniffi.verify_oid4vp_response(
+                verified_data = _verify_single_presentation(
                     response_bytes,
                     nonce,
                     client_id,
                     response_uri,
                     trust_anchors_json,
-                    True,
                 )
-
-                # If device authentication failed but issuer is valid, try legacy format
-                # This handles wallets using the 2023 draft SessionTranscript format
-                if (
-                    verified_data.device_authentication
-                    != isomdl_uniffi.AuthenticationStatus.VALID
-                    and verified_data.issuer_authentication
-                    == isomdl_uniffi.AuthenticationStatus.VALID
-                ):
-                    # Check if legacy function is available (not all isomdl_uniffi versions have it)
-                    if hasattr(isomdl_uniffi, "verify_oid4vp_response_legacy"):
-                        LOGGER.info(
-                            "Device authentication failed with spec-compliant format, "
-                            "trying legacy 2023 format for backwards compatibility"
-                        )
-                        verified_data = isomdl_uniffi.verify_oid4vp_response_legacy(
-                            response_bytes,
-                            nonce,
-                            client_id,
-                            response_uri,
-                            trust_anchors_json,
-                            True,
-                        )
-                    else:
-                        LOGGER.warning(
-                            "Device authentication failed and legacy format not available in isomdl_uniffi. "
-                            "Consider upgrading isomdl_uniffi to a version with verify_oid4vp_response_legacy."
-                        )
 
                 if (
                     verified_data.issuer_authentication
@@ -577,37 +625,21 @@ class MsoMdocPresVerifier(PresVerifier):
                     and verified_data.device_authentication
                     == isomdl_uniffi.AuthenticationStatus.VALID
                 ):
-                    # Extract verified claims from the Rust library response
-                    # verified_data.verified_response is dict[str, dict[str, MDocItem]]
-                    # We need to convert MDocItem enum variants to their actual values
                     try:
                         claims = extract_verified_claims(
                             verified_data.verified_response
                         )
-                        LOGGER.info(
-                            f"DEBUG: Extracted claims namespaces: {list(claims.keys())}"
-                        )
                     except Exception as e:
-                        LOGGER.warning(
-                            f"Failed to extract claims from verified response: {e}"
-                        )
+                        LOGGER.warning(f"Failed to extract claims: {e}")
                         claims = {}
 
-                    # Build payload with verified claims
-                    # This payload will be passed to verify_credential which will
-                    # recognize it as pre-verified by the namespace structure
                     payload = {
                         "status": "verified",
-                        "docType": verified_data.doc_type,  # Include docType for DCQL validation
+                        "docType": verified_data.doc_type,
                         "issuer_auth": str(verified_data.issuer_authentication),
                         "device_auth": str(verified_data.device_authentication),
                     }
-                    # Merge claims into payload (namespaced structure like org.iso.18013.5.1)
                     payload.update(claims)
-
-                    LOGGER.info(
-                        f"DEBUG: Verified presentation payload keys: {list(payload.keys())}"
-                    )
                     verified_payloads.append(payload)
                 else:
                     LOGGER.error(
@@ -616,7 +648,6 @@ class MsoMdocPresVerifier(PresVerifier):
                         verified_data.device_authentication,
                         verified_data.errors,
                     )
-                    # Convert verified response to JSON/dict for error details
                     try:
                         claims = extract_verified_claims(
                             verified_data.verified_response
