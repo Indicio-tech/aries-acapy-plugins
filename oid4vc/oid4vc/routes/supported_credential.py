@@ -421,9 +421,12 @@ async def supported_credential_list(request: web.BaseRequest):
                 record = await SupportedCredential.retrieve_by_id(session, exchange_id)
                 results = [record.serialize()]
             else:
+                # Only 'format' is indexed as a tag in SupportedCredential.TAG_NAMES.
+                # Filtering by cryptographic_binding_methods_supported or
+                # cryptographic_suites_supported would require post-query filtering
+                # since they are list fields stored in record_value, not tags.
                 filter_ = {
                     attr: value
-                    # TODO filter by binding methods, suites?
                     for attr in ("format",)
                     if (value := request.query.get(attr))
                 }

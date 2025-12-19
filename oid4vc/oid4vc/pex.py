@@ -25,7 +25,7 @@ from jsonpath_ng import JSONPath
 from jsonschema import Draft7Validator, ValidationError
 from marshmallow import EXCLUDE, fields
 
-from oid4vc.cred_processor import CredProcessors
+from oid4vc.cred_processor import CredProcessors, VerifyResult
 
 LOGGER = logging.getLogger(__name__)
 
@@ -148,22 +148,39 @@ class FilterEvaluator:
 
 
 class ConstraintFieldEvaluator:
-    """Evaluate a constraint."""
+    """Evaluate a constraint field against a credential.
+
+    Attributes:
+        paths: JSONPath expressions to locate the field in the credential.
+        filter: Optional filter to validate the field value against.
+        name: Optional human-readable name for the field (PEX spec).
+    """
 
     def __init__(
         self,
         paths: Sequence[JSONPath],
         filter: Optional[FilterEvaluator] = None,
-        # TODO Add `name`
+        name: Optional[str] = None,
     ):
         """Initialize the constraint field evaluator."""
         self.paths = paths
         self.filter = filter
+        self.name = name
 
     @classmethod
     def compile(cls, constraint: Union[dict, DIFField]):
-        """Compile an input descriptor."""
+        """Compile an input descriptor.
+
+        Args:
+            constraint: Either a dict or DIFField representing the constraint.
+
+        Returns:
+            ConstraintFieldEvaluator instance.
+        """
+        name = None
         if isinstance(constraint, dict):
+            # Extract name before deserializing (PEX 2.0 spec, not in ACA-Py's model)
+            name = constraint.get("name")
             constraint = DIFField.deserialize(constraint)
         elif isinstance(constraint, DIFField):
             pass
@@ -176,7 +193,7 @@ class ConstraintFieldEvaluator:
         if constraint._filter:
             filter = FilterEvaluator.compile(constraint._filter.serialize())
 
-        return cls(paths, filter)
+        return cls(paths, filter, name)
 
     def match(self, value: Any) -> Optional[Matched]:
         """Check if value matches and return path of first matching."""
@@ -323,7 +340,7 @@ class PresentationExchangeEvaluator:
 
     def _extract_vc_from_presentation(
         self,
-        item: DescriptorMap,
+        item: InputDescriptorMapping,
         presentation: Mapping[str, Any],
     ) -> tuple[Any, str]:
         """Extract the verifiable credential from the presentation.
@@ -359,9 +376,9 @@ class PresentationExchangeEvaluator:
     async def _try_extract_mdoc_from_vp(
         self,
         profile: Profile,
-        result: CredVerifyResult,
+        result: VerifyResult,
         evaluator: DescriptorEvaluator,
-    ) -> CredVerifyResult:
+    ) -> VerifyResult:
         """Try to extract and verify mso_mdoc from a VP payload.
 
         Args:
@@ -448,7 +465,9 @@ class PresentationExchangeEvaluator:
         descriptor_id_to_fields = {}
 
         for item in submission.descriptor_maps or []:
-            # TODO Check JWT VP generally, if format is jwt_vp
+            # Note: JWT VP format (item.fmt == 'jwt_vp') is handled through
+            # path_nested extraction. General JWT VP validation (signature, etc.)
+            # is performed by the credential processor during verify_credential.
             evaluator = self._id_to_descriptor.get(item.id)
             if not evaluator:
                 return PexVerifyResult(

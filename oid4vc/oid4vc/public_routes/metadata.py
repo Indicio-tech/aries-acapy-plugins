@@ -1,5 +1,7 @@
 """Credential issuer metadata endpoints for OID4VCI and OpenID Connect Discovery."""
 
+import os
+
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.messaging.models.openapi import OpenAPISchema
 from aiohttp import web
@@ -10,6 +12,12 @@ from ..config import Config
 from ..models.supported_cred import SupportedCredential
 from ..utils import get_tenant_subpath
 from .constants import LOGGER
+
+# Sunset date for deprecated endpoints (RFC 7231 date format)
+# Default: December 31, 2026
+DEPRECATED_SUNSET_DATE = os.environ.get(
+    "OID4VC_DEPRECATED_SUNSET_DATE", "Thu, 31 Dec 2026 23:59:59 GMT"
+)
 
 
 class OpenIDConfigurationSchema(OpenAPISchema):
@@ -297,9 +305,7 @@ async def credential_issuer_metadata_deprecated(request: web.Request):
         '299 - "This endpoint is deprecated. '
         'Use /.well-known/openid-credential-issuer instead."'
     )
-    response.headers[
-        "Sunset"
-    ] = "Thu, 31 Dec 2026 23:59:59 GMT"  # TODO: Set appropriate sunset date
+    response.headers["Sunset"] = DEPRECATED_SUNSET_DATE
 
     return response
 
@@ -312,9 +318,7 @@ async def deprecated_credential_issuer_metadata(request: web.Request):
         '299 - "This endpoint is deprecated. '
         'Use /.well-known/openid-credential-issuer instead."'
     )
-    response.headers[
-        "Sunset"
-    ] = "Thu, 31 Dec 2026 23:59:59 GMT"  # TODO: Set appropriate sunset date
+    response.headers["Sunset"] = DEPRECATED_SUNSET_DATE
     return response
 
 

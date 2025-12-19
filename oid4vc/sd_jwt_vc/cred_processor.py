@@ -88,8 +88,10 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
             claims["sub"] = DIDUrl(pop.holder_kid).did
             claims["cnf"] = {"kid": pop.holder_kid}
         elif pop.holder_jwk:
-            # FIXME: Credo explicitly requires a `kid` in `cnf`,
-            # so we're making credo happy here
+            # Credo (https://github.com/openwallet-foundation/credo-ts) requires
+            # a 'kid' in 'cnf' when verifying SD-JWT VCs. While the SD-JWT VC spec
+            # allows cnf.jwk without a kid, we include both for interoperability.
+            # We construct a did:jwk identifier from the JWK to use as the kid.
             pop.holder_jwk["use"] = "sig"
             did = "did:jwk:" + bytes_to_b64(
                 json.dumps(pop.holder_jwk).encode(), urlsafe=True, pad=False
@@ -133,23 +135,35 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
     def validate_credential_subject(
         self, supported: SupportedCredential, subject: dict
     ):
-        """Validate the credential subject."""
+        """Validate the credential subject against the supported credential schema.
+
+        This validates that all mandatory claims are present in the subject,
+        including both selectively-disclosable claims (in sd_list) and
+        always-disclosed claims (not in sd_list).
+
+        Args:
+            supported: The supported credential configuration.
+            subject: The credential subject to validate.
+
+        Raises:
+            CredProcessorError: If any mandatory claims are missing.
+        """
         vc_additional = supported.vc_additional_data
         assert vc_additional
         assert supported.format_data
-        claims_metadata = supported.format_data.get("claims")
+        claims_metadata = supported.format_data.get("claims") or {}
         sd_list = vc_additional.get("sd_list") or []
 
-        # TODO this will only enforce mandatory fields that are selectively disclosable
-        # We should validate that disclosed claims that are mandatory are also present
         missing = []
+
+        # Check mandatory claims in sd_list (selectively disclosable)
         for sd in sd_list:
             # iat is the only claim that can be disclosable that is not set in the subject
             if sd == "/iat":
                 continue
             pointer = JsonPointer(sd)
 
-            metadata = pointer.resolve(claims_metadata)
+            metadata = pointer.resolve(claims_metadata, None)
             if metadata:
                 metadata = ClaimMetadata(**metadata)
             else:
@@ -159,13 +173,61 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
             if claim is Unset and metadata.mandatory:
                 missing.append(pointer.path)
 
-            # TODO type checking against value_type
+        # Check mandatory claims NOT in sd_list (always disclosed)
+        # These are claims defined in claims_metadata but not selectively disclosable
+        self._check_mandatory_claims(claims_metadata, subject, sd_list, missing)
 
         if missing:
             raise CredProcessorError(
-                "Invalid credential subject; selectively discloseable claim is"
-                f" mandatory but missing: {missing}"
+                f"Invalid credential subject; mandatory claim(s) missing: {missing}"
             )
+
+    def _check_mandatory_claims(
+        self,
+        claims_metadata: dict,
+        subject: dict,
+        sd_list: list,
+        missing: list,
+        prefix: str = "",
+    ):
+        """Recursively check for mandatory claims in claims_metadata.
+
+        Args:
+            claims_metadata: The claims metadata dict to check.
+            subject: The credential subject being validated.
+            sd_list: List of selectively disclosable claim pointers.
+            missing: List to append missing claim paths to.
+            prefix: Current JSON pointer prefix for nested claims.
+        """
+        for claim_name, claim_def in claims_metadata.items():
+            if not isinstance(claim_def, dict):
+                continue
+
+            pointer_path = f"{prefix}/{claim_name}"
+
+            # Skip if this claim is already checked via sd_list
+            if pointer_path in sd_list:
+                continue
+
+            # Check if this claim is mandatory
+            is_mandatory = claim_def.get("mandatory", False)
+            if is_mandatory:
+                try:
+                    pointer = JsonPointer(pointer_path)
+                    claim_value = pointer.resolve(subject, Unset)
+                    if claim_value is Unset:
+                        missing.append(pointer_path)
+                except JsonPointerException:
+                    missing.append(pointer_path)
+
+            # Recursively check nested claims if present
+            # Nested claims are typically under a key that contains claim definitions
+            # Check for common nesting patterns in SD-JWT VC claims metadata
+            for nested_key in ("claims", "properties"):
+                if nested_key in claim_def and isinstance(claim_def[nested_key], dict):
+                    self._check_mandatory_claims(
+                        claim_def[nested_key], subject, sd_list, missing, pointer_path
+                    )
 
     def validate_supported_credential(self, supported: SupportedCredential):
         """Validate a supported SD JWT VC Credential."""

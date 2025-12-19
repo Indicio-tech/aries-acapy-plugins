@@ -77,3 +77,207 @@ class TestSdJwtCredIssueProcessor:
                     await processor.issue(
                         body_mismatch_vct, supported, ex_record, pop, context
                     )
+
+
+class TestValidateCredentialSubject:
+    """Tests for validate_credential_subject method."""
+
+    def test_valid_subject_with_all_claims(self):
+        """Test validation passes when all mandatory claims are present."""
+        processor = SdJwtCredIssueProcessor()
+        supported = MagicMock(spec=SupportedCredential)
+        supported.format_data = {
+            "vct": "IdentityCredential",
+            "claims": {
+                "given_name": {"mandatory": True},
+                "family_name": {"mandatory": True},
+                "email": {"mandatory": False},
+            },
+        }
+        supported.vc_additional_data = {"sd_list": ["/given_name", "/family_name"]}
+
+        subject = {
+            "given_name": "John",
+            "family_name": "Doe",
+            "email": "john@example.com",
+        }
+
+        # Should not raise
+        processor.validate_credential_subject(supported, subject)
+
+    def test_missing_mandatory_sd_claim(self):
+        """Test validation fails when mandatory SD claim is missing."""
+        processor = SdJwtCredIssueProcessor()
+        supported = MagicMock(spec=SupportedCredential)
+        supported.format_data = {
+            "vct": "IdentityCredential",
+            "claims": {
+                "given_name": {"mandatory": True},
+                "family_name": {"mandatory": True},
+            },
+        }
+        supported.vc_additional_data = {"sd_list": ["/given_name", "/family_name"]}
+
+        subject = {"given_name": "John"}  # Missing family_name
+
+        with pytest.raises(CredProcessorError, match="mandatory claim.*missing"):
+            processor.validate_credential_subject(supported, subject)
+
+    def test_missing_mandatory_non_sd_claim(self):
+        """Test validation fails when mandatory non-SD claim is missing."""
+        processor = SdJwtCredIssueProcessor()
+        supported = MagicMock(spec=SupportedCredential)
+        supported.format_data = {
+            "vct": "IdentityCredential",
+            "claims": {
+                "given_name": {"mandatory": True},  # Not in sd_list
+                "family_name": {"mandatory": False},
+            },
+        }
+        supported.vc_additional_data = {"sd_list": []}  # No SD claims
+
+        subject = {"family_name": "Doe"}  # Missing mandatory given_name
+
+        with pytest.raises(CredProcessorError, match="mandatory claim.*missing"):
+            processor.validate_credential_subject(supported, subject)
+
+    def test_optional_claims_can_be_missing(self):
+        """Test validation passes when only optional claims are missing."""
+        processor = SdJwtCredIssueProcessor()
+        supported = MagicMock(spec=SupportedCredential)
+        supported.format_data = {
+            "vct": "IdentityCredential",
+            "claims": {
+                "given_name": {"mandatory": True},
+                "middle_name": {"mandatory": False},
+                "nickname": {},  # No mandatory field = optional
+            },
+        }
+        supported.vc_additional_data = {"sd_list": ["/given_name"]}
+
+        subject = {"given_name": "John"}  # middle_name and nickname missing
+
+        # Should not raise
+        processor.validate_credential_subject(supported, subject)
+
+    def test_iat_claim_skipped(self):
+        """Test that /iat is skipped even if in sd_list."""
+        processor = SdJwtCredIssueProcessor()
+        supported = MagicMock(spec=SupportedCredential)
+        supported.format_data = {
+            "vct": "IdentityCredential",
+            "claims": {
+                "iat": {"mandatory": True},
+            },
+        }
+        supported.vc_additional_data = {"sd_list": ["/iat"]}
+
+        subject = {}  # iat not in subject (it's added during issue)
+
+        # Should not raise - /iat is explicitly skipped
+        processor.validate_credential_subject(supported, subject)
+
+    def test_nested_mandatory_claim(self):
+        """Test validation of nested mandatory claims."""
+        processor = SdJwtCredIssueProcessor()
+        supported = MagicMock(spec=SupportedCredential)
+        supported.format_data = {
+            "vct": "IdentityCredential",
+            "claims": {
+                "address": {
+                    "mandatory": True,
+                    "claims": {
+                        "street": {"mandatory": True},
+                        "city": {"mandatory": False},
+                    },
+                },
+            },
+        }
+        supported.vc_additional_data = {"sd_list": []}
+
+        # Missing nested mandatory claim
+        subject = {"address": {"city": "New York"}}  # Missing street
+
+        with pytest.raises(CredProcessorError, match="mandatory claim.*missing"):
+            processor.validate_credential_subject(supported, subject)
+
+    def test_nested_claim_present(self):
+        """Test validation passes with nested mandatory claims present."""
+        processor = SdJwtCredIssueProcessor()
+        supported = MagicMock(spec=SupportedCredential)
+        supported.format_data = {
+            "vct": "IdentityCredential",
+            "claims": {
+                "address": {
+                    "mandatory": True,
+                    "claims": {
+                        "street": {"mandatory": True},
+                        "city": {"mandatory": False},
+                    },
+                },
+            },
+        }
+        supported.vc_additional_data = {"sd_list": []}
+
+        subject = {"address": {"street": "123 Main St", "city": "New York"}}
+
+        # Should not raise
+        processor.validate_credential_subject(supported, subject)
+
+    def test_no_claims_metadata(self):
+        """Test validation with no claims metadata defined."""
+        processor = SdJwtCredIssueProcessor()
+        supported = MagicMock(spec=SupportedCredential)
+        supported.format_data = {"vct": "IdentityCredential"}  # No claims
+        supported.vc_additional_data = {"sd_list": ["/given_name"]}
+
+        subject = {"given_name": "John"}
+
+        # Should not raise - no metadata means no mandatory checks
+        processor.validate_credential_subject(supported, subject)
+
+    def test_empty_sd_list(self):
+        """Test validation with empty sd_list but mandatory claims in metadata."""
+        processor = SdJwtCredIssueProcessor()
+        supported = MagicMock(spec=SupportedCredential)
+        supported.format_data = {
+            "vct": "IdentityCredential",
+            "claims": {
+                "given_name": {"mandatory": True},
+                "family_name": {"mandatory": True},
+            },
+        }
+        supported.vc_additional_data = {"sd_list": []}
+
+        subject = {"given_name": "John", "family_name": "Doe"}
+
+        # Should not raise
+        processor.validate_credential_subject(supported, subject)
+
+    def test_mixed_sd_and_non_sd_mandatory_claims(self):
+        """Test validation with both SD and non-SD mandatory claims."""
+        processor = SdJwtCredIssueProcessor()
+        supported = MagicMock(spec=SupportedCredential)
+        supported.format_data = {
+            "vct": "IdentityCredential",
+            "claims": {
+                "given_name": {"mandatory": True},  # In SD list
+                "family_name": {"mandatory": True},  # Not in SD list
+                "email": {"mandatory": False},
+            },
+        }
+        supported.vc_additional_data = {"sd_list": ["/given_name"]}
+
+        # All mandatory claims present
+        subject = {"given_name": "John", "family_name": "Doe"}
+        processor.validate_credential_subject(supported, subject)
+
+        # Missing SD mandatory claim
+        subject_missing_sd = {"family_name": "Doe"}
+        with pytest.raises(CredProcessorError, match="mandatory claim.*missing"):
+            processor.validate_credential_subject(supported, subject_missing_sd)
+
+        # Missing non-SD mandatory claim
+        subject_missing_non_sd = {"given_name": "John"}
+        with pytest.raises(CredProcessorError, match="mandatory claim.*missing"):
+            processor.validate_credential_subject(supported, subject_missing_non_sd)

@@ -1,6 +1,7 @@
 """Admin server classes."""
 
 import logging
+from importlib.metadata import version
 
 import aiohttp_cors
 from acapy_agent.admin.base_server import BaseAdminServer
@@ -147,9 +148,12 @@ class Oid4vciServer(BaseAdminServer):
         for route in app.router.routes():
             cors.add(route)
 
-        # get agent label
-        __version__ = 0  # TODO: get dynamically from config
-        version_string = f"v{__version__}"
+        # Get package version for API documentation
+        try:
+            package_version = version("oid4vc")
+        except Exception:
+            package_version = "0.1.0"  # Fallback if package not installed
+        version_string = f"v{package_version}"
 
         setup_aiohttp_apispec(
             app=app, title="OpenID4VCI", version=version_string, swagger_path="/api/doc"
