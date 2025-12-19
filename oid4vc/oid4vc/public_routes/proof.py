@@ -123,7 +123,7 @@ async def _handle_cwt_proof(
         # Parse COSE message to get headers
         msg = cwt.COSEMessage.loads(cwt_bytes)
     except Exception as e:
-        raise web.HTTPBadRequest(reason=f"Invalid CWT format: {e}")
+        raise web.HTTPBadRequest(reason=f"Invalid CWT format: {e}") from e
 
     # Extract headers
     # 4: kid, 1: alg
@@ -150,13 +150,13 @@ async def _handle_cwt_proof(
             jwk["kid"] = kid
         cose_key = cwt.COSEKey.from_jwk(jwk)
     except Exception as e:
-        raise web.HTTPBadRequest(reason=f"Failed to convert key to COSEKey: {e}")
+        raise web.HTTPBadRequest(reason=f"Failed to convert key to COSEKey: {e}") from e
 
     # Verify
     try:
         decoded = cwt.decode(cwt_bytes, keys=[cose_key])
     except Exception as e:
-        raise web.HTTPBadRequest(reason=f"CWT verification failed: {e}")
+        raise web.HTTPBadRequest(reason=f"CWT verification failed: {e}") from e
 
     # Check nonce
     # OID4VCI: nonce is claim 10? Or string "nonce"?

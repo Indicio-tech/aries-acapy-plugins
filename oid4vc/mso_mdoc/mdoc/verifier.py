@@ -133,6 +133,10 @@ class WalletTrustStore:
 
         Returns:
             List of PEM-encoded trust anchor certificates
+
+        Raises:
+            RuntimeError: If called from async context without cache.
+                Call refresh_cache() before verification operations.
         """
         # Use cached value if available
         if self._cached_anchors is not None:
@@ -142,18 +146,18 @@ class WalletTrustStore:
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # We're in an async context, need to use a different approach
-                # Return empty for now and rely on refresh_cache being called
-                LOGGER.warning(
+                # We're in an async context - cache must be populated first
+                raise RuntimeError(
                     "WalletTrustStore.get_trust_anchors called from async context "
-                    "without cache. Call refresh_cache() first."
+                    "without cache. Call await refresh_cache() before verification."
                 )
-                return []
             else:
                 self._cached_anchors = loop.run_until_complete(
                     self._fetch_trust_anchors()
                 )
-        except RuntimeError:
+        except RuntimeError as e:
+            if "async context" in str(e):
+                raise  # Re-raise our custom error
             # No event loop, create one
             self._cached_anchors = asyncio.run(self._fetch_trust_anchors())
 

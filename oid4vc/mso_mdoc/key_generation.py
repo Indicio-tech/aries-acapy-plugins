@@ -13,6 +13,7 @@ Key Protocol Compliance:
 
 import base64
 import logging
+import os
 import uuid
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple
@@ -341,8 +342,9 @@ async def generate_default_keys_and_certs(
 
     # Generate certificate with ISO 18013-5 compliant subject name
     # Must include stateOrProvinceName (ST) for IACA validation
-    # Using ST=NY to match the hardcoded DS cert in isomdl-uniffi's setup_certificate_chain
-    cert_subject = "CN=mDoc Test Issuer,O=ACA-Py,ST=NY,C=US"
+    # Configurable via OID4VC_MDOC_CERT_SUBJECT environment variable
+    default_subject = "CN=mDoc Test Issuer,O=ACA-Py,ST=NY,C=US"
+    cert_subject = os.getenv("OID4VC_MDOC_CERT_SUBJECT", default_subject)
     cert_pem = generate_self_signed_certificate(
         private_key_pem=private_pem,
         subject_name=cert_subject,

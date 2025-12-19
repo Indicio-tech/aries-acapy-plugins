@@ -6,8 +6,6 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
 
 import jsonpath_ng as jsonpath
-
-LOGGER = logging.getLogger(__name__)
 from acapy_agent.core.profile import Profile
 from acapy_agent.messaging.models.base import BaseModel, BaseModelSchema
 from acapy_agent.messaging.valid import UUID4_EXAMPLE
@@ -28,6 +26,8 @@ from jsonschema import Draft7Validator, ValidationError
 from marshmallow import EXCLUDE, fields
 
 from oid4vc.cred_processor import CredProcessors
+
+LOGGER = logging.getLogger(__name__)
 
 
 # TODO Update ACA-Py's InputDescriptorMapping model to match this

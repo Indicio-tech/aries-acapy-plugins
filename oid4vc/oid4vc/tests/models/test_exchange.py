@@ -1,5 +1,6 @@
 import pytest
 from acapy_agent.core.profile import Profile
+from acapy_agent.storage.error import StorageNotFoundError
 
 from oid4vc.models.exchange import OID4VCIExchangeRecord
 
@@ -73,5 +74,5 @@ async def test_delete_record(profile: Profile, record: OID4VCIExchangeRecord):
     async with profile.session() as session:
         await record.save(session)
         await record.delete_record(session)
-        with pytest.raises(Exception):
+        with pytest.raises(StorageNotFoundError):
             await OID4VCIExchangeRecord.retrieve_by_id(session, record.exchange_id)

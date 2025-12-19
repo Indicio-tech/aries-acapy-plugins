@@ -168,7 +168,7 @@ async def test_check_token_valid(monkeypatch, context):
 
 @pytest.mark.asyncio
 async def test_check_token_invalid_scheme(context):
-    with pytest.raises(Exception):
+    with pytest.raises(web.HTTPUnauthorized):
         await check_token(context, "Token sometoken")
 
 
@@ -182,7 +182,7 @@ async def test_check_token_expired(monkeypatch, context):
             return_value=JWTVerifyResult(headers={}, payload={"exp": 1}, verified=True)
         ),
     )
-    with pytest.raises(Exception):
+    with pytest.raises(web.HTTPUnauthorized):
         await check_token(context, "Bearer sometoken")
 
 
@@ -198,7 +198,7 @@ async def test_check_token_invalid_token(monkeypatch, context):
             )
         ),
     )
-    with pytest.raises(Exception):
+    with pytest.raises(web.HTTPUnauthorized):
         await check_token(context, "Bearer sometoken")
 
 
