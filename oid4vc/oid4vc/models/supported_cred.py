@@ -154,9 +154,8 @@ class SupportedCredential(BaseRecord):
                 )
                 if types_value:
                     cred_def["type"] = types_value
-                    # Backward compatibility: Also add "types" at top level
-                    # Some wallet implementations (e.g. walt.id) expect the older
-                    # draft 11 format with "types" at the credential config level
+                    # Also add at top level for backward compatibility with walt.id
+                    # and other wallets still using older OID4VCI drafts
                     issuer_metadata["types"] = types_value
 
                 # Handle credentialSubject - can come from "credentialSubject" or "claims"

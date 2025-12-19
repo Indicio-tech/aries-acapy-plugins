@@ -40,7 +40,11 @@ async def test_save(profile: Profile, record: SupportedCredential):
 
 
 def test_to_issuer_metadata(record: SupportedCredential):
-    """Test conversion to issuer metadata per OID4VCI 1.0 § 11.2.3."""
+    """Test conversion to issuer metadata per OID4VCI 1.0 § 11.2.3.
+    
+    Note: 'types' at top level is included for backward compatibility with
+    walt.id and other wallets still using older OID4VCI drafts.
+    """
     assert record.to_issuer_metadata() == {
         "format": "jwt_vc_json",
         "id": "MyCredential",
@@ -48,6 +52,7 @@ def test_to_issuer_metadata(record: SupportedCredential):
         "proof_types_supported": {
             "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
         },
+        "types": ["VerifiableCredential", "UniversityDegreeCredential"],
         "credential_definition": {
             "credentialSubject": {"name": "alice"},
             "type": ["VerifiableCredential", "UniversityDegreeCredential"],

@@ -175,6 +175,13 @@ async def test_check_token_invalid_scheme(context):
 @pytest.mark.asyncio
 async def test_check_token_expired(monkeypatch, context):
     # Patch jwt_verify to return an expired token
+    # Also patch Config.from_settings to return config without auth_server_url
+    # so the test uses the jwt_verify path instead of HTTP client path
+    from oid4vc.config import Config
+
+    mock_config = MagicMock(spec=Config)
+    mock_config.auth_server_url = None
+    monkeypatch.setattr(token_module, "Config", MagicMock(from_settings=MagicMock(return_value=mock_config)))
     monkeypatch.setattr(
         token_module,
         "jwt_verify",
@@ -189,6 +196,13 @@ async def test_check_token_expired(monkeypatch, context):
 @pytest.mark.asyncio
 async def test_check_token_invalid_token(monkeypatch, context):
     # Patch jwt_verify to return not verified
+    # Also patch Config.from_settings to return config without auth_server_url
+    # so the test uses the jwt_verify path instead of HTTP client path
+    from oid4vc.config import Config
+
+    mock_config = MagicMock(spec=Config)
+    mock_config.auth_server_url = None
+    monkeypatch.setattr(token_module, "Config", MagicMock(from_settings=MagicMock(return_value=mock_config)))
     monkeypatch.setattr(
         token_module,
         "jwt_verify",
