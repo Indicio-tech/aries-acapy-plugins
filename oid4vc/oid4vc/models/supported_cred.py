@@ -104,8 +104,11 @@ class SupportedCredential(BaseRecord):
         Returns credential configuration object as per OID4VCI 1.0 specification.
         """
         import logging
+
         LOGGER = logging.getLogger(__name__)
-        LOGGER.info(f"to_issuer_metadata: format={self.format}, binding_methods={self.cryptographic_binding_methods_supported}")
+        LOGGER.info(
+            f"to_issuer_metadata: format={self.format}, binding_methods={self.cryptographic_binding_methods_supported}"
+        )
 
         # Base credential configuration per OID4VCI 1.0 § 11.2.3
         issuer_metadata = {
@@ -137,14 +140,18 @@ class SupportedCredential(BaseRecord):
                 # - credentialSubject (optional)
                 cred_def = {}
                 format_data = self.format_data.copy()
-                
+
                 # Handle @context
-                context = format_data.pop("context", None) or format_data.pop("@context", None)
+                context = format_data.pop("context", None) or format_data.pop(
+                    "@context", None
+                )
                 if context:
                     cred_def["@context"] = context
 
                 # Handle type/types
-                types_value = format_data.pop("types", None) or format_data.pop("type", None)
+                types_value = format_data.pop("types", None) or format_data.pop(
+                    "type", None
+                )
                 if types_value:
                     cred_def["type"] = types_value
                     # Backward compatibility: Also add "types" at top level
@@ -182,7 +189,9 @@ class SupportedCredential(BaseRecord):
                         value = format_data.pop(field)
                         if field == "cryptographic_suites_supported":
                             # Rename to spec-compliant name
-                            issuer_metadata["credential_signing_alg_values_supported"] = value
+                            issuer_metadata[
+                                "credential_signing_alg_values_supported"
+                            ] = value
                         else:
                             issuer_metadata[field] = value
 
@@ -195,14 +204,14 @@ class SupportedCredential(BaseRecord):
                 display_from_format_data = format_data.pop("display", None)
                 if display_from_format_data and "display" not in issuer_metadata:
                     issuer_metadata["display"] = display_from_format_data
-                
+
                 # For vc+sd-jwt format, walt.id expects "credentialSubject" not "claims"
                 # The claims field is used internally for validation, but the output
                 # should use credentialSubject for wallet compatibility
                 if self.format == "vc+sd-jwt" and "claims" in format_data:
                     claims = format_data.pop("claims")
                     format_data["credentialSubject"] = claims
-                
+
                 issuer_metadata.update(format_data)
         return issuer_metadata
 

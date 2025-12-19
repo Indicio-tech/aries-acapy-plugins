@@ -16,17 +16,14 @@ References:
 import asyncio
 import base64
 import gzip
-import json
 import logging
 import uuid
-from typing import Any, Dict
+from typing import Any
 
 import httpx
 import jwt
 import pytest
 from bitarray import bitarray
-
-from .test_config import TEST_CONFIG
 
 LOGGER = logging.getLogger(__name__)
 
@@ -42,7 +39,7 @@ class TestCredoRevocationFlow:
         credo_client,
     ):
         """Test full revocation flow: issue → verify valid → revoke → verify invalid.
-        
+
         Uses JWT-VC format with W3C Bitstring Status List.
         """
         LOGGER.info("Testing JWT-VC revocation flow with Credo...")
@@ -50,7 +47,7 @@ class TestCredoRevocationFlow:
         random_suffix = str(uuid.uuid4())[:8]
 
         # === Step 1: Setup credential with status list ===
-        
+
         # Create credential configuration
         cred_config = {
             "id": f"RevocableJwtVc_{random_suffix}",
@@ -73,7 +70,7 @@ class TestCredoRevocationFlow:
         # Create issuer DID
         did_response = await acapy_issuer_admin.post(
             "/wallet/did/create",
-            json={"method": "key", "options": {"key_type": "ed25519"}}
+            json={"method": "key", "options": {"key_type": "ed25519"}},
         )
         issuer_did = did_response["result"]["did"]
 
@@ -86,13 +83,13 @@ class TestCredoRevocationFlow:
                 "list_size": 1024,
                 "list_type": "w3c",
                 "issuer_did": issuer_did,
-            }
+            },
         )
         definition_id = status_def_response["id"]
         LOGGER.info(f"Created status list definition: {definition_id}")
 
         # === Step 2: Issue credential to Credo ===
-        
+
         exchange = await acapy_issuer_admin.post(
             "/oid4vci/exchange/create",
             json={
@@ -102,13 +99,12 @@ class TestCredoRevocationFlow:
                     "email": "alice@example.com",
                 },
                 "did": issuer_did,
-            }
+            },
         )
         exchange_id = exchange["exchange_id"]
 
         offer = await acapy_issuer_admin.get(
-            "/oid4vci/credential-offer",
-            params={"exchange_id": exchange_id}
+            "/oid4vci/credential-offer", params={"exchange_id": exchange_id}
         )
 
         # Credo accepts credential
@@ -117,11 +113,11 @@ class TestCredoRevocationFlow:
             json={
                 "credential_offer": offer["credential_offer"],
                 "holder_did_method": "key",
-            }
+            },
         )
         assert cred_response.status_code == 200
         credential_data = cred_response.json()
-        
+
         # Extract JWT
         credential_jwt = self._extract_jwt(credential_data["credential"])
         assert credential_jwt is not None, "Failed to extract credential JWT"
@@ -130,15 +126,15 @@ class TestCredoRevocationFlow:
         jwt_payload = jwt.decode(credential_jwt, options={"verify_signature": False})
         vc = jwt_payload.get("vc", jwt_payload)
         assert "credentialStatus" in vc, "Credential missing status"
-        
+
         credential_status = vc["credentialStatus"]
         status_list_url = credential_status["id"].split("#")[0]
         status_index = int(credential_status["id"].split("#")[1])
-        
+
         LOGGER.info(f"Credential issued with status index: {status_index}")
 
         # === Step 3: Verify credential is initially VALID ===
-        
+
         is_revoked_before = await self._check_revocation_status(
             status_list_url, status_index
         )
@@ -146,23 +142,21 @@ class TestCredoRevocationFlow:
         LOGGER.info("✓ Credential is valid (not revoked)")
 
         # === Step 4: Revoke credential ===
-        
+
         await acapy_issuer_admin.patch(
             f"/status-list/defs/{definition_id}/creds/{exchange_id}",
-            json={"status": "1"}  # 1 = revoked
+            json={"status": "1"},  # 1 = revoked
         )
 
         # Publish updated status list
-        await acapy_issuer_admin.put(
-            f"/status-list/defs/{definition_id}/publish"
-        )
+        await acapy_issuer_admin.put(f"/status-list/defs/{definition_id}/publish")
         LOGGER.info("Credential revoked and status list published")
 
         # === Step 5: Verify credential is now REVOKED ===
-        
+
         # Small delay for status list to propagate
         await asyncio.sleep(1)
-        
+
         is_revoked_after = await self._check_revocation_status(
             status_list_url, status_index
         )
@@ -200,9 +194,7 @@ class TestCredoRevocationFlow:
                     "family_name": {"mandatory": True},
                 },
             },
-            "vc_additional_data": {
-                "sd_list": ["/given_name", "/family_name"]
-            },
+            "vc_additional_data": {"sd_list": ["/given_name", "/family_name"]},
         }
 
         config_response = await acapy_issuer_admin.post(
@@ -213,7 +205,7 @@ class TestCredoRevocationFlow:
         # Create issuer DID
         did_response = await acapy_issuer_admin.post(
             "/wallet/did/create",
-            json={"method": "key", "options": {"key_type": "ed25519"}}
+            json={"method": "key", "options": {"key_type": "ed25519"}},
         )
         issuer_did = did_response["result"]["did"]
 
@@ -226,7 +218,7 @@ class TestCredoRevocationFlow:
                 "list_size": 1024,
                 "list_type": "ietf",
                 "issuer_did": issuer_did,
-            }
+            },
         )
         definition_id = status_def_response["id"]
 
@@ -240,13 +232,12 @@ class TestCredoRevocationFlow:
                     "family_name": "Smith",
                 },
                 "did": issuer_did,
-            }
+            },
         )
         exchange_id = exchange["exchange_id"]
 
         offer = await acapy_issuer_admin.get(
-            "/oid4vci/credential-offer",
-            params={"exchange_id": exchange_id}
+            "/oid4vci/credential-offer", params={"exchange_id": exchange_id}
         )
 
         # Credo accepts
@@ -255,7 +246,7 @@ class TestCredoRevocationFlow:
             json={
                 "credential_offer": offer["credential_offer"],
                 "holder_did_method": "key",
-            }
+            },
         )
         assert cred_response.status_code == 200
         credential_data = cred_response.json()
@@ -264,15 +255,15 @@ class TestCredoRevocationFlow:
         sd_jwt = self._extract_jwt(credential_data["credential"])
         jwt_part = sd_jwt.split("~")[0]  # Get issuer JWT part
         jwt_payload = jwt.decode(jwt_part, options={"verify_signature": False})
-        
+
         # IETF format uses status_list claim
         status_list = jwt_payload.get("status", {}).get("status_list", {})
         if not status_list:
             pytest.skip("IETF status list not found in credential")
-        
+
         status_index = status_list.get("idx")
         status_uri = status_list.get("uri")
-        
+
         LOGGER.info(f"SD-JWT issued with IETF status index: {status_index}")
 
         # Verify initially valid
@@ -284,11 +275,9 @@ class TestCredoRevocationFlow:
         # Revoke
         await acapy_issuer_admin.patch(
             f"/status-list/defs/{definition_id}/creds/{exchange_id}",
-            json={"status": "1"}
+            json={"status": "1"},
         )
-        await acapy_issuer_admin.put(
-            f"/status-list/defs/{definition_id}/publish"
-        )
+        await acapy_issuer_admin.put(f"/status-list/defs/{definition_id}/publish")
 
         await asyncio.sleep(1)
 
@@ -308,7 +297,7 @@ class TestCredoRevocationFlow:
         credo_client,
     ):
         """Test that presenting a revoked credential fails verification.
-        
+
         Flow:
         1. Issue credential
         2. Create presentation request
@@ -344,7 +333,7 @@ class TestCredoRevocationFlow:
 
         did_response = await acapy_issuer_admin.post(
             "/wallet/did/create",
-            json={"method": "key", "options": {"key_type": "ed25519"}}
+            json={"method": "key", "options": {"key_type": "ed25519"}},
         )
         issuer_did = did_response["result"]["did"]
 
@@ -357,7 +346,7 @@ class TestCredoRevocationFlow:
                 "list_size": 1024,
                 "list_type": "ietf",
                 "issuer_did": issuer_did,
-            }
+            },
         )
         definition_id = status_def["id"]
 
@@ -368,13 +357,12 @@ class TestCredoRevocationFlow:
                 "supported_cred_id": supported_cred_id,
                 "credential_subject": {"name": "Charlie"},
                 "did": issuer_did,
-            }
+            },
         )
         exchange_id = exchange["exchange_id"]
 
         offer = await acapy_issuer_admin.get(
-            "/oid4vci/credential-offer",
-            params={"exchange_id": exchange_id}
+            "/oid4vci/credential-offer", params={"exchange_id": exchange_id}
         )
 
         cred_response = await credo_client.post(
@@ -382,7 +370,7 @@ class TestCredoRevocationFlow:
             json={
                 "credential_offer": offer["credential_offer"],
                 "holder_did_method": "key",
-            }
+            },
         )
         assert cred_response.status_code == 200
         credential = cred_response.json()["credential"]
@@ -394,9 +382,11 @@ class TestCredoRevocationFlow:
                     "id": "revocable_cred",
                     "format": "vc+sd-jwt",
                     "meta": {
-                        "vct_values": [f"https://credentials.example.com/presentable_{random_suffix}"]
+                        "vct_values": [
+                            f"https://credentials.example.com/presentable_{random_suffix}"
+                        ]
                     },
-                    "claims": [{"path": ["name"]}]
+                    "claims": [{"path": ["name"]}],
                 }
             ]
         }
@@ -412,7 +402,7 @@ class TestCredoRevocationFlow:
             json={
                 "dcql_query_id": dcql_query_id,
                 "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA"]}},
-            }
+            },
         )
         request_uri = pres_request["request_uri"]
         presentation_id = pres_request["presentation"]["presentation_id"]
@@ -420,11 +410,9 @@ class TestCredoRevocationFlow:
         # REVOKE the credential BEFORE presenting
         await acapy_issuer_admin.patch(
             f"/status-list/defs/{definition_id}/creds/{exchange_id}",
-            json={"status": "1"}
+            json={"status": "1"},
         )
-        await acapy_issuer_admin.put(
-            f"/status-list/defs/{definition_id}/publish"
-        )
+        await acapy_issuer_admin.put(f"/status-list/defs/{definition_id}/publish")
         LOGGER.info("Credential revoked before presentation")
 
         # Present the (now revoked) credential
@@ -433,7 +421,7 @@ class TestCredoRevocationFlow:
             json={
                 "request_uri": request_uri,
                 "credentials": [credential],
-            }
+            },
         )
         # Credo should still be able to submit the presentation
         # (holder may not know it's revoked)
@@ -446,9 +434,13 @@ class TestCredoRevocationFlow:
                 f"/oid4vp/presentation/{presentation_id}"
             )
             final_state = result.get("state")
-            
+
             # Check if verification completed (valid or invalid)
-            if final_state in ["presentation-valid", "presentation-invalid", "abandoned"]:
+            if final_state in [
+                "presentation-valid",
+                "presentation-invalid",
+                "abandoned",
+            ]:
                 break
             await asyncio.sleep(1)
 
@@ -456,9 +448,9 @@ class TestCredoRevocationFlow:
         # 1. Reject immediately if it checks status list during verification
         # 2. Accept but flag as revoked
         # The important thing is that revocation is detected
-        
+
         LOGGER.info(f"Final presentation state: {final_state}")
-        
+
         # For now, just verify we got a terminal state
         assert final_state is not None, "Presentation should reach a terminal state"
         LOGGER.info("✅ Revoked credential presentation test completed")
@@ -467,7 +459,7 @@ class TestCredoRevocationFlow:
         """Extract JWT string from various credential formats."""
         if isinstance(credential_data, str):
             return credential_data
-        
+
         if isinstance(credential_data, dict):
             if "compact" in credential_data:
                 return credential_data["compact"]
@@ -484,12 +476,10 @@ class TestCredoRevocationFlow:
                         for key in ["compactSdJwtVc", "credential", "compactJwtVc"]:
                             if key in instance:
                                 return instance[key]
-        
+
         return None
 
-    async def _check_revocation_status(
-        self, status_list_url: str, index: int
-    ) -> bool:
+    async def _check_revocation_status(self, status_list_url: str, index: int) -> bool:
         """Check W3C Bitstring Status List for revocation status."""
         # Fix hostname for docker
         url = status_list_url
@@ -507,26 +497,24 @@ class TestCredoRevocationFlow:
 
             status_jwt = response.text
             payload = jwt.decode(status_jwt, options={"verify_signature": False})
-            
+
             # W3C format
             encoded_list = payload["vc"]["credentialSubject"]["encodedList"]
-            
+
             # Decode
             missing_padding = len(encoded_list) % 4
             if missing_padding:
                 encoded_list += "=" * (4 - missing_padding)
-            
+
             compressed = base64.urlsafe_b64decode(encoded_list)
             decompressed = gzip.decompress(compressed)
-            
+
             ba = bitarray()
             ba.frombytes(decompressed)
-            
+
             return ba[index] == 1
 
-    async def _check_ietf_revocation_status(
-        self, status_uri: str, index: int
-    ) -> bool:
+    async def _check_ietf_revocation_status(self, status_uri: str, index: int) -> bool:
         """Check IETF Token Status List for revocation status."""
         # Fix hostname for docker
         url = status_uri
@@ -539,27 +527,30 @@ class TestCredoRevocationFlow:
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
             if response.status_code != 200:
-                LOGGER.error(f"Failed to fetch IETF status list: {response.status_code}")
+                LOGGER.error(
+                    f"Failed to fetch IETF status list: {response.status_code}"
+                )
                 return False
 
             status_jwt = response.text
             payload = jwt.decode(status_jwt, options={"verify_signature": False})
-            
+
             # IETF format: status_list.lst is base64url encoded, zlib compressed
             encoded_list = payload.get("status_list", {}).get("lst", "")
-            
+
             missing_padding = len(encoded_list) % 4
             if missing_padding:
                 encoded_list += "=" * (4 - missing_padding)
-            
+
             import zlib
+
             compressed = base64.urlsafe_b64decode(encoded_list)
             decompressed = zlib.decompress(compressed)
-            
+
             # Each status is 1 bit
             ba = bitarray()
             ba.frombytes(decompressed)
-            
+
             return ba[index] == 1
 
 
@@ -577,7 +568,7 @@ class TestRevocationEdgeCases:
         # Create a status list definition first
         did_response = await acapy_issuer_admin.post(
             "/wallet/did/create",
-            json={"method": "key", "options": {"key_type": "ed25519"}}
+            json={"method": "key", "options": {"key_type": "ed25519"}},
         )
         issuer_did = did_response["result"]["did"]
 
@@ -601,17 +592,17 @@ class TestRevocationEdgeCases:
                 "list_size": 1024,
                 "list_type": "w3c",
                 "issuer_did": issuer_did,
-            }
+            },
         )
         definition_id = status_def["id"]
 
         # Try to revoke a non-existent credential
         fake_cred_id = str(uuid.uuid4())
-        
+
         try:
             response = await acapy_issuer_admin.patch(
                 f"/status-list/defs/{definition_id}/creds/{fake_cred_id}",
-                json={"status": "1"}
+                json={"status": "1"},
             )
             # Should get 404 or error
             LOGGER.info(f"Response for non-existent credential: {response}")
@@ -650,7 +641,7 @@ class TestRevocationEdgeCases:
 
         did_response = await acapy_issuer_admin.post(
             "/wallet/did/create",
-            json={"method": "key", "options": {"key_type": "ed25519"}}
+            json={"method": "key", "options": {"key_type": "ed25519"}},
         )
         issuer_did = did_response["result"]["did"]
 
@@ -662,7 +653,7 @@ class TestRevocationEdgeCases:
                 "list_size": 1024,
                 "list_type": "w3c",
                 "issuer_did": issuer_did,
-            }
+            },
         )
         definition_id = status_def["id"]
 
@@ -673,13 +664,12 @@ class TestRevocationEdgeCases:
                 "supported_cred_id": supported_cred_id,
                 "credential_subject": {"test": "unrevoke"},
                 "did": issuer_did,
-            }
+            },
         )
         exchange_id = exchange["exchange_id"]
 
         offer = await acapy_issuer_admin.get(
-            "/oid4vci/credential-offer",
-            params={"exchange_id": exchange_id}
+            "/oid4vci/credential-offer", params={"exchange_id": exchange_id}
         )
 
         cred_response = await credo_client.post(
@@ -687,14 +677,16 @@ class TestRevocationEdgeCases:
             json={
                 "credential_offer": offer["credential_offer"],
                 "holder_did_method": "key",
-            }
+            },
         )
-        assert cred_response.status_code == 200, f"Credo failed to accept credential: {cred_response.status_code} - {cred_response.text}"
+        assert (
+            cred_response.status_code == 200
+        ), f"Credo failed to accept credential: {cred_response.status_code} - {cred_response.text}"
 
         # Revoke
         revoke_response = await acapy_issuer_admin.patch(
             f"/status-list/defs/{definition_id}/creds/{exchange_id}",
-            json={"status": "1"}
+            json={"status": "1"},
         )
         publish_response = await acapy_issuer_admin.put(
             f"/status-list/defs/{definition_id}/publish"
@@ -706,12 +698,10 @@ class TestRevocationEdgeCases:
         try:
             unrevoke_response = await acapy_issuer_admin.patch(
                 f"/status-list/defs/{definition_id}/creds/{exchange_id}",
-                json={"status": "0"}  # 0 = active/unrevoked
+                json={"status": "0"},  # 0 = active/unrevoked
             )
             # Controller returns dict on success
-            await acapy_issuer_admin.put(
-                f"/status-list/defs/{definition_id}/publish"
-            )
+            await acapy_issuer_admin.put(f"/status-list/defs/{definition_id}/publish")
             LOGGER.info("Credential unrevoked")
         except Exception as e:
             # Unrevocation may not be supported by policy - that's acceptable
@@ -727,7 +717,7 @@ class TestRevocationEdgeCases:
         acapy_issuer_admin,
     ):
         """Test suspension (temporary) vs revocation (permanent).
-        
+
         The status list supports different purposes:
         - revocation: permanent invalidation
         - suspension: temporary hold
@@ -750,7 +740,7 @@ class TestRevocationEdgeCases:
 
         did_response = await acapy_issuer_admin.post(
             "/wallet/did/create",
-            json={"method": "key", "options": {"key_type": "ed25519"}}
+            json={"method": "key", "options": {"key_type": "ed25519"}},
         )
         issuer_did = did_response["result"]["did"]
 
@@ -763,7 +753,7 @@ class TestRevocationEdgeCases:
                 "list_size": 1024,
                 "list_type": "w3c",
                 "issuer_did": issuer_did,
-            }
+            },
         )
         LOGGER.info(f"Created revocation status list: {revocation_def['id']}")
 
@@ -776,7 +766,7 @@ class TestRevocationEdgeCases:
                 "list_size": 1024,
                 "list_type": "w3c",
                 "issuer_did": issuer_did,
-            }
+            },
         )
         LOGGER.info(f"Created suspension status list: {suspension_def['id']}")
 

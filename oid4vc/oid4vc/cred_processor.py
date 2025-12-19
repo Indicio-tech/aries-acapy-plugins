@@ -79,11 +79,11 @@ class IssuerError(CredProcessorError):
     """Raised on issuer errors."""
 
 
-class CredVerifeirError(CredProcessorError):
+class CredVerifierError(CredProcessorError):
     """Raised on credential verifier errors."""
 
 
-class PresVerifeirError(CredProcessorError):
+class PresVerifierError(CredProcessorError):
     """Raised on presentation verifier errors."""
 
 

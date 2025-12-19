@@ -10,13 +10,10 @@ This file tests error scenarios including:
 """
 
 import uuid
-from datetime import datetime, timedelta
-from typing import Any
 
 import httpx
 import pytest
 import pytest_asyncio
-
 
 pytestmark = [pytest.mark.negative, pytest.mark.asyncio]
 
@@ -40,7 +37,7 @@ class TestOID4VCIErrors:
         response = await acapy_issuer.post(
             "/oid4vci/exchange/create", json=exchange_request
         )
-        
+
         # API returns 500 when credential config not found
         assert response.status_code in [400, 404, 422, 500]
 
@@ -71,7 +68,7 @@ class TestOID4VCIErrors:
         response = await acapy_issuer.post(
             "/oid4vci/exchange/create", json=exchange_request
         )
-        
+
         # Should fail with validation error
         assert response.status_code in [400, 422]
 
@@ -82,14 +79,16 @@ class TestOID4VCIErrors:
             "/oid4vci/credential-offer",
             params={"exchange_id": "invalid_exchange_id_12345"},
         )
-        
+
         assert response.status_code in [400, 404]
 
     @pytest.mark.asyncio
-    async def test_duplicate_credential_config_id(self, acapy_issuer: httpx.AsyncClient):
+    async def test_duplicate_credential_config_id(
+        self, acapy_issuer: httpx.AsyncClient
+    ):
         """Test creating duplicate credential configuration ID."""
         config_id = f"DuplicateTest_{uuid.uuid4().hex[:8]}"
-        
+
         credential_supported = {
             "id": config_id,
             "format": "jwt_vc_json",
@@ -108,7 +107,7 @@ class TestOID4VCIErrors:
         response2 = await acapy_issuer.post(
             "/oid4vci/credential-supported/create", json=credential_supported
         )
-        
+
         assert response2.status_code in [400, 409]
 
     @pytest.mark.asyncio
@@ -123,7 +122,7 @@ class TestOID4VCIErrors:
         response = await acapy_issuer.post(
             "/oid4vci/credential-supported/create", json=credential_supported
         )
-        
+
         assert response.status_code in [400, 422]
 
 
@@ -146,7 +145,7 @@ class TestOID4VPErrors:
         }
 
         response = await acapy_verifier.post("/oid4vp/request", json=request_body)
-        
+
         # API accepts the request - validation happens at verification time
         assert response.status_code in [200, 400, 404]
 
@@ -161,12 +160,14 @@ class TestOID4VPErrors:
         response = await acapy_verifier.post(
             "/oid4vp/presentation-definition", json={"pres_def": pres_def}
         )
-        
+
         # API may accept empty descriptors (validation at verification time)
         assert response.status_code in [200, 400, 422]
 
     @pytest.mark.asyncio
-    async def test_missing_format_in_descriptor(self, acapy_verifier: httpx.AsyncClient):
+    async def test_missing_format_in_descriptor(
+        self, acapy_verifier: httpx.AsyncClient
+    ):
         """Test input descriptor without format specification."""
         pres_def = {
             "id": str(uuid.uuid4()),
@@ -186,7 +187,7 @@ class TestOID4VPErrors:
         response = await acapy_verifier.post(
             "/oid4vp/presentation-definition", json={"pres_def": pres_def}
         )
-        
+
         # May succeed if format is optional at definition level
         # but will fail at verification time
         assert response.status_code in [200, 400, 422]
@@ -214,7 +215,7 @@ class TestDCQLErrors:
                 "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["ES256"]}},
             },
         )
-        
+
         assert response.status_code in [400, 422]
 
     @pytest.mark.asyncio
@@ -237,7 +238,7 @@ class TestDCQLErrors:
                 "vp_formats": {"invalid_format_xyz": {}},
             },
         )
-        
+
         assert response.status_code in [400, 422]
 
     @pytest.mark.asyncio
@@ -268,7 +269,7 @@ class TestDCQLErrors:
                 "vp_formats": {"mso_mdoc": {"alg": ["ES256"]}},
             },
         )
-        
+
         # Should fail - can't have both path and namespace
         assert response.status_code in [400, 422]
 
@@ -299,7 +300,7 @@ class TestDCQLErrors:
                 "vp_formats": {"mso_mdoc": {"alg": ["ES256"]}},
             },
         )
-        
+
         assert response.status_code in [400, 422]
 
     @pytest.mark.asyncio
@@ -332,7 +333,7 @@ class TestDCQLErrors:
                 "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["ES256"]}},
             },
         )
-        
+
         # May succeed at request creation but fail at verification
         assert response.status_code in [200, 400, 422]
 
@@ -371,7 +372,7 @@ class TestMDocErrors:
                 "vp_formats": {"mso_mdoc": {"alg": ["ES256"]}},
             },
         )
-        
+
         # May accept at request time but fail at verification
         # since doctype validation often happens against presented credential
         assert response.status_code in [200, 400, 422]
@@ -404,7 +405,7 @@ class TestMDocErrors:
                 "vp_formats": {"mso_mdoc": {"alg": ["ES256"]}},
             },
         )
-        
+
         # Should fail - mutually exclusive
         assert response.status_code in [400, 422]
 
@@ -434,7 +435,7 @@ class TestMDocErrors:
                 "vp_formats": {"mso_mdoc": {"alg": ["ES256"]}},
             },
         )
-        
+
         # Should fail - vct is for SD-JWT, not mDOC
         assert response.status_code in [400, 422]
 
@@ -459,7 +460,7 @@ class TestTokenErrors:
                 "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
             },
         )
-        
+
         # Should fail with invalid code error
         assert response.status_code in [400, 401, 404]
 
@@ -473,7 +474,7 @@ class TestTokenErrors:
                 "grant_type": "invalid_grant_type",
             },
         )
-        
+
         # Token endpoint may return 404 when code not found
         assert response.status_code in [400, 404, 422]
 
@@ -501,7 +502,7 @@ class TestFormatErrors:
         response = await acapy_issuer.post(
             "/oid4vci/credential-supported/create", json=credential_supported
         )
-        
+
         # May succeed but should warn or fail
         assert response.status_code in [200, 400, 422]
 
@@ -520,7 +521,7 @@ class TestFormatErrors:
         response = await acapy_issuer.post(
             "/oid4vci/credential-supported/create", json=credential_supported
         )
-        
+
         # May succeed but should warn or fail
         assert response.status_code in [200, 400, 422]
 
@@ -534,6 +535,7 @@ class TestFormatErrors:
 async def acapy_issuer():
     """HTTP client for ACA-Py issuer admin API."""
     from os import getenv
+
     ACAPY_ISSUER_ADMIN_URL = getenv("ACAPY_ISSUER_ADMIN_URL", "http://localhost:8021")
     async with httpx.AsyncClient(base_url=ACAPY_ISSUER_ADMIN_URL) as client:
         yield client
@@ -543,6 +545,9 @@ async def acapy_issuer():
 async def acapy_verifier():
     """HTTP client for ACA-Py verifier admin API."""
     from os import getenv
-    ACAPY_VERIFIER_ADMIN_URL = getenv("ACAPY_VERIFIER_ADMIN_URL", "http://localhost:8031")
+
+    ACAPY_VERIFIER_ADMIN_URL = getenv(
+        "ACAPY_VERIFIER_ADMIN_URL", "http://localhost:8031"
+    )
     async with httpx.AsyncClient(base_url=ACAPY_VERIFIER_ADMIN_URL) as client:
         yield client

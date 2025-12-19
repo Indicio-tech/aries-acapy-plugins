@@ -1,10 +1,12 @@
-import pytest
 import uuid
+
+import pytest
+
 
 @pytest.mark.asyncio
 async def test_sphereon_accept_offer_invalid_proof(acapy_issuer_admin, sphereon_client):
     """Test Sphereon accepting a credential offer with an invalid proof of possession."""
-    
+
     # 1. Setup Issuer (ACA-Py)
     cred_id = f"UniversityDegreeCredential-{uuid.uuid4()}"
     supported = await acapy_issuer_admin.post(
@@ -39,7 +41,7 @@ async def test_sphereon_accept_offer_invalid_proof(acapy_issuer_admin, sphereon_
             "verification_method": issuer_did + "#0",
         },
     )
-    
+
     # Get offer
     offer_response = await acapy_issuer_admin.get(
         "/oid4vci/credential-offer",
@@ -50,12 +52,9 @@ async def test_sphereon_accept_offer_invalid_proof(acapy_issuer_admin, sphereon_
     # 2. Sphereon accepts offer with INVALID PROOF
     response = await sphereon_client.post(
         "/oid4vci/accept-offer",
-        json={
-            "offer": credential_offer,
-            "invalid_proof": True
-        },
+        json={"offer": credential_offer, "invalid_proof": True},
     )
-    
+
     # Expecting failure
     # The wrapper returns 500 if the client throws an error
     assert response.status_code == 500

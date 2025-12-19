@@ -2,6 +2,11 @@
 
 from typing import Any, Dict
 
+from acapy_agent.admin.decorators.auth import tenant_authentication
+from acapy_agent.admin.request_context import AdminRequestContext
+from acapy_agent.askar.profile import AskarProfileSession
+from acapy_agent.messaging.models.openapi import OpenAPISchema
+from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from aiohttp import web
 from aiohttp_apispec import (
     docs,
@@ -11,12 +16,6 @@ from aiohttp_apispec import (
     response_schema,
 )
 from marshmallow import fields
-
-from acapy_agent.admin.decorators.auth import tenant_authentication
-from acapy_agent.admin.request_context import AdminRequestContext
-from acapy_agent.askar.profile import AskarProfileSession
-from acapy_agent.messaging.models.openapi import OpenAPISchema
-from acapy_agent.storage.error import StorageError, StorageNotFoundError
 
 from ..cred_processor import CredProcessorError, CredProcessors
 from ..models.supported_cred import SupportedCredential, SupportedCredentialSchema

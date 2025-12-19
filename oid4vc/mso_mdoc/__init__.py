@@ -46,7 +46,9 @@ def create_trust_store(
 
     if trust_store_type == TRUST_STORE_TYPE_WALLET:
         if profile is None:
-            LOGGER.warning("Wallet trust store requires a profile, deferring initialization")
+            LOGGER.warning(
+                "Wallet trust store requires a profile, deferring initialization"
+            )
             return None
         LOGGER.info("Using wallet-based trust store")
         return WalletTrustStore(profile)
@@ -73,13 +75,13 @@ def create_trust_store(
 async def on_startup(profile: Profile, event: object):
     """Handle startup event to initialize profile-dependent resources."""
     global _mso_mdoc_processor
-    
+
     LOGGER.info("MSO_MDOC plugin startup - initializing profile-dependent resources")
-    
+
     trust_store_type = os.getenv(
         "OID4VC_MDOC_TRUST_STORE_TYPE", TRUST_STORE_TYPE_FILE
     ).lower()
-    
+
     # If using wallet trust store, initialize it now that we have a profile
     if trust_store_type == TRUST_STORE_TYPE_WALLET and _mso_mdoc_processor is not None:
         trust_store = WalletTrustStore(profile)
@@ -88,7 +90,7 @@ async def on_startup(profile: Profile, event: object):
             LOGGER.info("Loaded trust anchors from wallet")
         except Exception as e:
             LOGGER.warning("Failed to load trust anchors from wallet: %s", e)
-        
+
         # Update the processor with the trust store
         _mso_mdoc_processor.trust_store = trust_store
 
@@ -120,7 +122,7 @@ async def on_startup(profile: Profile, event: object):
 async def setup(context: InjectionContext):
     """Setup the plugin."""
     global _mso_mdoc_processor
-    
+
     LOGGER.info("Setting up MSO_MDOC plugin")
 
     # For wallet trust store, we'll initialize the trust store in on_startup
@@ -128,7 +130,7 @@ async def setup(context: InjectionContext):
     trust_store_type = os.getenv(
         "OID4VC_MDOC_TRUST_STORE_TYPE", TRUST_STORE_TYPE_FILE
     ).lower()
-    
+
     if trust_store_type == TRUST_STORE_TYPE_WALLET:
         # Defer trust store initialization until startup
         trust_store = None
@@ -143,7 +145,7 @@ async def setup(context: InjectionContext):
     processors.register_issuer("mso_mdoc", _mso_mdoc_processor)
     processors.register_cred_verifier("mso_mdoc", _mso_mdoc_processor)
     processors.register_pres_verifier("mso_mdoc", _mso_mdoc_processor)
-    
+
     # Register startup event handler for profile-dependent initialization
     event_bus = context.inject(EventBus)
     event_bus.subscribe(STARTUP_EVENT_PATTERN, on_startup)

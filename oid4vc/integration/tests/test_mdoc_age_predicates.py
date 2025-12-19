@@ -13,16 +13,11 @@ References:
 - ISO 18013-5:2021 Annex A: Data elements (age_over_NN)
 """
 
-import asyncio
 import logging
 import uuid
-from datetime import date, datetime, timedelta
-from typing import Any, Dict, Optional
+from datetime import date, timedelta
 
-import httpx
 import pytest
-
-from .test_config import TEST_CONFIG
 
 LOGGER = logging.getLogger(__name__)
 
@@ -37,10 +32,12 @@ class TestMdocAgePredicates:
     @pytest.fixture
     def birth_date_for_age(self):
         """Calculate birth date for a given age."""
+
         def _get_birth_date(age: int) -> str:
             today = date.today()
             birth_year = today.year - age
             return f"{birth_year}-{today.month:02d}-{today.day:02d}"
+
         return _get_birth_date
 
     @pytest.mark.asyncio
@@ -51,7 +48,7 @@ class TestMdocAgePredicates:
         birth_date_for_age,
     ):
         """Test age_over_18 verification when birth_date is provided.
-        
+
         This is the basic case: birth_date is in the credential,
         and verifier requests age_over_18.
         """
@@ -66,9 +63,7 @@ class TestMdocAgePredicates:
             "cryptographic_binding_methods_supported": ["cose_key", "did:key", "did"],
             "cryptographic_suites_supported": ["ES256"],
             "proof_types_supported": {
-                "jwt": {
-                    "proof_signing_alg_values_supported": ["ES256"]
-                }
+                "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
             },
             "format_data": {
                 "doctype": "org.iso.18013.5.1.mDL",
@@ -91,7 +86,8 @@ class TestMdocAgePredicates:
 
         # Create a DID for the issuer (P-256 for mDOC compatibility)
         did_response = await acapy_issuer_admin.post(
-            "/wallet/did/create", json={"method": "key", "options": {"key_type": "p256"}}
+            "/wallet/did/create",
+            json={"method": "key", "options": {"key_type": "p256"}},
         )
         issuer_did = did_response["result"]["did"]
 
@@ -124,15 +120,10 @@ class TestMdocAgePredicates:
                 {
                     "id": "mdl_age_check",
                     "format": "mso_mdoc",
-                    "meta": {
-                        "doctype_value": "org.iso.18013.5.1.mDL"
-                    },
+                    "meta": {"doctype_value": "org.iso.18013.5.1.mDL"},
                     "claims": [
-                        {
-                            "namespace": "org.iso.18013.5.1",
-                            "claim_name": "age_over_18"
-                        }
-                    ]
+                        {"namespace": "org.iso.18013.5.1", "claim_name": "age_over_18"}
+                    ],
                 }
             ]
         }
@@ -155,12 +146,12 @@ class TestMdocAgePredicates:
         acapy_verifier_admin,
     ):
         """Test age predicate verification WITHOUT disclosing birth_date.
-        
+
         This tests the privacy-preserving feature:
         - Credential contains birth_date
         - Verifier only requests age_over_18
         - birth_date should NOT be revealed in presentation
-        
+
         This is the key privacy feature of mDOC age predicates.
         """
         LOGGER.info("Testing age predicate without birth_date disclosure...")
@@ -171,19 +162,11 @@ class TestMdocAgePredicates:
                 {
                     "id": "age_only_check",
                     "format": "mso_mdoc",
-                    "meta": {
-                        "doctype_value": "org.iso.18013.5.1.mDL"
-                    },
+                    "meta": {"doctype_value": "org.iso.18013.5.1.mDL"},
                     "claims": [
-                        {
-                            "namespace": "org.iso.18013.5.1",
-                            "claim_name": "age_over_18"
-                        },
-                        {
-                            "namespace": "org.iso.18013.5.1",
-                            "claim_name": "given_name"
-                        }
-                    ]
+                        {"namespace": "org.iso.18013.5.1", "claim_name": "age_over_18"},
+                        {"namespace": "org.iso.18013.5.1", "claim_name": "given_name"},
+                    ],
                 }
             ]
         }
@@ -196,7 +179,7 @@ class TestMdocAgePredicates:
         # Verify query doesn't include birth_date
         # The verifier should be able to verify age_over_18 without seeing birth_date
         assert dcql_query_id is not None
-        
+
         # TODO: When Credo/holder supports mDOC, complete the flow:
         # 1. Present credential with only age_over_18 disclosed
         # 2. Verify birth_date is NOT in the presentation
@@ -211,7 +194,7 @@ class TestMdocAgePredicates:
         acapy_verifier_admin,
     ):
         """Test multiple age predicates in single request.
-        
+
         Request age_over_18, age_over_21, and age_over_65 simultaneously.
         """
         LOGGER.info("Testing multiple age predicates...")
@@ -221,23 +204,12 @@ class TestMdocAgePredicates:
                 {
                     "id": "multi_age_check",
                     "format": "mso_mdoc",
-                    "meta": {
-                        "doctype_value": "org.iso.18013.5.1.mDL"
-                    },
+                    "meta": {"doctype_value": "org.iso.18013.5.1.mDL"},
                     "claims": [
-                        {
-                            "namespace": "org.iso.18013.5.1",
-                            "claim_name": "age_over_18"
-                        },
-                        {
-                            "namespace": "org.iso.18013.5.1",
-                            "claim_name": "age_over_21"
-                        },
-                        {
-                            "namespace": "org.iso.18013.5.1",
-                            "claim_name": "age_over_65"
-                        }
-                    ]
+                        {"namespace": "org.iso.18013.5.1", "claim_name": "age_over_18"},
+                        {"namespace": "org.iso.18013.5.1", "claim_name": "age_over_21"},
+                        {"namespace": "org.iso.18013.5.1", "claim_name": "age_over_65"},
+                    ],
                 }
             ]
         }
@@ -258,7 +230,7 @@ class TestMdocAgePredicates:
         birth_date_for_age,
     ):
         """Test that age predicate values are correctly computed.
-        
+
         Verifies that:
         - age_over_18 is True for someone 25 years old
         - age_over_21 is True for someone 25 years old
@@ -275,9 +247,7 @@ class TestMdocAgePredicates:
             "cryptographic_binding_methods_supported": ["cose_key", "did:key", "did"],
             "cryptographic_suites_supported": ["ES256"],
             "proof_types_supported": {
-                "jwt": {
-                    "proof_signing_alg_values_supported": ["ES256"]
-                }
+                "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
             },
             "format_data": {
                 "doctype": "org.iso.18013.5.1.mDL",
@@ -300,11 +270,11 @@ class TestMdocAgePredicates:
 
         # Holder is 25 years old
         birth_date = birth_date_for_age(25)
-        
+
         # Expected age predicate values for a 25-year-old:
         expected_predicates = {
-            "age_over_18": True,   # 25 >= 18 ✓
-            "age_over_21": True,   # 25 >= 21 ✓
+            "age_over_18": True,  # 25 >= 18 ✓
+            "age_over_21": True,  # 25 >= 21 ✓
             "age_over_65": False,  # 25 >= 65 ✗
         }
 
@@ -338,7 +308,7 @@ class TestMdocAamvaAgePredicates:
         acapy_verifier_admin,
     ):
         """Test AAMVA namespace age predicates.
-        
+
         AAMVA defines additional age predicates in the domestic namespace:
         - DHS_compliance (REAL ID compliant)
         - organ_donor
@@ -351,21 +321,16 @@ class TestMdocAamvaAgePredicates:
                 {
                     "id": "aamva_check",
                     "format": "mso_mdoc",
-                    "meta": {
-                        "doctype_value": "org.iso.18013.5.1.mDL"
-                    },
+                    "meta": {"doctype_value": "org.iso.18013.5.1.mDL"},
                     "claims": [
                         # ISO namespace
-                        {
-                            "namespace": "org.iso.18013.5.1",
-                            "claim_name": "age_over_21"
-                        },
+                        {"namespace": "org.iso.18013.5.1", "claim_name": "age_over_21"},
                         # AAMVA domestic namespace
                         {
                             "namespace": "org.iso.18013.5.1.aamva",
-                            "claim_name": "DHS_compliance"
+                            "claim_name": "DHS_compliance",
                         },
-                    ]
+                    ],
                 }
             ]
         }
@@ -386,11 +351,13 @@ class TestMdocAgePredicateEdgeCases:
     @pytest.fixture
     def birth_date_for_exact_age(self):
         """Calculate birth date for exact age boundary testing."""
+
         def _get_birth_date(years: int, days_offset: int = 0) -> str:
             today = date.today()
             birth_date = today.replace(year=today.year - years)
             birth_date = birth_date - timedelta(days=days_offset)
             return birth_date.isoformat()
+
         return _get_birth_date
 
     @pytest.mark.asyncio
@@ -400,14 +367,14 @@ class TestMdocAgePredicateEdgeCases:
         birth_date_for_exact_age,
     ):
         """Test age predicate when holder is exactly 18 today.
-        
+
         Person born exactly 18 years ago should have age_over_18 = True.
         """
         LOGGER.info("Testing age boundary: exactly 18 years old today...")
 
         # Birth date exactly 18 years ago
         birth_date = birth_date_for_exact_age(18, days_offset=0)
-        
+
         # age_over_18 should be True (they turned 18 today)
         expected_age_over_18 = True
 
@@ -422,14 +389,14 @@ class TestMdocAgePredicateEdgeCases:
         birth_date_for_exact_age,
     ):
         """Test age predicate when holder turns 18 tomorrow.
-        
+
         Person who turns 18 tomorrow should have age_over_18 = False.
         """
         LOGGER.info("Testing age boundary: turns 18 tomorrow...")
 
         # Birth date is 18 years minus 1 day ago (turns 18 tomorrow)
         birth_date = birth_date_for_exact_age(18, days_offset=-1)
-        
+
         # age_over_18 should be False (not 18 yet)
         expected_age_over_18 = False
 
@@ -443,18 +410,18 @@ class TestMdocAgePredicateEdgeCases:
         acapy_issuer_admin,
     ):
         """Test age predicate for Feb 29 birthday (leap year).
-        
+
         People born on Feb 29 have their birthday handled specially.
         """
         LOGGER.info("Testing leap year birthday handling...")
 
         # Someone born Feb 29, 2000 (leap year)
         birth_date = "2000-02-29"
-        
+
         # Calculate their age as of today
         today = date.today()
         years_since = today.year - 2000
-        
+
         LOGGER.info(f"Birth date: {birth_date} (leap year)")
         LOGGER.info(f"Years since birth: {years_since}")
         LOGGER.info("✅ Leap year test case defined")

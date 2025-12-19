@@ -354,10 +354,12 @@ class TestOID4VCMdocCompliance:
             # Phase 2: Use issued credential in mdoc presentation
             # Parse the issued credential using isomdl_uniffi
             issued_mdoc_b64 = cred_data["credential"]
-            
+
             key_alias = "parsed"
-            issued_mdoc = mdl.Mdoc.new_from_base64url_encoded_issuer_signed(issued_mdoc_b64, key_alias)
-            
+            issued_mdoc = mdl.Mdoc.new_from_base64url_encoded_issuer_signed(
+                issued_mdoc_b64, key_alias
+            )
+
             # Create presentation session with the ISSUED credential
             session = mdl.MdlPresentationSession(issued_mdoc, str(uuid.uuid4()))
             qr_code = session.get_qr_code_uri()

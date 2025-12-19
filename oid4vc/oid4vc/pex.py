@@ -218,33 +218,33 @@ class DescriptorEvaluator:
         cls, descriptor: Union[dict, InputDescriptors], raw_dict: Optional[dict] = None
     ) -> "DescriptorEvaluator":
         """Compile an input descriptor.
-        
+
         Args:
             descriptor: The input descriptor object or dict
             raw_dict: Optional raw dictionary with format information (for ACA-Py < 1.5)
         """
         formats = []
-        
+
         if isinstance(descriptor, dict):
             # Extract format from the dict before deserializing
-            format_dict = descriptor.get('format', {})
+            format_dict = descriptor.get("format", {})
             if format_dict:
                 formats = list(format_dict.keys())
             LOGGER.info(f"PEX: Extracted formats from dict: {formats}")
             descriptor = InputDescriptors.deserialize(descriptor)
         elif isinstance(descriptor, InputDescriptors):
             # Try to get fmt attribute if it exists (ACA-Py >= 1.5)
-            descriptor_fmt = getattr(descriptor, 'fmt', None)
+            descriptor_fmt = getattr(descriptor, "fmt", None)
             if descriptor_fmt:
                 # Get format names from the attributes
                 for attr_name in vars(descriptor_fmt):
-                    if not attr_name.startswith('_'):
+                    if not attr_name.startswith("_"):
                         value = getattr(descriptor_fmt, attr_name, None)
                         if value is not None:
                             formats.append(attr_name)
             # If fmt not available and raw_dict provided, use that
-            elif raw_dict and 'format' in raw_dict:
-                formats = list(raw_dict.get('format', {}).keys())
+            elif raw_dict and "format" in raw_dict:
+                formats = list(raw_dict.get("format", {}).keys())
             LOGGER.info(f"PEX: Extracted formats from object: {formats}")
         else:
             raise TypeError("descriptor must be dict or InputDescriptor")
@@ -290,9 +290,13 @@ class PresentationExchangeEvaluator:
         }
 
     @classmethod
-    def compile(cls, definition: Union[dict, PresentationDefinition], raw_definition: Optional[dict] = None):
+    def compile(
+        cls,
+        definition: Union[dict, PresentationDefinition],
+        raw_definition: Optional[dict] = None,
+    ):
         """Compile a presentation definition object into evaluatable state.
-        
+
         Args:
             definition: The presentation definition object or dict
             raw_definition: Optional raw dictionary for format extraction (for ACA-Py < 1.5)
@@ -300,14 +304,14 @@ class PresentationExchangeEvaluator:
         raw_descriptors = {}
         if isinstance(definition, dict):
             # Store the raw input_descriptors for format extraction
-            for desc in definition.get('input_descriptors', []):
-                raw_descriptors[desc.get('id')] = desc
+            for desc in definition.get("input_descriptors", []):
+                raw_descriptors[desc.get("id")] = desc
             definition = PresentationDefinition.deserialize(definition)
         elif isinstance(definition, PresentationDefinition):
             # If raw_definition provided, extract raw descriptors from it
             if raw_definition:
-                for desc in raw_definition.get('input_descriptors', []):
-                    raw_descriptors[desc.get('id')] = desc
+                for desc in raw_definition.get("input_descriptors", []):
+                    raw_descriptors[desc.get("id")] = desc
         else:
             raise TypeError("definition must be dict or PresentationDefinition")
 
@@ -344,8 +348,10 @@ class PresentationExchangeEvaluator:
                     details=f"Could not find input descriptor corresponding to {item.id}"
                 )
 
-            LOGGER.info(f"PEX: Processing descriptor map item: id={item.id}, fmt={item.fmt}, path={item.path}")
-            
+            LOGGER.info(
+                f"PEX: Processing descriptor map item: id={item.id}, fmt={item.fmt}, path={item.path}"
+            )
+
             processors = profile.inject(CredProcessors)
             if item.path_nested:
                 assert item.path_nested.path
@@ -374,21 +380,39 @@ class PresentationExchangeEvaluator:
                     vc = presentation
                 processor = processors.cred_verifier_for_format(item.fmt)
 
-            LOGGER.info(f"PEX: Verifying credential type {type(vc)} with processor {processor}")
+            LOGGER.info(
+                f"PEX: Verifying credential type {type(vc)} with processor {processor}"
+            )
             result = await processor.verify_credential(profile, vc)
             LOGGER.info(f"PEX: Verification result: {result.verified}")
             if result.verified:
-                LOGGER.info(f"PEX: Payload keys: {result.payload.keys() if result.payload else 'None'}")
-                LOGGER.error(f"DEBUG: PEX Payload: {json.dumps(result.payload) if result.payload else 'None'}")
+                LOGGER.info(
+                    f"PEX: Payload keys: {result.payload.keys() if result.payload else 'None'}"
+                )
+                LOGGER.debug(
+                    f"PEX Payload: {json.dumps(result.payload) if result.payload else 'None'}"
+                )
 
-            LOGGER.info(f"PEX: mso_mdoc extraction check: verified={result.verified}, path_nested={item.path_nested}, formats={evaluator.formats}")
-            if result.verified and not item.path_nested and "mso_mdoc" in evaluator.formats:
+            LOGGER.info(
+                f"PEX: mso_mdoc extraction check: verified={result.verified}, path_nested={item.path_nested}, formats={evaluator.formats}"
+            )
+            if (
+                result.verified
+                and not item.path_nested
+                and "mso_mdoc" in evaluator.formats
+            ):
                 # Check if we have a VP that contains mDoc
                 vp_payload = result.payload
-                LOGGER.info(f"PEX: Checking VP payload for mso_mdoc: {type(vp_payload)}")
+                LOGGER.info(
+                    f"PEX: Checking VP payload for mso_mdoc: {type(vp_payload)}"
+                )
                 if vp_payload and isinstance(vp_payload, dict):
-                    vcs = vp_payload.get("vp", {}).get("verifiableCredential") or vp_payload.get("verifiableCredential")
-                    LOGGER.info(f"PEX: Extracted vcs from VP: {type(vcs)}, value preview: {str(vcs)[:200] if vcs else 'None'}")
+                    vcs = vp_payload.get("vp", {}).get(
+                        "verifiableCredential"
+                    ) or vp_payload.get("verifiableCredential")
+                    LOGGER.info(
+                        f"PEX: Extracted vcs from VP: {type(vcs)}, value preview: {str(vcs)[:200] if vcs else 'None'}"
+                    )
                     if vcs:
                         if not isinstance(vcs, list):
                             vcs = [vcs]
@@ -396,23 +420,40 @@ class PresentationExchangeEvaluator:
                         mdoc_processor = processors.cred_verifier_for_format("mso_mdoc")
                         LOGGER.info(f"PEX: mdoc_processor: {mdoc_processor}")
                         if mdoc_processor:
-                            LOGGER.info("PEX: Attempting to extract and verify mso_mdoc from VP")
+                            LOGGER.info(
+                                "PEX: Attempting to extract and verify mso_mdoc from VP"
+                            )
                             for inner_vc in vcs:
-                                LOGGER.info(f"PEX: Processing inner vc: {type(inner_vc)}, preview: {str(inner_vc)[:100]}")
+                                LOGGER.info(
+                                    f"PEX: Processing inner vc: {type(inner_vc)}, preview: {str(inner_vc)[:100]}"
+                                )
                                 try:
-                                    inner_result = await mdoc_processor.verify_credential(profile, inner_vc)
-                                    LOGGER.info(f"PEX: Inner verification result: verified={inner_result.verified}")
+                                    inner_result = (
+                                        await mdoc_processor.verify_credential(
+                                            profile, inner_vc
+                                        )
+                                    )
+                                    LOGGER.info(
+                                        f"PEX: Inner verification result: verified={inner_result.verified}"
+                                    )
                                     if inner_result.verified:
-                                        LOGGER.info(f"PEX: Successfully verified inner mso_mdoc, payload keys: {inner_result.payload.keys() if inner_result.payload else 'None'}")
+                                        LOGGER.info(
+                                            f"PEX: Successfully verified inner mso_mdoc, payload keys: {inner_result.payload.keys() if inner_result.payload else 'None'}"
+                                        )
                                         result = inner_result
                                         break
                                 except Exception as e:
-                                    LOGGER.warning(f"PEX: Failed to verify inner credential: {e}")
+                                    LOGGER.warning(
+                                        f"PEX: Failed to verify inner credential: {e}"
+                                    )
                                     import traceback
-                                    LOGGER.warning(f"PEX: Traceback: {traceback.format_exc()}")
+
+                                    LOGGER.warning(
+                                        f"PEX: Traceback: {traceback.format_exc()}"
+                                    )
 
             if not result.verified:
-                LOGGER.error(f"DEBUG: Credential verification failed: {result.payload}")
+                LOGGER.debug(f"Credential verification failed: {result.payload}")
                 return PexVerifyResult(
                     details="Credential signature verification failed"
                 )
@@ -420,7 +461,7 @@ class PresentationExchangeEvaluator:
             try:
                 fields = evaluator.match(result.payload)
             except DescriptorMatchFailed as e:
-                LOGGER.error(f"DEBUG: Descriptor match failed: {e}")
+                LOGGER.debug(f"Descriptor match failed: {e}")
                 return PexVerifyResult(
                     details="Credential did not match expected descriptor constraints"
                 )

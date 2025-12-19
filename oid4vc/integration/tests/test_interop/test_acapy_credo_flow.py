@@ -144,7 +144,7 @@ async def test_presentation_verification_flow(
     credo,
 ):
     """Test presentation from Credo to ACA-Py verifier.
-    
+
     Complete flow:
     1. Issue SD-JWT credential from ACA-Py to Credo
     2. Create presentation request on ACA-Py verifier
@@ -253,15 +253,17 @@ async def test_presentation_verification_flow(
 
     # Step 4: Poll for presentation validation
     for _ in range(15):
-        status_response = await acapy_verifier.get(f"/oid4vp/presentation/{presentation_id}")
+        status_response = await acapy_verifier.get(
+            f"/oid4vp/presentation/{presentation_id}"
+        )
         status_response.raise_for_status()
         status = status_response.json()
         if status.get("state") == "presentation-valid":
             break
         await asyncio.sleep(1.0)
 
-    assert status.get("state") == "presentation-valid", (
-        f"Presentation not validated. Final state: {status.get('state')}"
-    )
+    assert (
+        status.get("state") == "presentation-valid"
+    ), f"Presentation not validated. Final state: {status.get('state')}"
 
     print("✅ Presentation verification flow completed successfully!")

@@ -2,7 +2,7 @@
 
 import sys
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, mock_open, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
@@ -36,11 +36,11 @@ def create_mock_profile_with_session():
     """Create a mock profile with properly mocked async session context manager."""
     profile = MagicMock()
     mock_session = MagicMock()
-    
+
     @asynccontextmanager
     async def mock_session_context():
         yield mock_session
-    
+
     profile.session = mock_session_context
     profile.settings = MagicMock()
     profile.settings.get = MagicMock(return_value=None)
@@ -165,33 +165,34 @@ class TestMsoMdocCredVerifier:
             # Create a real exception class for MdocVerificationError
             class MockMdocVerificationError(Exception):
                 pass
+
             mock_isomdl.MdocVerificationError = MockMdocVerificationError
-            
+
             # Use a simple class instead of MagicMock to ensure JSON serializable values
             class MockVerificationResult:
                 verified = True
                 common_name = "Test Issuer"
                 error = None
-            
+
             class MockMdoc:
                 def doctype(self):
                     return "org.iso.18013.5.1.mDL"
-                
+
                 def id(self):
                     return "test-id-12345"
-                
+
                 def details(self):
                     return {}
-                
+
                 def verify_issuer_signature(self, trust_anchors, enable_chaining):
                     return MockVerificationResult()
-            
+
             mock_isomdl.Mdoc.from_string.return_value = MockMdoc()
-            
+
             # Use a hex-encoded credential string to go through the hex parsing path
             # The credential must be all hex characters (0-9, a-f, A-F)
             hex_credential = "a0b1c2d3e4f5"
-            
+
             result = await verifier.verify_credential(profile, hex_credential)
 
             assert isinstance(result, VerifyResult)
@@ -234,7 +235,7 @@ class TestMsoMdocPresVerifier:
             "oid4vc.did_utils.retrieve_or_create_did_jwk"
         ) as mock_did_jwk:
             mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
-            
+
             # Mock the DID JWK retrieval as async
             mock_jwk = MagicMock()
             mock_jwk.did = "did:jwk:test"
@@ -277,7 +278,7 @@ class TestMsoMdocPresVerifier:
             "oid4vc.did_utils.retrieve_or_create_did_jwk"
         ) as mock_did_jwk:
             mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
-            
+
             # Mock the DID JWK retrieval
             mock_jwk = MagicMock()
             mock_jwk.did = "did:jwk:test"
@@ -316,7 +317,7 @@ class TestMsoMdocPresVerifier:
             "oid4vc.did_utils.retrieve_or_create_did_jwk"
         ) as mock_did_jwk:
             mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
-            
+
             # Mock the DID JWK retrieval
             mock_jwk = MagicMock()
             mock_jwk.did = "did:jwk:test"

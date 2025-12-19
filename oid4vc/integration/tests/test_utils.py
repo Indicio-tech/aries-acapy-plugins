@@ -3,15 +3,15 @@
 import json
 import logging
 import time
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 import httpx
 
 
 def assert_claims_present(
-    matched_credentials: Dict[str, Any],
+    matched_credentials: dict[str, Any],
     query_id: str,
-    expected_claims: List[str],
+    expected_claims: list[str],
     *,
     check_nested: bool = True,
 ) -> None:
@@ -54,9 +54,9 @@ def assert_claims_present(
 
 
 def assert_claims_absent(
-    matched_credentials: Dict[str, Any],
+    matched_credentials: dict[str, Any],
     query_id: str,
-    excluded_claims: List[str],
+    excluded_claims: list[str],
     *,
     check_nested: bool = True,
 ) -> None:
@@ -98,9 +98,9 @@ def assert_claims_absent(
     )
 
 
-def _get_all_keys(data: Any, prefix: str = "") -> Set[str]:
+def _get_all_keys(data: Any, prefix: str = "") -> set[str]:
     """Get all keys from a nested dict structure for error reporting."""
-    keys: Set[str] = set()
+    keys: set[str] = set()
     if isinstance(data, dict):
         for k, v in data.items():
             full_key = f"{prefix}.{k}" if prefix else k
@@ -110,11 +110,11 @@ def _get_all_keys(data: Any, prefix: str = "") -> Set[str]:
 
 
 def assert_selective_disclosure(
-    matched_credentials: Dict[str, Any],
+    matched_credentials: dict[str, Any],
     query_id: str,
     *,
-    must_have: Optional[List[str]] = None,
-    must_not_have: Optional[List[str]] = None,
+    must_have: list[str] | None = None,
+    must_not_have: list[str] | None = None,
     check_nested: bool = True,
 ) -> None:
     """Convenience function to verify both present and absent claims.
@@ -134,6 +134,8 @@ def assert_selective_disclosure(
         assert_claims_absent(
             matched_credentials, query_id, must_not_have, check_nested=check_nested
         )
+
+
 from acapy_agent.did.did_key import DIDKey
 from acapy_agent.wallet.key_type import P256
 from aries_askar import Key

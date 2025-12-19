@@ -9,6 +9,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from acapy_agent.config.base import InjectionError
 from acapy_agent.core.profile import ProfileSession
 from acapy_agent.storage.base import StorageRecord
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
@@ -74,7 +75,7 @@ async def get_key(session: ProfileSession, key_id: str) -> Optional[Dict]:
     """Retrieve a stored key by ID."""
     try:
         storage = get_storage(session)
-    except Exception as e:
+    except InjectionError as e:
         LOGGER.warning("Storage not available for getting key %s: %s", key_id, e)
         return None
 
@@ -96,7 +97,7 @@ async def list_keys(
     """List stored keys, optionally filtered by purpose."""
     try:
         storage = get_storage(session)
-    except Exception as e:
+    except InjectionError as e:
         LOGGER.warning("Storage not available for listing keys: %s", e)
         return []
 
@@ -132,7 +133,7 @@ async def delete_key(session: ProfileSession, key_id: str) -> bool:
     """Delete a stored key."""
     try:
         storage = get_storage(session)
-    except Exception as e:
+    except InjectionError as e:
         LOGGER.warning("Storage not available for deleting key %s: %s", key_id, e)
         return False
 

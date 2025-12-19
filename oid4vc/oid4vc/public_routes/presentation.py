@@ -131,7 +131,7 @@ async def get_request(request: web.Request):
     elif dcql_query is not None:
         payload["dcql_query"] = dcql_query.record_value
 
-    LOGGER.error(f"DEBUG: Generated JWT payload: {payload}")
+    LOGGER.debug(f"Generated JWT payload: {payload}")
 
     headers = {
         "kid": f"{jwk.did}#0",
@@ -231,10 +231,8 @@ async def verify_pres_def_presentation(
         )
 
     LOGGER.info(f"Available pres_verifiers: {list(processors.pres_verifiers.keys())}")
-    LOGGER.info(
-        f"Processing {len(submission.descriptor_maps)} descriptor map(s)"
-    )
-    
+    LOGGER.info(f"Processing {len(submission.descriptor_maps)} descriptor map(s)")
+
     # Use the first format for VP-level verification
     verifier = processors.pres_verifier_for_format(submission.descriptor_maps[0].fmt)
     LOGGER.debug("VERIFIER: %s", verifier)

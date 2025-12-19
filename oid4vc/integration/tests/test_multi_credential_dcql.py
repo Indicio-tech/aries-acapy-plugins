@@ -16,11 +16,10 @@ References:
 import asyncio
 import logging
 import uuid
-from typing import Any, Dict, List
 
 import pytest
 
-from .test_config import TEST_CONFIG, MDOC_AVAILABLE
+from .test_config import MDOC_AVAILABLE
 
 LOGGER = logging.getLogger(__name__)
 
@@ -36,7 +35,7 @@ class TestMultiCredentialDCQL:
         credo_client,
     ):
         """Test DCQL query requesting two different SD-JWT credentials.
-        
+
         Scenario: KYC verification requiring:
         1. Identity credential (name, birth_date)
         2. Address credential (street, city, country)
@@ -104,7 +103,7 @@ class TestMultiCredentialDCQL:
         # Create issuer DID
         did_response = await acapy_issuer_admin.post(
             "/wallet/did/create",
-            json={"method": "key", "options": {"key_type": "ed25519"}}
+            json={"method": "key", "options": {"key_type": "ed25519"}},
         )
         issuer_did = did_response["result"]["did"]
 
@@ -119,11 +118,11 @@ class TestMultiCredentialDCQL:
                     "birth_date": "1990-05-15",
                 },
                 "did": issuer_did,
-            }
+            },
         )
         identity_offer = await acapy_issuer_admin.get(
             "/oid4vci/credential-offer",
-            params={"exchange_id": identity_exchange["exchange_id"]}
+            params={"exchange_id": identity_exchange["exchange_id"]},
         )
 
         # Credo receives identity credential
@@ -132,7 +131,7 @@ class TestMultiCredentialDCQL:
             json={
                 "credential_offer": identity_offer["credential_offer"],
                 "holder_did_method": "key",
-            }
+            },
         )
         assert identity_cred_response.status_code == 200
         identity_credential = identity_cred_response.json()["credential"]
@@ -148,11 +147,11 @@ class TestMultiCredentialDCQL:
                     "country": "US",
                 },
                 "did": issuer_did,
-            }
+            },
         )
         address_offer = await acapy_issuer_admin.get(
             "/oid4vci/credential-offer",
-            params={"exchange_id": address_exchange["exchange_id"]}
+            params={"exchange_id": address_exchange["exchange_id"]},
         )
 
         # Credo receives address credential
@@ -161,7 +160,7 @@ class TestMultiCredentialDCQL:
             json={
                 "credential_offer": address_offer["credential_offer"],
                 "holder_did_method": "key",
-            }
+            },
         )
         assert address_cred_response.status_code == 200
         address_credential = address_cred_response.json()["credential"]
@@ -180,19 +179,17 @@ class TestMultiCredentialDCQL:
                     "claims": [
                         {"id": "name", "path": ["given_name"]},
                         {"id": "surname", "path": ["family_name"]},
-                    ]
+                    ],
                 },
                 {
                     "id": "address_cred",
                     "format": "vc+sd-jwt",
-                    "meta": {
-                        "vct_values": ["https://credentials.example.com/address"]
-                    },
+                    "meta": {"vct_values": ["https://credentials.example.com/address"]},
                     "claims": [
                         {"id": "city", "path": ["locality"]},
                         {"id": "country", "path": ["country"]},
-                    ]
-                }
+                    ],
+                },
             ]
         }
 
@@ -207,7 +204,7 @@ class TestMultiCredentialDCQL:
             json={
                 "dcql_query_id": dcql_query_id,
                 "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256"]}},
-            }
+            },
         )
         request_uri = presentation_request["request_uri"]
         presentation_id = presentation_request["presentation"]["presentation_id"]
@@ -218,7 +215,7 @@ class TestMultiCredentialDCQL:
             json={
                 "request_uri": request_uri,
                 "credentials": [identity_credential, address_credential],
-            }
+            },
         )
         assert presentation_response.status_code == 200
 
@@ -245,7 +242,7 @@ class TestMultiCredentialDCQL:
         credo_client,
     ):
         """Test DCQL with three credentials from different issuers.
-        
+
         Real-world scenario: Employment verification requiring:
         1. Government ID (from DMV)
         2. Employment credential (from employer)
@@ -260,7 +257,7 @@ class TestMultiCredentialDCQL:
         for i in range(3):
             did_response = await acapy_issuer_admin.post(
                 "/wallet/did/create",
-                json={"method": "key", "options": {"key_type": "ed25519"}}
+                json={"method": "key", "options": {"key_type": "ed25519"}},
             )
             issuer_dids.append(did_response["result"]["did"])
 
@@ -270,19 +267,30 @@ class TestMultiCredentialDCQL:
                 "name": "GovernmentID",
                 "vct": "https://gov.example.com/id",
                 "claims": {"full_name": {}, "document_number": {}},
-                "subject": {"full_name": "Alice Johnson", "document_number": "ID-123456"},
+                "subject": {
+                    "full_name": "Alice Johnson",
+                    "document_number": "ID-123456",
+                },
             },
             {
                 "name": "EmploymentCred",
                 "vct": "https://hr.example.com/employment",
                 "claims": {"employer": {}, "job_title": {}, "start_date": {}},
-                "subject": {"employer": "ACME Corp", "job_title": "Engineer", "start_date": "2020-01-15"},
+                "subject": {
+                    "employer": "ACME Corp",
+                    "job_title": "Engineer",
+                    "start_date": "2020-01-15",
+                },
             },
             {
                 "name": "EducationCred",
                 "vct": "https://edu.example.com/degree",
                 "claims": {"institution": {}, "degree": {}, "graduation_year": {}},
-                "subject": {"institution": "State University", "degree": "BS Computer Science", "graduation_year": "2019"},
+                "subject": {
+                    "institution": "State University",
+                    "degree": "BS Computer Science",
+                    "graduation_year": "2019",
+                },
             },
         ]
 
@@ -319,11 +327,11 @@ class TestMultiCredentialDCQL:
                     "supported_cred_id": config_id,
                     "credential_subject": cfg["subject"],
                     "did": issuer_dids[i],  # Different issuer for each
-                }
+                },
             )
             offer = await acapy_issuer_admin.get(
                 "/oid4vci/credential-offer",
-                params={"exchange_id": exchange["exchange_id"]}
+                params={"exchange_id": exchange["exchange_id"]},
             )
 
             # Credo receives
@@ -332,7 +340,7 @@ class TestMultiCredentialDCQL:
                 json={
                     "credential_offer": offer["credential_offer"],
                     "holder_did_method": "key",
-                }
+                },
             )
             assert cred_response.status_code == 200
             credentials.append(cred_response.json()["credential"])
@@ -346,20 +354,20 @@ class TestMultiCredentialDCQL:
                     "id": "gov_id",
                     "format": "vc+sd-jwt",
                     "meta": {"vct_values": ["https://gov.example.com/id"]},
-                    "claims": [{"path": ["full_name"]}]
+                    "claims": [{"path": ["full_name"]}],
                 },
                 {
                     "id": "employment",
                     "format": "vc+sd-jwt",
                     "meta": {"vct_values": ["https://hr.example.com/employment"]},
-                    "claims": [{"path": ["employer"]}, {"path": ["job_title"]}]
+                    "claims": [{"path": ["employer"]}, {"path": ["job_title"]}],
                 },
                 {
                     "id": "education",
                     "format": "vc+sd-jwt",
                     "meta": {"vct_values": ["https://edu.example.com/degree"]},
-                    "claims": [{"path": ["degree"]}]
-                }
+                    "claims": [{"path": ["degree"]}],
+                },
             ]
         }
 
@@ -373,7 +381,7 @@ class TestMultiCredentialDCQL:
             json={
                 "dcql_query_id": dcql_query_id,
                 "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA"]}},
-            }
+            },
         )
         presentation_id = presentation_request["presentation"]["presentation_id"]
 
@@ -383,7 +391,7 @@ class TestMultiCredentialDCQL:
             json={
                 "request_uri": presentation_request["request_uri"],
                 "credentials": credentials,
-            }
+            },
         )
         assert presentation_response.status_code == 200
 
@@ -414,7 +422,7 @@ class TestMultiCredentialCredentialSets:
         credo_client,
     ):
         """Test credential_sets allowing alternative credential types.
-        
+
         Scenario: Accept EITHER a passport OR a driver's license for identity.
         Using credential_sets to specify alternatives.
         """
@@ -425,7 +433,7 @@ class TestMultiCredentialCredentialSets:
         # Create issuer DID
         did_response = await acapy_issuer_admin.post(
             "/wallet/did/create",
-            json={"method": "key", "options": {"key_type": "ed25519"}}
+            json={"method": "key", "options": {"key_type": "ed25519"}},
         )
         issuer_did = did_response["result"]["did"]
 
@@ -496,11 +504,11 @@ class TestMultiCredentialCredentialSets:
                     "state": "California",
                 },
                 "did": issuer_did,
-            }
+            },
         )
         license_offer = await acapy_issuer_admin.get(
             "/oid4vci/credential-offer",
-            params={"exchange_id": license_exchange["exchange_id"]}
+            params={"exchange_id": license_exchange["exchange_id"]},
         )
 
         license_cred_response = await credo_client.post(
@@ -508,7 +516,7 @@ class TestMultiCredentialCredentialSets:
             json={
                 "credential_offer": license_offer["credential_offer"],
                 "holder_did_method": "key",
-            }
+            },
         )
         assert license_cred_response.status_code == 200
         license_credential = license_cred_response.json()["credential"]
@@ -519,25 +527,31 @@ class TestMultiCredentialCredentialSets:
                 {
                     "id": "passport",
                     "format": "vc+sd-jwt",
-                    "meta": {"vct_values": ["https://credentials.example.com/passport"]},
-                    "claims": [{"path": ["full_name"]}, {"path": ["passport_number"]}]
+                    "meta": {
+                        "vct_values": ["https://credentials.example.com/passport"]
+                    },
+                    "claims": [{"path": ["full_name"]}, {"path": ["passport_number"]}],
                 },
                 {
                     "id": "drivers_license",
                     "format": "vc+sd-jwt",
-                    "meta": {"vct_values": ["https://credentials.example.com/drivers_license"]},
-                    "claims": [{"path": ["full_name"]}, {"path": ["license_number"]}]
-                }
+                    "meta": {
+                        "vct_values": [
+                            "https://credentials.example.com/drivers_license"
+                        ]
+                    },
+                    "claims": [{"path": ["full_name"]}, {"path": ["license_number"]}],
+                },
             ],
             "credential_sets": [
                 {
                     "purpose": "identity_verification",
                     "options": [
-                        ["passport"],           # Option 1: passport
-                        ["drivers_license"]     # Option 2: driver's license
-                    ]
+                        ["passport"],  # Option 1: passport
+                        ["drivers_license"],  # Option 2: driver's license
+                    ],
                 }
-            ]
+            ],
         }
 
         dcql_response = await acapy_verifier_admin.post(
@@ -550,7 +564,7 @@ class TestMultiCredentialCredentialSets:
             json={
                 "dcql_query_id": dcql_query_id,
                 "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA"]}},
-            }
+            },
         )
         presentation_id = presentation_request["presentation"]["presentation_id"]
 
@@ -560,7 +574,7 @@ class TestMultiCredentialCredentialSets:
             json={
                 "request_uri": presentation_request["request_uri"],
                 "credentials": [license_credential],
-            }
+            },
         )
         assert presentation_response.status_code == 200
 
@@ -580,10 +594,7 @@ class TestMultiCredentialCredentialSets:
         LOGGER.info("✅ credential_sets with alternative IDs verified successfully")
 
 
-@pytest.mark.skipif(
-    not MDOC_AVAILABLE,
-    reason="mDOC support not available"
-)
+@pytest.mark.skipif(not MDOC_AVAILABLE, reason="mDOC support not available")
 class TestMixedFormatMultiCredential:
     """Test DCQL with mixed credential formats (SD-JWT + mDOC)."""
 
@@ -594,7 +605,7 @@ class TestMixedFormatMultiCredential:
         acapy_verifier_admin,
     ):
         """Test DCQL requesting both SD-JWT and mDOC credentials.
-        
+
         Scenario: Travel verification requiring:
         1. mDOC driver's license (for identity)
         2. SD-JWT boarding pass (for travel authorization)
@@ -607,14 +618,12 @@ class TestMixedFormatMultiCredential:
                 {
                     "id": "drivers_license",
                     "format": "mso_mdoc",
-                    "meta": {
-                        "doctype_value": "org.iso.18013.5.1.mDL"
-                    },
+                    "meta": {"doctype_value": "org.iso.18013.5.1.mDL"},
                     "claims": [
                         {"namespace": "org.iso.18013.5.1", "claim_name": "given_name"},
                         {"namespace": "org.iso.18013.5.1", "claim_name": "family_name"},
                         {"namespace": "org.iso.18013.5.1", "claim_name": "portrait"},
-                    ]
+                    ],
                 },
                 {
                     "id": "boarding_pass",
@@ -626,8 +635,8 @@ class TestMixedFormatMultiCredential:
                         {"path": ["flight_number"]},
                         {"path": ["departure_airport"]},
                         {"path": ["arrival_airport"]},
-                    ]
-                }
+                    ],
+                },
             ]
         }
 

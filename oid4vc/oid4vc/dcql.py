@@ -113,7 +113,9 @@ class DCQLVerifyResult:
     verified: bool = False
     cred_query_id_to_claims: Dict[str, dict] = field(default_factory=dict)
     details: Optional[str] = None
-    satisfied_credential_sets: Optional[List[int]] = None  # Indices of satisfied credential sets
+    satisfied_credential_sets: Optional[
+        List[int]
+    ] = None  # Indices of satisfied credential sets
 
 
 class DCQLQueryEvaluator:

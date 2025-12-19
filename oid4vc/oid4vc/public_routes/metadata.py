@@ -37,15 +37,11 @@ class OpenIDConfigurationSchema(OpenAPISchema):
     )
     token_endpoint = fields.Str(
         required=True,
-        metadata={
-            "description": "URL of the OP's OAuth 2.0 Token Endpoint. REQUIRED."
-        },
+        metadata={"description": "URL of the OP's OAuth 2.0 Token Endpoint. REQUIRED."},
     )
     jwks_uri = fields.Str(
         required=False,
-        metadata={
-            "description": "URL of the OP's JWK Set document. OPTIONAL."
-        },
+        metadata={"description": "URL of the OP's JWK Set document. OPTIONAL."},
     )
     registration_endpoint = fields.Str(
         required=False,
@@ -396,9 +392,9 @@ async def openid_configuration(request: web.Request):
                 f"{config.auth_server_url}{auth_tenant_subpath}"
             ]
             # If there's an external auth server, include its authorization endpoint
-            metadata["authorization_endpoint"] = (
-                f"{config.auth_server_url}{auth_tenant_subpath}/authorize"
-            )
+            metadata[
+                "authorization_endpoint"
+            ] = f"{config.auth_server_url}{auth_tenant_subpath}/authorize"
 
     LOGGER.debug("OpenID Configuration: %s", metadata)
 

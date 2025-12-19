@@ -12,6 +12,7 @@ Key Protocol Compliance:
 import logging
 from typing import TYPE_CHECKING
 
+from acapy_agent.config.base import InjectionError
 from acapy_agent.storage.base import BaseStorage
 
 if TYPE_CHECKING:
@@ -46,6 +47,6 @@ def get_storage(session: "ProfileSession") -> BaseStorage:
         storage = session.inject(BaseStorage)
         LOGGER.debug("Successfully injected BaseStorage: %s", storage)
         return storage
-    except Exception as e:
+    except InjectionError as e:
         LOGGER.error("Failed to inject BaseStorage from session %s: %s", session, e)
         raise

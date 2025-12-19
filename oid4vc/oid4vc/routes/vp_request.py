@@ -2,6 +2,10 @@
 
 from urllib.parse import quote
 
+from acapy_agent.admin.request_context import AdminRequestContext
+from acapy_agent.messaging.models.base import BaseModelError
+from acapy_agent.messaging.models.openapi import OpenAPISchema
+from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from aiohttp import web
 from aiohttp_apispec import (
     docs,
@@ -10,11 +14,6 @@ from aiohttp_apispec import (
     response_schema,
 )
 from marshmallow import fields
-
-from acapy_agent.admin.request_context import AdminRequestContext
-from acapy_agent.messaging.models.base import BaseModelError
-from acapy_agent.messaging.models.openapi import OpenAPISchema
-from acapy_agent.storage.error import StorageError, StorageNotFoundError
 
 from ..config import Config
 from ..did_utils import retrieve_or_create_did_jwk

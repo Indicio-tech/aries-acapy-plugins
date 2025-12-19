@@ -8,12 +8,10 @@ This file tests mDOC trust anchor management and certificate chain validation:
 """
 
 import uuid
-from typing import Any
 
 import httpx
 import pytest
 import pytest_asyncio
-
 
 pytestmark = [pytest.mark.trust, pytest.mark.asyncio]
 
@@ -57,7 +55,7 @@ class TestTrustAnchorManagement:
     async def test_create_trust_anchor(self, acapy_verifier: httpx.AsyncClient):
         """Test creating a trust anchor."""
         anchor_id = f"test_anchor_{uuid.uuid4().hex[:8]}"
-        
+
         response = await acapy_verifier.post(
             "/mso_mdoc/trust-anchors",
             json={
@@ -69,7 +67,7 @@ class TestTrustAnchorManagement:
                 },
             },
         )
-        
+
         # Should succeed
         assert response.status_code in [200, 201]
         result = response.json()
@@ -80,7 +78,7 @@ class TestTrustAnchorManagement:
         """Test retrieving a trust anchor by ID."""
         # First create one
         anchor_id = f"get_test_{uuid.uuid4().hex[:8]}"
-        
+
         create_response = await acapy_verifier.post(
             "/mso_mdoc/trust-anchors",
             json={
@@ -88,15 +86,13 @@ class TestTrustAnchorManagement:
                 "certificate_pem": TEST_ROOT_CA_PEM,
             },
         )
-        
+
         if create_response.status_code not in [200, 201]:
             pytest.skip("Trust anchor creation endpoint not available")
-        
+
         # Now retrieve it
-        response = await acapy_verifier.get(
-            f"/mso_mdoc/trust-anchors/{anchor_id}"
-        )
-        
+        response = await acapy_verifier.get(f"/mso_mdoc/trust-anchors/{anchor_id}")
+
         assert response.status_code == 200
         result = response.json()
         assert result.get("anchor_id") == anchor_id
@@ -106,10 +102,10 @@ class TestTrustAnchorManagement:
     async def test_list_trust_anchors(self, acapy_verifier: httpx.AsyncClient):
         """Test listing all trust anchors."""
         response = await acapy_verifier.get("/mso_mdoc/trust-anchors")
-        
+
         if response.status_code == 404:
             pytest.skip("Trust anchor listing endpoint not available")
-        
+
         assert response.status_code == 200
         result = response.json()
         assert isinstance(result, (list, dict))
@@ -119,7 +115,7 @@ class TestTrustAnchorManagement:
         """Test deleting a trust anchor."""
         # First create one
         anchor_id = f"delete_test_{uuid.uuid4().hex[:8]}"
-        
+
         create_response = await acapy_verifier.post(
             "/mso_mdoc/trust-anchors",
             json={
@@ -127,28 +123,24 @@ class TestTrustAnchorManagement:
                 "certificate_pem": TEST_ROOT_CA_PEM,
             },
         )
-        
+
         if create_response.status_code not in [200, 201]:
             pytest.skip("Trust anchor creation endpoint not available")
-        
+
         # Delete it
-        response = await acapy_verifier.delete(
-            f"/mso_mdoc/trust-anchors/{anchor_id}"
-        )
-        
+        response = await acapy_verifier.delete(f"/mso_mdoc/trust-anchors/{anchor_id}")
+
         assert response.status_code in [200, 204]
-        
+
         # Verify it's gone
-        get_response = await acapy_verifier.get(
-            f"/mso_mdoc/trust-anchors/{anchor_id}"
-        )
+        get_response = await acapy_verifier.get(f"/mso_mdoc/trust-anchors/{anchor_id}")
         assert get_response.status_code == 404
 
     @pytest.mark.asyncio
     async def test_duplicate_trust_anchor_id(self, acapy_verifier: httpx.AsyncClient):
         """Test that duplicate trust anchor IDs are handled."""
         anchor_id = f"dup_test_{uuid.uuid4().hex[:8]}"
-        
+
         # First creation
         response1 = await acapy_verifier.post(
             "/mso_mdoc/trust-anchors",
@@ -157,10 +149,10 @@ class TestTrustAnchorManagement:
                 "certificate_pem": TEST_ROOT_CA_PEM,
             },
         )
-        
+
         if response1.status_code not in [200, 201]:
             pytest.skip("Trust anchor creation endpoint not available")
-        
+
         # Second creation with same ID
         response2 = await acapy_verifier.post(
             "/mso_mdoc/trust-anchors",
@@ -169,7 +161,7 @@ class TestTrustAnchorManagement:
                 "certificate_pem": TEST_ROOT_CA_PEM,
             },
         )
-        
+
         # Should fail with conflict, bad request, or internal error for duplicate
         assert response2.status_code in [200, 400, 409, 500]
 
@@ -192,7 +184,7 @@ class TestCertificateValidation:
                 "certificate_pem": "not a valid certificate",
             },
         )
-        
+
         # API may accept and validate later, or reject immediately
         assert response.status_code in [200, 400, 422]
 
@@ -206,7 +198,7 @@ class TestCertificateValidation:
                 "certificate_pem": "",
             },
         )
-        
+
         assert response.status_code in [400, 422]
 
     @pytest.mark.asyncio
@@ -217,7 +209,7 @@ class TestCertificateValidation:
         invalid_pem = """-----BEGIN SOMETHING-----
 MIIBkTCB+wIJAKHBfpegVpnKMAoGCCqGSM49BAMCMBkxFzAVBgNVBAMMDlRlc3Qg
 -----END SOMETHING-----"""
-        
+
         response = await acapy_verifier.post(
             "/mso_mdoc/trust-anchors",
             json={
@@ -225,7 +217,7 @@ MIIBkTCB+wIJAKHBfpegVpnKMAoGCCqGSM49BAMCMBkxFzAVBgNVBAMMDlRlc3Qg
                 "certificate_pem": invalid_pem,
             },
         )
-        
+
         # API may accept and validate later, or reject immediately
         assert response.status_code in [200, 400, 422]
 
@@ -264,7 +256,7 @@ class TestChainValidation:
         )
         query_response.raise_for_status()
         dcql_query_id = query_response.json()["dcql_query_id"]
-        
+
         # Then create the VP request with the query ID
         response = await acapy_verifier.post(
             "/oid4vp/request",
@@ -273,7 +265,7 @@ class TestChainValidation:
                 "vp_formats": {"mso_mdoc": {"alg": ["ES256"]}},
             },
         )
-        
+
         # Request creation should succeed
         # Actual chain validation happens at presentation time
         assert response.status_code in [200, 400]
@@ -287,10 +279,10 @@ class TestChainValidation:
         # 1. A trust anchor in the store
         # 2. An mDOC credential signed with a certificate chaining to that anchor
         # 3. A holder presenting the credential
-        
+
         # For now, just verify the trust anchor can be stored
         anchor_id = f"chain_test_{uuid.uuid4().hex[:8]}"
-        
+
         response = await acapy_verifier.post(
             "/mso_mdoc/trust-anchors",
             json={
@@ -299,7 +291,7 @@ class TestChainValidation:
                 "metadata": {"purpose": "chain_validation_test"},
             },
         )
-        
+
         # If endpoint exists, it should accept valid certificate
         if response.status_code not in [404, 405]:
             assert response.status_code in [200, 201]
@@ -325,7 +317,7 @@ class TestTrustStoreConfiguration:
         """Test wallet-based trust store operations."""
         # The wallet-based store should work with the storage endpoints
         response = await acapy_verifier.get("/mso_mdoc/trust-anchors")
-        
+
         # Endpoint should exist even if empty
         if response.status_code not in [404, 405]:
             assert response.status_code == 200
@@ -354,10 +346,10 @@ class TestIssuerCertificates:
                 },
             },
         )
-        
+
         if response.status_code == 404:
             pytest.skip("mDOC key generation endpoint not available")
-        
+
         assert response.status_code in [200, 201]
         result = response.json()
         assert "key_id" in result or "verification_method" in result
@@ -366,11 +358,13 @@ class TestIssuerCertificates:
     async def test_list_issuer_keys(self, acapy_issuer: httpx.AsyncClient):
         """Test listing issuer keys."""
         response = await acapy_issuer.get("/mso_mdoc/keys")
-        
+
         if response.status_code == 404:
             pytest.skip("mDOC key listing endpoint not available")
-        
-        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+
+        assert (
+            response.status_code == 200
+        ), f"Expected 200, got {response.status_code}: {response.text}"
         result = response.json()
         # API returns {"keys": [...]}
         assert isinstance(result, dict)
@@ -382,17 +376,19 @@ class TestIssuerCertificates:
         """Test retrieving issuer certificate chain."""
         # First, ensure a key exists
         keys_response = await acapy_issuer.get("/mso_mdoc/keys")
-        
+
         if keys_response.status_code == 404:
             pytest.skip("mDOC key endpoints not available")
-        
-        assert keys_response.status_code == 200, f"Expected 200, got {keys_response.status_code}: {keys_response.text}"
-        
+
+        assert (
+            keys_response.status_code == 200
+        ), f"Expected 200, got {keys_response.status_code}: {keys_response.text}"
+
         keys_data = keys_response.json()
-        
+
         # API returns {"keys": [...]}
         keys = keys_data.get("keys", []) if isinstance(keys_data, dict) else keys_data
-        
+
         if not keys:
             # Generate a key first
             gen_response = await acapy_issuer.post(
@@ -402,22 +398,30 @@ class TestIssuerCertificates:
                     "generate_certificate": True,
                 },
             )
-            assert gen_response.status_code in [200, 201], f"Failed to generate key: {gen_response.text}"
+            assert gen_response.status_code in [
+                200,
+                201,
+            ], f"Failed to generate key: {gen_response.text}"
             keys = [gen_response.json()]
-        
+
         # Get the certificate for the first key
-        key_id = keys[0].get("key_id") or keys[0].get("verification_method", "").split("#")[-1]
+        key_id = (
+            keys[0].get("key_id")
+            or keys[0].get("verification_method", "").split("#")[-1]
+        )
         assert key_id, "No valid key_id found in key response"
-        
+
         response = await acapy_issuer.get(f"/mso_mdoc/keys/{key_id}/certificate")
-        
+
         if response.status_code == 404:
             # Try alternative endpoint
             response = await acapy_issuer.get(f"/mso_mdoc/certificates/{key_id}")
-        
+
         # If endpoint exists, should return certificate
         if response.status_code not in [404, 405]:
-            assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+            assert (
+                response.status_code == 200
+            ), f"Expected 200, got {response.status_code}: {response.text}"
 
 
 # =============================================================================
@@ -435,37 +439,43 @@ class TestEndToEndTrustChain:
         acapy_verifier: httpx.AsyncClient,
     ):
         """Test complete trust chain setup: Generate key -> Get cert -> Store as trust anchor.
-        
+
         This test verifies:
         1. Generate issuer key with self-signed certificate (or use existing)
         2. Retrieve the default certificate for that key
         3. Store issuer's certificate as trust anchor on verifier
-        
+
         Note: Actual credential issuance and verification is covered by other tests.
         """
         import uuid
+
         random_suffix = str(uuid.uuid4())[:8]
-        
+
         # Step 1: Generate issuer key (or get existing one)
         # The endpoint returns existing keys if already present
         key_response = await acapy_issuer.post("/mso_mdoc/generate-keys")
-        
-        assert key_response.status_code in [200, 201], f"Failed to generate key: {key_response.text}"
+
+        assert key_response.status_code in [
+            200,
+            201,
+        ], f"Failed to generate key: {key_response.text}"
         issuer_key = key_response.json()
-        
+
         # Get key_id from response
         key_id = issuer_key.get("key_id")
         assert key_id, "No valid key_id found in key response"
-        
+
         # Step 2: Get issuer certificate using the default certificate endpoint
         cert_response = await acapy_issuer.get("/mso_mdoc/certificates/default")
-        
-        assert cert_response.status_code == 200, f"Failed to get certificate: {cert_response.text}"
+
+        assert (
+            cert_response.status_code == 200
+        ), f"Failed to get certificate: {cert_response.text}"
         cert_data = cert_response.json()
         issuer_cert = cert_data.get("certificate_pem")
-        
+
         assert issuer_cert, "Certificate not found in response"
-        
+
         # Step 3: Store certificate as trust anchor on verifier
         anchor_response = await acapy_verifier.post(
             "/mso_mdoc/trust-anchors",
@@ -475,9 +485,12 @@ class TestEndToEndTrustChain:
                 "metadata": {"issuer": "Test DMV"},
             },
         )
-        
-        assert anchor_response.status_code in [200, 201], f"Failed to store trust anchor: {anchor_response.text}"
-        
+
+        assert anchor_response.status_code in [
+            200,
+            201,
+        ], f"Failed to store trust anchor: {anchor_response.text}"
+
         # Verify trust anchor was stored
         assert issuer_key is not None
         assert issuer_cert is not None
@@ -492,6 +505,7 @@ class TestEndToEndTrustChain:
 async def acapy_issuer():
     """HTTP client for ACA-Py issuer admin API."""
     from os import getenv
+
     ACAPY_ISSUER_ADMIN_URL = getenv("ACAPY_ISSUER_ADMIN_URL", "http://localhost:8021")
     async with httpx.AsyncClient(base_url=ACAPY_ISSUER_ADMIN_URL) as client:
         yield client
@@ -501,6 +515,9 @@ async def acapy_issuer():
 async def acapy_verifier():
     """HTTP client for ACA-Py verifier admin API."""
     from os import getenv
-    ACAPY_VERIFIER_ADMIN_URL = getenv("ACAPY_VERIFIER_ADMIN_URL", "http://localhost:8031")
+
+    ACAPY_VERIFIER_ADMIN_URL = getenv(
+        "ACAPY_VERIFIER_ADMIN_URL", "http://localhost:8031"
+    )
     async with httpx.AsyncClient(base_url=ACAPY_VERIFIER_ADMIN_URL) as client:
         yield client

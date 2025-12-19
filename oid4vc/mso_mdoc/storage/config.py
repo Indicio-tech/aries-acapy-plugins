@@ -8,6 +8,7 @@ import json
 import logging
 from typing import Dict, Optional
 
+from acapy_agent.config.base import InjectionError
 from acapy_agent.core.profile import ProfileSession
 from acapy_agent.storage.base import StorageRecord
 from acapy_agent.storage.error import StorageError
@@ -23,10 +24,8 @@ async def store_config(
     """Store configuration data."""
     try:
         storage = get_storage(session)
-    except Exception as e:
-        LOGGER.warning(
-            "Storage not available for storing config %s: %s", config_id, e
-        )
+    except InjectionError as e:
+        LOGGER.warning("Storage not available for storing config %s: %s", config_id, e)
         return
 
     record = StorageRecord(
@@ -52,20 +51,16 @@ async def store_config(
     LOGGER.info("Stored mDoc config: %s", config_id)
 
 
-async def get_config(
-    session: ProfileSession, config_id: str
-) -> Optional[Dict]:
+async def get_config(session: ProfileSession, config_id: str) -> Optional[Dict]:
     """Retrieve configuration data."""
     try:
         storage = get_storage(session)
-    except Exception as e:
-        LOGGER.warning(
-            "Storage not available for getting config %s: %s", config_id, e
-        )
+    except InjectionError as e:
+        LOGGER.warning("Storage not available for getting config %s: %s", config_id, e)
         return None
 
     try:
         record = await storage.get_record(MDOC_CONFIG_RECORD_TYPE, config_id)
         return json.loads(record.value)
-    except Exception:
+    except (StorageError, json.JSONDecodeError):
         return None

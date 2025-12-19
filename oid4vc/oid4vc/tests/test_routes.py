@@ -122,7 +122,9 @@ async def test_create_exchange(monkeypatch, context, dummy_request):
     mock_processors.issuer_for_format = MagicMock(return_value=mock_processor)
     context.profile.context.injector.bind_instance(CredProcessors, mock_processors)
     # Patch OID4VCIExchangeRecord.save
-    monkeypatch.setattr("oid4vc.routes.exchange.OID4VCIExchangeRecord.save", AsyncMock())
+    monkeypatch.setattr(
+        "oid4vc.routes.exchange.OID4VCIExchangeRecord.save", AsyncMock()
+    )
 
     request = dummy_request()
     record = await create_exchange(cast(web.Request, request))

@@ -1,8 +1,10 @@
 """Test validations in OID4VC."""
 
-import pytest
 import uuid
+
 import httpx
+import pytest
+
 
 @pytest.mark.asyncio
 async def test_mso_mdoc_validation(acapy_issuer_admin):
@@ -15,7 +17,7 @@ async def test_mso_mdoc_validation(acapy_issuer_admin):
         "id": f"InvalidMDOC_{random_suffix}",
         "format": "mso_mdoc",
         "scope": "InvalidMDOC",
-        "format_data": {}, # Missing doctype and other required fields
+        "format_data": {},  # Missing doctype and other required fields
         "vc_additional_data": {},
     }
 
@@ -27,7 +29,7 @@ async def test_mso_mdoc_validation(acapy_issuer_admin):
 
     # 2. Test creating exchange with invalid credential subject
     # validate_credential_subject should fail
-    
+
     # Create a valid supported cred to proceed to exchange step
     # OID4VCI v1.0 compliant: include cryptographic_binding_methods_supported
     valid_supported_cred = {
@@ -52,12 +54,10 @@ async def test_mso_mdoc_validation(acapy_issuer_admin):
 
     exchange_request = {
         "supported_cred_id": config_id,
-        "credential_subject": {}, # Empty subject, should be invalid
+        "credential_subject": {},  # Empty subject, should be invalid
         "did": issuer_did,
     }
 
     with pytest.raises(httpx.HTTPStatusError) as excinfo:
-        await acapy_issuer_admin.post(
-            "/oid4vci/exchange/create", json=exchange_request
-        )
+        await acapy_issuer_admin.post("/oid4vci/exchange/create", json=exchange_request)
     assert excinfo.value.response.status_code == 400

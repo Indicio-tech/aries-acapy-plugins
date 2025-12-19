@@ -9,7 +9,6 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from acapy_agent.storage.base import StorageRecord
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
 
@@ -18,10 +17,12 @@ from ..storage import (
     MDOC_CONFIG_RECORD_TYPE,
     MDOC_KEY_RECORD_TYPE,
     MDOC_TRUST_ANCHOR_RECORD_TYPE,
+    certificates,
+    config,
+    keys,
+    trust_anchors,
 )
-from ..storage import keys, certificates, trust_anchors, config
 from ..storage.base import get_storage
-
 
 # =============================================================================
 # Base Module Tests
@@ -78,7 +79,9 @@ class TestKeysModule:
         }
 
     @pytest.mark.asyncio
-    async def test_store_key_with_metadata(self, mock_session, mock_storage, sample_jwk):
+    async def test_store_key_with_metadata(
+        self, mock_session, mock_storage, sample_jwk
+    ):
         """Test storing key with custom metadata."""
         with patch.object(keys, "get_storage", return_value=mock_storage):
             await keys.store_key(
@@ -125,18 +128,22 @@ class TestKeysModule:
             assert result is None
 
     @pytest.mark.asyncio
-    async def test_list_keys_without_purpose_filter(self, mock_session, mock_storage, sample_jwk):
+    async def test_list_keys_without_purpose_filter(
+        self, mock_session, mock_storage, sample_jwk
+    ):
         """Test listing all keys without purpose filter."""
         records = [
             StorageRecord(
                 type=MDOC_KEY_RECORD_TYPE,
                 id="key-1",
-                value=json.dumps({
-                    "jwk": sample_jwk,
-                    "purpose": "signing",
-                    "created_at": "2024-01-01T00:00:00",
-                    "metadata": {},
-                }),
+                value=json.dumps(
+                    {
+                        "jwk": sample_jwk,
+                        "purpose": "signing",
+                        "created_at": "2024-01-01T00:00:00",
+                        "metadata": {},
+                    }
+                ),
                 tags={"purpose": "signing"},
             ),
         ]
@@ -181,7 +188,9 @@ class TestKeysModule:
             await keys.store_signing_key(mock_session, "key-1", {"other": "data"})
 
     @pytest.mark.asyncio
-    async def test_store_signing_key_success(self, mock_session, mock_storage, sample_jwk):
+    async def test_store_signing_key_success(
+        self, mock_session, mock_storage, sample_jwk
+    ):
         """Test store_signing_key delegates to store_key correctly."""
         with patch.object(keys, "get_storage", return_value=mock_storage):
             await keys.store_signing_key(
@@ -221,7 +230,9 @@ class TestCertificatesModule:
         self, mock_session, sample_pem
     ):
         """Test store_certificate silently handles unavailable storage."""
-        with patch.object(certificates, "get_storage", side_effect=Exception("unavailable")):
+        with patch.object(
+            certificates, "get_storage", side_effect=Exception("unavailable")
+        ):
             # Should not raise, just log warning
             await certificates.store_certificate(
                 mock_session, "cert-1", sample_pem, "key-1"
@@ -249,7 +260,9 @@ class TestCertificatesModule:
     @pytest.mark.asyncio
     async def test_get_certificate_handles_storage_unavailable(self, mock_session):
         """Test get_certificate returns None when storage unavailable."""
-        with patch.object(certificates, "get_storage", side_effect=Exception("unavailable")):
+        with patch.object(
+            certificates, "get_storage", side_effect=Exception("unavailable")
+        ):
             result = await certificates.get_certificate(mock_session, "cert-1")
             assert result is None
 
@@ -269,50 +282,62 @@ class TestCertificatesModule:
             assert result is None
 
     @pytest.mark.asyncio
-    async def test_list_certificates_with_pem(self, mock_session, mock_storage, sample_pem):
+    async def test_list_certificates_with_pem(
+        self, mock_session, mock_storage, sample_pem
+    ):
         """Test list_certificates includes PEM when requested."""
         records = [
             StorageRecord(
                 type=MDOC_CERT_RECORD_TYPE,
                 id="cert-1",
-                value=json.dumps({
-                    "certificate_pem": sample_pem,
-                    "key_id": "key-1",
-                    "created_at": "2024-01-01T00:00:00",
-                    "metadata": {},
-                }),
+                value=json.dumps(
+                    {
+                        "certificate_pem": sample_pem,
+                        "key_id": "key-1",
+                        "created_at": "2024-01-01T00:00:00",
+                        "metadata": {},
+                    }
+                ),
                 tags={"key_id": "key-1"},
             ),
         ]
         mock_storage.find_all_records = AsyncMock(return_value=records)
 
         with patch.object(certificates, "get_storage", return_value=mock_storage):
-            result = await certificates.list_certificates(mock_session, include_pem=True)
+            result = await certificates.list_certificates(
+                mock_session, include_pem=True
+            )
 
             assert len(result) == 1
             assert "certificate_pem" in result[0]
             assert result[0]["certificate_pem"] == sample_pem
 
     @pytest.mark.asyncio
-    async def test_list_certificates_without_pem(self, mock_session, mock_storage, sample_pem):
+    async def test_list_certificates_without_pem(
+        self, mock_session, mock_storage, sample_pem
+    ):
         """Test list_certificates excludes PEM by default."""
         records = [
             StorageRecord(
                 type=MDOC_CERT_RECORD_TYPE,
                 id="cert-1",
-                value=json.dumps({
-                    "certificate_pem": sample_pem,
-                    "key_id": "key-1",
-                    "created_at": "2024-01-01T00:00:00",
-                    "metadata": {},
-                }),
+                value=json.dumps(
+                    {
+                        "certificate_pem": sample_pem,
+                        "key_id": "key-1",
+                        "created_at": "2024-01-01T00:00:00",
+                        "metadata": {},
+                    }
+                ),
                 tags={"key_id": "key-1"},
             ),
         ]
         mock_storage.find_all_records = AsyncMock(return_value=records)
 
         with patch.object(certificates, "get_storage", return_value=mock_storage):
-            result = await certificates.list_certificates(mock_session, include_pem=False)
+            result = await certificates.list_certificates(
+                mock_session, include_pem=False
+            )
 
             assert len(result) == 1
             assert "certificate_pem" not in result[0]
@@ -320,7 +345,9 @@ class TestCertificatesModule:
     @pytest.mark.asyncio
     async def test_list_certificates_handles_storage_unavailable(self, mock_session):
         """Test list_certificates returns empty list when storage unavailable."""
-        with patch.object(certificates, "get_storage", side_effect=Exception("unavailable")):
+        with patch.object(
+            certificates, "get_storage", side_effect=Exception("unavailable")
+        ):
             result = await certificates.list_certificates(mock_session)
             assert result == []
 
@@ -334,9 +361,13 @@ class TestCertificatesModule:
             assert result is None
 
     @pytest.mark.asyncio
-    async def test_get_certificate_for_key_handles_storage_unavailable(self, mock_session):
+    async def test_get_certificate_for_key_handles_storage_unavailable(
+        self, mock_session
+    ):
         """Test get_certificate_for_key returns None when storage unavailable."""
-        with patch.object(certificates, "get_storage", side_effect=Exception("unavailable")):
+        with patch.object(
+            certificates, "get_storage", side_effect=Exception("unavailable")
+        ):
             result = await certificates.get_certificate_for_key(mock_session, "key-1")
             assert result is None
 
@@ -366,7 +397,9 @@ class TestTrustAnchorsModule:
         self, mock_session, sample_anchor_pem
     ):
         """Test store_trust_anchor raises StorageError when storage unavailable."""
-        with patch.object(trust_anchors, "get_storage", side_effect=StorageError("unavailable")):
+        with patch.object(
+            trust_anchors, "get_storage", side_effect=StorageError("unavailable")
+        ):
             with pytest.raises(StorageError, match="Cannot store trust anchor"):
                 await trust_anchors.store_trust_anchor(
                     mock_session, "anchor-1", sample_anchor_pem
@@ -393,12 +426,16 @@ class TestTrustAnchorsModule:
     @pytest.mark.asyncio
     async def test_get_trust_anchor_handles_storage_unavailable(self, mock_session):
         """Test get_trust_anchor returns None when storage unavailable."""
-        with patch.object(trust_anchors, "get_storage", side_effect=Exception("unavailable")):
+        with patch.object(
+            trust_anchors, "get_storage", side_effect=Exception("unavailable")
+        ):
             result = await trust_anchors.get_trust_anchor(mock_session, "anchor-1")
             assert result is None
 
     @pytest.mark.asyncio
-    async def test_get_trust_anchor_handles_json_error(self, mock_session, mock_storage):
+    async def test_get_trust_anchor_handles_json_error(
+        self, mock_session, mock_storage
+    ):
         """Test get_trust_anchor returns None on invalid JSON."""
         record = StorageRecord(
             type=MDOC_TRUST_ANCHOR_RECORD_TYPE,
@@ -415,12 +452,16 @@ class TestTrustAnchorsModule:
     @pytest.mark.asyncio
     async def test_list_trust_anchors_handles_storage_unavailable(self, mock_session):
         """Test list_trust_anchors returns empty list when storage unavailable."""
-        with patch.object(trust_anchors, "get_storage", side_effect=Exception("unavailable")):
+        with patch.object(
+            trust_anchors, "get_storage", side_effect=Exception("unavailable")
+        ):
             result = await trust_anchors.list_trust_anchors(mock_session)
             assert result == []
 
     @pytest.mark.asyncio
-    async def test_list_trust_anchors_handles_storage_error(self, mock_session, mock_storage):
+    async def test_list_trust_anchors_handles_storage_error(
+        self, mock_session, mock_storage
+    ):
         """Test list_trust_anchors returns empty list on StorageError."""
         mock_storage.find_all_records = AsyncMock(side_effect=StorageError("error"))
 
@@ -429,9 +470,13 @@ class TestTrustAnchorsModule:
             assert result == []
 
     @pytest.mark.asyncio
-    async def test_get_all_trust_anchor_pems_handles_storage_unavailable(self, mock_session):
+    async def test_get_all_trust_anchor_pems_handles_storage_unavailable(
+        self, mock_session
+    ):
         """Test get_all_trust_anchor_pems returns empty list when unavailable."""
-        with patch.object(trust_anchors, "get_storage", side_effect=Exception("unavailable")):
+        with patch.object(
+            trust_anchors, "get_storage", side_effect=Exception("unavailable")
+        ):
             result = await trust_anchors.get_all_trust_anchor_pems(mock_session)
             assert result == []
 
@@ -449,12 +494,16 @@ class TestTrustAnchorsModule:
     @pytest.mark.asyncio
     async def test_delete_trust_anchor_handles_storage_unavailable(self, mock_session):
         """Test delete_trust_anchor returns False when storage unavailable."""
-        with patch.object(trust_anchors, "get_storage", side_effect=Exception("unavailable")):
+        with patch.object(
+            trust_anchors, "get_storage", side_effect=Exception("unavailable")
+        ):
             result = await trust_anchors.delete_trust_anchor(mock_session, "anchor-1")
             assert result is False
 
     @pytest.mark.asyncio
-    async def test_delete_trust_anchor_handles_storage_error(self, mock_session, mock_storage):
+    async def test_delete_trust_anchor_handles_storage_error(
+        self, mock_session, mock_storage
+    ):
         """Test delete_trust_anchor returns False on StorageError during delete."""
         record = StorageRecord(
             type=MDOC_TRUST_ANCHOR_RECORD_TYPE,
@@ -463,7 +512,9 @@ class TestTrustAnchorsModule:
             tags={},
         )
         mock_storage.get_record = AsyncMock(return_value=record)
-        mock_storage.delete_record = AsyncMock(side_effect=StorageError("delete failed"))
+        mock_storage.delete_record = AsyncMock(
+            side_effect=StorageError("delete failed")
+        )
 
         with patch.object(trust_anchors, "get_storage", return_value=mock_storage):
             result = await trust_anchors.delete_trust_anchor(mock_session, "anchor-1")
@@ -506,7 +557,9 @@ class TestConfigModule:
             assert json.loads(record.value) == {"key": "value"}
 
     @pytest.mark.asyncio
-    async def test_store_config_updates_existing_record(self, mock_session, mock_storage):
+    async def test_store_config_updates_existing_record(
+        self, mock_session, mock_storage
+    ):
         """Test store_config updates when record exists."""
         mock_storage.add_record = AsyncMock(side_effect=StorageError("duplicate"))
         mock_storage.update_record = AsyncMock()
@@ -517,10 +570,14 @@ class TestConfigModule:
             mock_storage.update_record.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_store_config_raises_on_update_failure(self, mock_session, mock_storage):
+    async def test_store_config_raises_on_update_failure(
+        self, mock_session, mock_storage
+    ):
         """Test store_config raises when both add and update fail."""
         mock_storage.add_record = AsyncMock(side_effect=StorageError("duplicate"))
-        mock_storage.update_record = AsyncMock(side_effect=StorageError("update failed"))
+        mock_storage.update_record = AsyncMock(
+            side_effect=StorageError("update failed")
+        )
 
         with patch.object(config, "get_storage", return_value=mock_storage):
             with pytest.raises(StorageError, match="update failed"):
@@ -549,7 +606,9 @@ class TestConfigModule:
             assert result == {"key": "value"}
 
     @pytest.mark.asyncio
-    async def test_get_config_returns_none_on_not_found(self, mock_session, mock_storage):
+    async def test_get_config_returns_none_on_not_found(
+        self, mock_session, mock_storage
+    ):
         """Test get_config returns None when config not found."""
         mock_storage.get_record = AsyncMock(side_effect=StorageNotFoundError())
 
@@ -558,7 +617,9 @@ class TestConfigModule:
             assert result is None
 
     @pytest.mark.asyncio
-    async def test_get_config_returns_none_on_json_error(self, mock_session, mock_storage):
+    async def test_get_config_returns_none_on_json_error(
+        self, mock_session, mock_storage
+    ):
         """Test get_config returns None on invalid JSON."""
         record = StorageRecord(
             type=MDOC_CONFIG_RECORD_TYPE,

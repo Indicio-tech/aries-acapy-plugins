@@ -2,6 +2,13 @@
 
 import json
 
+from acapy_agent.admin.request_context import AdminRequestContext
+from acapy_agent.askar.profile import AskarProfileSession
+from acapy_agent.messaging.models.openapi import OpenAPISchema
+from acapy_agent.wallet.base import BaseWallet
+from acapy_agent.wallet.did_info import DIDInfo
+from acapy_agent.wallet.key_type import P256, KeyTypes
+from acapy_agent.wallet.util import bytes_to_b64
 from aiohttp import web
 from aiohttp_apispec import (
     docs,
@@ -11,14 +18,6 @@ from aiohttp_apispec import (
 from aries_askar import Key, KeyAlg
 from marshmallow import fields
 from marshmallow.validate import OneOf
-
-from acapy_agent.admin.request_context import AdminRequestContext
-from acapy_agent.askar.profile import AskarProfileSession
-from acapy_agent.messaging.models.openapi import OpenAPISchema
-from acapy_agent.wallet.base import BaseWallet
-from acapy_agent.wallet.did_info import DIDInfo
-from acapy_agent.wallet.key_type import KeyTypes, P256
-from acapy_agent.wallet.util import bytes_to_b64
 
 from ..jwk import DID_JWK
 

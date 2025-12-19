@@ -9,6 +9,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
+from acapy_agent.config.base import InjectionError
 from acapy_agent.core.profile import ProfileSession
 from acapy_agent.storage.base import StorageRecord
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
@@ -28,7 +29,7 @@ async def store_certificate(
     """Store a PEM certificate."""
     try:
         storage = get_storage(session)
-    except Exception as e:
+    except InjectionError as e:
         LOGGER.warning(
             "Storage not available for storing certificate %s: %s",
             cert_id,
@@ -60,7 +61,7 @@ async def get_certificate(
     """Retrieve certificate PEM and associated key ID."""
     try:
         storage = get_storage(session)
-    except Exception as e:
+    except InjectionError as e:
         LOGGER.warning(
             "Storage not available for getting certificate %s: %s",
             cert_id,
@@ -94,7 +95,7 @@ async def list_certificates(
     """
     try:
         storage = get_storage(session)
-    except Exception as e:
+    except InjectionError as e:
         LOGGER.warning("Storage not available for listing certificates: %s", e)
         return []
 

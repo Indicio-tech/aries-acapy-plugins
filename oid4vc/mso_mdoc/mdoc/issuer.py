@@ -18,6 +18,7 @@ The mso_mdoc format is defined in OpenID4VCI 1.0 Appendix E.1.1 as a specific
 credential format that follows the ISO 18013-5 mobile document structure.
 """
 
+import base64
 import json
 import logging
 from typing import Any, Mapping
@@ -137,27 +138,26 @@ def isomdl_mdoc_sign(
 
         # Return the stringified CBOR
         mdoc_b64 = mdoc.stringify()
-        
+
         # Patch: isomdl returns 'issuer_auth' but spec requires 'issuerAuth'
         # We decode, fix the key, and re-encode.
         try:
-            import base64
             # Add padding if needed
             pad = len(mdoc_b64) % 4
             if pad > 0:
                 mdoc_b64_padded = mdoc_b64 + "=" * (4 - pad)
             else:
                 mdoc_b64_padded = mdoc_b64
-                
+
             mdoc_bytes = base64.urlsafe_b64decode(mdoc_b64_padded)
             mdoc_map = cbor2.loads(mdoc_bytes)
-            
+
             patched = False
             if "issuer_auth" in mdoc_map:
                 LOGGER.info("Patching issuer_auth to issuerAuth in mdoc")
                 mdoc_map["issuerAuth"] = mdoc_map.pop("issuer_auth")
                 patched = True
-            
+
             if "namespaces" in mdoc_map:
                 LOGGER.info("Patching namespaces to nameSpaces in mdoc")
                 namespaces = mdoc_map.pop("namespaces")
@@ -178,16 +178,18 @@ def isomdl_mdoc_sign(
                     issuer_signed["issuerAuth"] = mdoc_map["issuerAuth"]
                 if "nameSpaces" in mdoc_map:
                     issuer_signed["nameSpaces"] = mdoc_map["nameSpaces"]
-                
+
                 # Re-encode
                 patched_bytes = cbor2.dumps(issuer_signed)
-                patched_b64 = base64.urlsafe_b64encode(patched_bytes).decode("ascii").rstrip("=")
+                patched_b64 = (
+                    base64.urlsafe_b64encode(patched_bytes).decode("ascii").rstrip("=")
+                )
                 return patched_b64
-                
+
         except Exception as e:
             LOGGER.warning(f"Failed to patch mdoc keys: {e}")
             # Fallback to original if patching fails
-            
+
         return mdoc_b64
 
     except Exception as ex:

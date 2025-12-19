@@ -8,8 +8,8 @@ from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
-from acapy_agent.wallet.error import WalletNotFoundError
 from acapy_agent.wallet.base import WalletError
+from acapy_agent.wallet.error import WalletNotFoundError
 from aiohttp import web
 from aiohttp_apispec import docs, form_schema
 from marshmallow import fields, pre_load
@@ -180,7 +180,7 @@ async def check_token(
     try:
         scheme, cred = bearer.split(" ", 1)
     except ValueError:
-        raise web.HTTPUnauthorized()
+        raise web.HTTPUnauthorized() from None
     if scheme.lower() != "bearer":
         raise web.HTTPUnauthorized()
 

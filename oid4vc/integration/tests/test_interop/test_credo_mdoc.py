@@ -33,22 +33,22 @@ async def create_dcql_request(
     vp_formats: dict | None = None,
 ) -> str:
     """Create a DCQL query and then create a VP request using the query ID.
-    
+
     This follows the correct two-step flow:
     1. POST /oid4vp/dcql/queries with the DCQL query → returns dcql_query_id
     2. POST /oid4vp/request with dcql_query_id → returns request_uri
-    
+
     Args:
         client: The HTTP client to use
         dcql_query: The DCQL query definition
         vp_formats: VP formats (defaults to mso_mdoc with ES256)
-        
+
     Returns:
         The request_uri for the VP request
     """
     if vp_formats is None:
         vp_formats = {"mso_mdoc": {"alg": ["ES256"]}}
-    
+
     # Step 1: Create the DCQL query
     query_response = await client.post(
         "/oid4vp/dcql/queries",
@@ -56,7 +56,7 @@ async def create_dcql_request(
     )
     query_response.raise_for_status()
     dcql_query_id = query_response.json()["dcql_query_id"]
-    
+
     # Step 2: Create the VP request using the query ID
     request_response = await client.post(
         "/oid4vp/request",
@@ -73,7 +73,7 @@ async def create_dcql_request(
 async def mdoc_credential_config(acapy_issuer: httpx.AsyncClient) -> dict[str, Any]:
     """Create an mDOC credential configuration on ACA-Py issuer."""
     random_suffix = str(uuid.uuid4())[:8]
-    
+
     # mDOC credential configuration for mobile driver's license
     # Note: Use "jwt" proof type as Credo only supports jwt/attestation (not cwt)
     credential_supported = {
@@ -84,9 +84,7 @@ async def mdoc_credential_config(acapy_issuer: httpx.AsyncClient) -> dict[str, A
         "cryptographic_binding_methods_supported": ["cose_key", "did:key", "did"],
         "cryptographic_suites_supported": ["ES256"],
         "proof_types_supported": {
-            "jwt": {
-                "proof_signing_alg_values_supported": ["ES256"]
-            }
+            "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
         },
         "format_data": {
             "doctype": "org.iso.18013.5.1.mDL",
@@ -117,7 +115,7 @@ async def mdoc_credential_config(acapy_issuer: httpx.AsyncClient) -> dict[str, A
     )
     response.raise_for_status()
     config = response.json()
-    
+
     return {
         "supported_cred_id": config["supported_cred_id"],
         "doctype": "org.iso.18013.5.1.mDL",
@@ -136,7 +134,7 @@ async def mdoc_issuer_key(acapy_issuer: httpx.AsyncClient) -> dict[str, Any]:
         keys = data.get("keys", []) if isinstance(data, dict) else data
         if keys and len(keys) > 0:
             return keys[0]
-    
+
     # Generate a new key if none exist
     key_request = {
         "key_type": "ES256",
@@ -147,7 +145,7 @@ async def mdoc_issuer_key(acapy_issuer: httpx.AsyncClient) -> dict[str, Any]:
             "country": "US",
         },
     }
-    
+
     response = await acapy_issuer.post("/mso_mdoc/generate-keys", json=key_request)
     response.raise_for_status()
     return response.json()
@@ -159,7 +157,7 @@ async def mdoc_offer_did_based(
     mdoc_credential_config: dict[str, Any],
 ) -> str:
     """Create an mDOC credential offer using DID-based signing.
-    
+
     This is the primary flow that mirrors test_acapy_credo_mdoc_flow.
     Uses a did:key with P-256 curve for mDOC signing.
     """
@@ -176,15 +174,14 @@ async def mdoc_offer_did_based(
             "document_number": "DL123456789",
         }
     }
-    
+
     # Create an issuer DID for mDOC signing (P-256 for mDOC compatibility)
     did_response = await acapy_issuer.post(
-        "/wallet/did/create",
-        json={"method": "key", "options": {"key_type": "p256"}}
+        "/wallet/did/create", json={"method": "key", "options": {"key_type": "p256"}}
     )
     did_response.raise_for_status()
     issuer_did = did_response.json()["result"]["did"]
-    
+
     exchange_request = {
         "supported_cred_id": mdoc_credential_config["supported_cred_id"],
         "credential_subject": credential_subject,
@@ -211,7 +208,7 @@ async def mdoc_offer_verification_method(
     mdoc_issuer_key: dict[str, Any],
 ) -> str:
     """Create an mDOC credential offer using verification_method from mDOC keys.
-    
+
     This flow uses the /mso_mdoc/generate-keys endpoint to create issuer keys
     with X.509 certificates, then references them via verification_method.
     """
@@ -228,12 +225,12 @@ async def mdoc_offer_verification_method(
             "document_number": "DL987654321",
         }
     }
-    
+
     exchange_request = {
         "supported_cred_id": mdoc_credential_config["supported_cred_id"],
         "credential_subject": credential_subject,
     }
-    
+
     # Use verification_method from mDOC issuer key if available
     verification_method = mdoc_issuer_key.get("verification_method")
     if verification_method and ":" in verification_method:
@@ -242,7 +239,7 @@ async def mdoc_offer_verification_method(
         # Fallback to DID-based if verification_method not available
         did_response = await acapy_issuer.post(
             "/wallet/did/create",
-            json={"method": "key", "options": {"key_type": "p256"}}
+            json={"method": "key", "options": {"key_type": "p256"}},
         )
         did_response.raise_for_status()
         issuer_did = did_response.json()["result"]["did"]
@@ -275,7 +272,7 @@ async def mdoc_presentation_request(
     acapy_verifier: httpx.AsyncClient,
 ) -> str:
     """Create an mDOC presentation request using DCQL."""
-    
+
     # DCQL query for mDOC credential
     dcql_query = {
         "credentials": [
@@ -311,7 +308,7 @@ async def mdoc_age_only_request(
     acapy_verifier: httpx.AsyncClient,
 ) -> str:
     """Create a presentation request for age verification only (no birth_date)."""
-    
+
     dcql_query = {
         "credentials": [
             {
@@ -386,11 +383,11 @@ async def test_mdoc_credential_acceptance_did_based(
     mdoc_offer_did_based: str,
 ):
     """Test Credo accepting an mDOC credential offer using DID-based signing.
-    
+
     This tests the primary flow where the issuer uses a did:key for signing.
     """
     result = await credo.openid4vci_accept_offer(mdoc_offer_did_based)
-    
+
     assert result is not None
     assert "credential" in result
     assert result.get("format") == "mso_mdoc"
@@ -402,12 +399,12 @@ async def test_mdoc_credential_acceptance_verification_method(
     mdoc_offer_verification_method: str,
 ):
     """Test Credo accepting an mDOC credential offer using verification_method.
-    
+
     This tests the alternative flow where the issuer uses mDOC-specific keys
     generated via /mso_mdoc/generate-keys with X.509 certificates.
     """
     result = await credo.openid4vci_accept_offer(mdoc_offer_verification_method)
-    
+
     assert result is not None
     assert "credential" in result
     assert result.get("format") == "mso_mdoc"
@@ -435,24 +432,24 @@ async def test_mdoc_selective_disclosure_presentation(
     setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
 ):
     """Test mDOC selective disclosure presentation flow.
-    
+
     This test verifies that:
     1. Credo can receive an mDOC credential
     2. Credo can present only the requested claims (selective disclosure)
     3. ACA-Py can verify the mDOC presentation
-    
+
     Note: setup_all_trust_anchors is required for mDOC verification to work.
     """
     # First, get the credential
     cred_result = await credo.openid4vci_accept_offer(mdoc_offer_did_based)
     assert "credential" in cred_result
-    
+
     # Present the credential with selective disclosure
     pres_result = await credo.openid4vp_accept_request(
         mdoc_presentation_request,
         credentials=[cred_result["credential"]],
     )
-    
+
     assert pres_result is not None
 
 
@@ -464,22 +461,22 @@ async def test_mdoc_age_predicate_verification(
     setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
 ):
     """Test age verification without disclosing birth_date.
-    
+
     This is a key privacy-preserving feature of mDOC credentials:
     proving age_over_18 without revealing the actual birth date.
-    
+
     Note: setup_all_trust_anchors is required for mDOC verification to work.
     """
     # Get the credential
     cred_result = await credo.openid4vci_accept_offer(mdoc_offer_did_based)
     assert "credential" in cred_result
-    
+
     # Present only age_over_18
     pres_result = await credo.openid4vp_accept_request(
         mdoc_age_only_request,
         credentials=[cred_result["credential"]],
     )
-    
+
     assert pres_result is not None
 
 
@@ -491,20 +488,20 @@ async def test_mdoc_presentation_verification_method_flow(
     setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
 ):
     """Test mDOC presentation flow using verification_method-based credentials.
-    
+
     This tests the full flow where the issuer uses mDOC-specific keys
     generated via /mso_mdoc/generate-keys with X.509 certificates.
     """
     # First, get the credential
     cred_result = await credo.openid4vci_accept_offer(mdoc_offer_verification_method)
     assert "credential" in cred_result
-    
+
     # Present the credential
     pres_result = await credo.openid4vp_accept_request(
         mdoc_presentation_request,
         credentials=[cred_result["credential"]],
     )
-    
+
     assert pres_result is not None
 
 
@@ -518,7 +515,7 @@ async def test_mdoc_wrong_doctype_rejected(
     acapy_verifier: httpx.AsyncClient,
 ):
     """Test that presenting wrong doctype is rejected."""
-    
+
     # Create a request for a different doctype
     dcql_query = {
         "credentials": [
@@ -545,7 +542,7 @@ async def test_mdoc_wrong_doctype_rejected(
     )
     query_response.raise_for_status()
     dcql_query_id = query_response.json()["dcql_query_id"]
-    
+
     # Then create the VP request
     response = await acapy_verifier.post(
         "/oid4vp/request",
@@ -556,7 +553,7 @@ async def test_mdoc_wrong_doctype_rejected(
             },
         },
     )
-    
+
     # Should succeed in creating the request (validation happens at presentation time)
     assert response.status_code == 200
 
@@ -567,7 +564,7 @@ async def test_mdoc_missing_required_claim_handling(
     mdoc_credential_config: dict[str, Any],
 ):
     """Test handling of missing required claims in mDOC issuance."""
-    
+
     # Try to create a credential with missing required claims
     credential_subject = {
         "org.iso.18013.5.1": {
@@ -575,7 +572,7 @@ async def test_mdoc_missing_required_claim_handling(
             # Missing given_name, birth_date, etc.
         }
     }
-    
+
     exchange_request = {
         "supported_cred_id": mdoc_credential_config["supported_cred_id"],
         "credential_subject": credential_subject,
@@ -584,7 +581,7 @@ async def test_mdoc_missing_required_claim_handling(
     response = await acapy_issuer.post(
         "/oid4vci/exchange/create", json=exchange_request
     )
-    
+
     # Depending on implementation, this might fail or succeed with partial claims
     # The actual behavior depends on whether the issuer validates mandatory claims
     # at exchange creation time or at credential issuance time
@@ -602,7 +599,7 @@ async def test_dcql_credential_sets_request(
     acapy_verifier: httpx.AsyncClient,
 ):
     """Test DCQL request with credential_sets (alternative credentials)."""
-    
+
     dcql_query = {
         "credentials": [
             {
@@ -648,7 +645,7 @@ async def test_dcql_claim_sets_request(
     acapy_verifier: httpx.AsyncClient,
 ):
     """Test DCQL request with claim_sets (alternative claim combinations)."""
-    
+
     dcql_query = {
         "credentials": [
             {
@@ -658,10 +655,26 @@ async def test_dcql_claim_sets_request(
                     "doctype_value": "org.iso.18013.5.1.mDL",
                 },
                 "claims": [
-                    {"id": "name", "namespace": "org.iso.18013.5.1", "claim_name": "family_name"},
-                    {"id": "age18", "namespace": "org.iso.18013.5.1", "claim_name": "age_over_18"},
-                    {"id": "age21", "namespace": "org.iso.18013.5.1", "claim_name": "age_over_21"},
-                    {"id": "birth", "namespace": "org.iso.18013.5.1", "claim_name": "birth_date"},
+                    {
+                        "id": "name",
+                        "namespace": "org.iso.18013.5.1",
+                        "claim_name": "family_name",
+                    },
+                    {
+                        "id": "age18",
+                        "namespace": "org.iso.18013.5.1",
+                        "claim_name": "age_over_18",
+                    },
+                    {
+                        "id": "age21",
+                        "namespace": "org.iso.18013.5.1",
+                        "claim_name": "age_over_21",
+                    },
+                    {
+                        "id": "birth",
+                        "namespace": "org.iso.18013.5.1",
+                        "claim_name": "birth_date",
+                    },
                 ],
                 "claim_sets": [
                     ["name", "age18"],  # Option 1: name + age_over_18

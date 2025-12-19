@@ -45,7 +45,7 @@ async def _handle_jwt_proof(
     try:
         encoded_headers, encoded_payload, encoded_signature = proof["jwt"].split(".", 3)
     except ValueError:
-        raise web.HTTPBadRequest(reason="Invalid JWT format")
+        raise web.HTTPBadRequest(reason="Invalid JWT format") from None
 
     headers = b64_to_dict(encoded_headers)
 
@@ -117,7 +117,7 @@ async def _handle_cwt_proof(
         # Decode base64url
         cwt_bytes = b64_to_bytes(encoded_cwt, urlsafe=True)
     except Exception:
-        raise web.HTTPBadRequest(reason="Invalid base64 encoding for CWT")
+        raise web.HTTPBadRequest(reason="Invalid base64 encoding for CWT") from None
 
     try:
         # Parse COSE message to get headers

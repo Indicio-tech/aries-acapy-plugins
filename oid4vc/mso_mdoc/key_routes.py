@@ -62,18 +62,14 @@ class TrustAnchorCreateSchema(OpenAPISchema):
 class TrustAnchorResponseSchema(OpenAPISchema):
     """Response schema for trust anchor operations."""
 
-    anchor_id = fields.Str(
-        required=True, metadata={"description": "Trust anchor ID"}
-    )
+    anchor_id = fields.Str(required=True, metadata={"description": "Trust anchor ID"})
     message = fields.Str(required=True, metadata={"description": "Status message"})
 
 
 class TrustAnchorDetailSchema(OpenAPISchema):
     """Response schema for trust anchor details."""
 
-    anchor_id = fields.Str(
-        required=True, metadata={"description": "Trust anchor ID"}
-    )
+    anchor_id = fields.Str(required=True, metadata={"description": "Trust anchor ID"})
     certificate_pem = fields.Str(
         required=True, metadata={"description": "PEM-encoded certificate"}
     )
@@ -252,7 +248,7 @@ async def get_default_certificate(request: web.BaseRequest):
     tags=["mso_mdoc"],
     summary="Generate new mDoc signing key and certificate",
     description="Generates a new mDoc signing key and self-signed certificate. "
-                "If force=false (default) and keys already exist, returns the existing key.",
+    "If force=false (default) and keys already exist, returns the existing key.",
 )
 @response_schema(MdocKeyGenSchema(), 200)
 async def generate_keys(request: web.BaseRequest):

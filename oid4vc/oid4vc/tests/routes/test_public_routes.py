@@ -1,3 +1,4 @@
+import importlib
 import json
 import time
 import uuid
@@ -10,17 +11,16 @@ from acapy_agent.core.profile import Profile
 from acapy_agent.did.did_key import DIDKey
 from acapy_agent.wallet.did_info import DIDInfo
 from acapy_agent.wallet.did_method import KEY
-from acapy_agent.wallet.key_type import ED25519, KeyTypes
+from acapy_agent.wallet.key_type import ED25519
 from acapy_agent.wallet.util import bytes_to_b64
 from aiohttp import web
 from aries_askar import Key, KeyAlg
-
-import importlib
 
 from oid4vc import public_routes as test_module
 from oid4vc.public_routes import credential as credential_module
 from oid4vc.public_routes import metadata as metadata_module
 from oid4vc.public_routes import proof as proof_module
+
 # Import the token module directly to avoid the shadowed name from __init__.py
 token_module = importlib.import_module("oid4vc.public_routes.token")
 from oid4vc.jwt import JWTVerifyResult
@@ -129,10 +129,12 @@ async def test_handle_proof_of_posession(profile: Profile):
         "jwt": jwt,
     }
 
-    with patch.object(proof_module, "key_material_for_kid", new_callable=AsyncMock) as mock_resolve:
+    with patch.object(
+        proof_module, "key_material_for_kid", new_callable=AsyncMock
+    ) as mock_resolve:
         mock_resolve.return_value = key
         result = await test_module.handle_proof_of_posession(profile, proof, nonce)
-    
+
     assert isinstance(result.verified, bool)
     assert result.verified
 
@@ -141,7 +143,8 @@ async def test_handle_proof_of_posession(profile: Profile):
 async def test_check_token_valid(monkeypatch, context):
     # Patch get_auth_header to return a dummy header
     monkeypatch.setattr(
-        token_module, "get_auth_header",
+        token_module,
+        "get_auth_header",
         AsyncMock(return_value="Bearer dummyheader"),
     )
 
@@ -173,7 +176,8 @@ async def test_check_token_invalid_scheme(context):
 async def test_check_token_expired(monkeypatch, context):
     # Patch jwt_verify to return an expired token
     monkeypatch.setattr(
-        token_module, "jwt_verify",
+        token_module,
+        "jwt_verify",
         AsyncMock(
             return_value=JWTVerifyResult(headers={}, payload={"exp": 1}, verified=True)
         ),
@@ -186,7 +190,8 @@ async def test_check_token_expired(monkeypatch, context):
 async def test_check_token_invalid_token(monkeypatch, context):
     # Patch jwt_verify to return not verified
     monkeypatch.setattr(
-        token_module, "jwt_verify",
+        token_module,
+        "jwt_verify",
         AsyncMock(
             return_value=JWTVerifyResult(
                 headers={}, payload={"exp": 9999999999}, verified=False
@@ -230,7 +235,8 @@ async def test_receive_notification(context):
         mock_record.notification_event = None
         mock_record.save = AsyncMock()
         with patch.object(
-            credential_module.OID4VCIExchangeRecord, "retrieve_by_notification_id",
+            credential_module.OID4VCIExchangeRecord,
+            "retrieve_by_notification_id",
             AsyncMock(return_value=mock_record),
         ):
             # Patch context.profile.session to return an async context manager
@@ -273,7 +279,8 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
     mock_ex_record.verification_method = "did:example:123#key-1"
     mock_ex_record.save = AsyncMock()
     monkeypatch.setattr(
-        credential_module.OID4VCIExchangeRecord, "retrieve_by_refresh_id",
+        credential_module.OID4VCIExchangeRecord,
+        "retrieve_by_refresh_id",
         AsyncMock(return_value=mock_ex_record),
     )
     # Patch wallet.get_local_did to return a dummy DIDInfo
@@ -301,7 +308,8 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
     mock_supported.to_issuer_metadata = MagicMock(return_value={})
     mock_supported.vc_additional_data = {}
     monkeypatch.setattr(
-        credential_module.SupportedCredential, "retrieve_by_id",
+        credential_module.SupportedCredential,
+        "retrieve_by_id",
         AsyncMock(return_value=mock_supported),
     )
 
@@ -310,7 +318,8 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
     mock_pop.verified = True
     mock_pop.holder_kid = "did:example:123#key-1"
     monkeypatch.setattr(
-        credential_module, "handle_proof_of_posession",
+        credential_module,
+        "handle_proof_of_posession",
         AsyncMock(return_value=mock_pop),
     )
 

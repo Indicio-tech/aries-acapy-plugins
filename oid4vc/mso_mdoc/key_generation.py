@@ -11,6 +11,7 @@ Key Protocol Compliance:
 - RFC 8152 - CBOR Object Signing and Encryption (COSE)
 """
 
+import base64
 import logging
 import uuid
 from datetime import datetime, timedelta
@@ -22,6 +23,23 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
 LOGGER = logging.getLogger(__name__)
+
+
+def int_to_base64url_uint(val: int, length: int = 32) -> str:
+    """Convert integer to base64url unsigned integer.
+
+    Converts an elliptic curve coordinate integer to base64url encoding
+    as required by RFC 7517 for EC JWK format.
+
+    Args:
+        val: Integer value to encode
+        length: Byte length for the integer (default 32 for P-256)
+
+    Returns:
+        Base64url-encoded string without padding
+    """
+    val_bytes = val.to_bytes(length, byteorder="big")
+    return base64.urlsafe_b64encode(val_bytes).decode("ascii").rstrip("=")
 
 
 def generate_ec_key_pair() -> Tuple[str, str, Dict[str, Any]]:
@@ -67,25 +85,6 @@ def generate_ec_key_pair() -> Tuple[str, str, Dict[str, Any]]:
     private_numbers = private_key.private_numbers()
     public_numbers = private_numbers.public_numbers
 
-    # Convert to JWK format
-    def int_to_base64url_uint(val: int) -> str:
-        """Convert integer to base64url unsigned integer.
-
-        Converts an elliptic curve coordinate integer to base64url encoding
-        as required by RFC 7517 for EC JWK format.
-
-        Args:
-            val: Integer value to encode
-
-        Returns:
-            Base64url-encoded string without padding
-        """
-        import base64
-
-        # Convert to bytes, ensuring proper length for P-256 (32 bytes)
-        val_bytes = val.to_bytes(32, byteorder="big")
-        return base64.urlsafe_b64encode(val_bytes).decode("ascii").rstrip("=")
-
     jwk = {
         "kty": "EC",
         "crv": "P-256",
@@ -116,12 +115,6 @@ def pem_to_jwk(private_key_pem: str) -> Dict[str, Any]:
     private_numbers = private_key.private_numbers()
     public_numbers = private_numbers.public_numbers
 
-    def int_to_base64url_uint(val: int) -> str:
-        import base64
-
-        val_bytes = val.to_bytes(32, byteorder="big")
-        return base64.urlsafe_b64encode(val_bytes).decode("ascii").rstrip("=")
-
     return {
         "kty": "EC",
         "crv": "P-256",
@@ -140,8 +133,8 @@ def generate_self_signed_certificate(
     """Generate a self-signed X.509 IACA certificate for mDoc issuer.
 
     Creates a self-signed certificate compliant with ISO 18013-5 Annex B
-    requirements for IACA (Issuing Authority Certificate Authority) 
-    authentication. The certificate includes all required extensions for 
+    requirements for IACA (Issuing Authority Certificate Authority)
+    authentication. The certificate includes all required extensions for
     proper trust chain validation.
 
     Required Extensions per ISO 18013-5 Annex B.1.1:
@@ -217,7 +210,7 @@ def generate_self_signed_certificate(
     # Use UncompressedPoint format which gives just the raw point bytes
     raw_public_key_bytes = public_key.public_bytes(
         encoding=serialization.Encoding.X962,
-        format=serialization.PublicFormat.UncompressedPoint
+        format=serialization.PublicFormat.UncompressedPoint,
     )
     # SHA-1 hash of the raw public key point for SKI
     ski_digest = hashlib.sha1(raw_public_key_bytes).digest()
@@ -233,13 +226,13 @@ def generate_self_signed_certificate(
     cert_builder = cert_builder.not_valid_after(now + timedelta(days=validity_days))
 
     # Add ISO 18013-5 Annex B required extensions for IACA certificate
-    
+
     # 1. BasicConstraints - CA=True (required)
     cert_builder = cert_builder.add_extension(
         x509.BasicConstraints(ca=True, path_length=0),
         critical=True,
     )
-    
+
     # 2. KeyUsage - keyCertSign and cRLSign (required for IACA)
     cert_builder = cert_builder.add_extension(
         x509.KeyUsage(
@@ -255,32 +248,38 @@ def generate_self_signed_certificate(
         ),
         critical=True,
     )
-    
+
     # 3. SubjectKeyIdentifier - SHA-1 of public key (required for trust chain)
     cert_builder = cert_builder.add_extension(
         x509.SubjectKeyIdentifier(ski_digest),
         critical=False,
     )
-    
+
     # 4. CRLDistributionPoints - HTTP URI (required per Annex B)
     # For test purposes, we use a placeholder URL
     cert_builder = cert_builder.add_extension(
-        x509.CRLDistributionPoints([
-            x509.DistributionPoint(
-                full_name=[x509.UniformResourceIdentifier("http://example.com/crl")],
-                relative_name=None,
-                reasons=None,
-                crl_issuer=None,
-            )
-        ]),
+        x509.CRLDistributionPoints(
+            [
+                x509.DistributionPoint(
+                    full_name=[
+                        x509.UniformResourceIdentifier("http://example.com/crl")
+                    ],
+                    relative_name=None,
+                    reasons=None,
+                    crl_issuer=None,
+                )
+            ]
+        ),
         critical=False,
     )
-    
+
     # 5. IssuerAlternativeName - RFC822 email (required per Annex B)
     cert_builder = cert_builder.add_extension(
-        x509.IssuerAlternativeName([
-            x509.RFC822Name("test@example.com"),
-        ]),
+        x509.IssuerAlternativeName(
+            [
+                x509.RFC822Name("test@example.com"),
+            ]
+        ),
         critical=False,
     )
 

@@ -12,24 +12,26 @@ import pytest
 
 def extract_credential(response, wallet_name: str) -> str:
     """Safely extract credential from wallet response, skipping test if unavailable.
-    
+
     Args:
         response: The HTTP response from wallet accept-offer call
         wallet_name: Name of wallet for error messages (e.g., "Credo", "Sphereon")
-        
+
     Returns:
         The credential string
-        
+
     Raises:
         pytest.skip: If credential could not be obtained (infrastructure issue)
     """
     if response.status_code != 200:
-        pytest.skip(f"{wallet_name} failed to accept offer (status {response.status_code}): {response.text}")
-    
+        pytest.skip(
+            f"{wallet_name} failed to accept offer (status {response.status_code}): {response.text}"
+        )
+
     resp_json = response.json()
     if "credential" not in resp_json:
         pytest.skip(f"{wallet_name} did not return credential: {resp_json}")
-    
+
     return resp_json["credential"]
 
 
@@ -44,7 +46,7 @@ async def test_credo_expired_credential_offer(
     credo_client,
 ):
     """Test Credo behavior with an already-used credential offer.
-    
+
     Bug discovery: Does Credo properly handle token reuse errors?
     """
     random_suffix = str(uuid.uuid4())[:8]
@@ -52,7 +54,9 @@ async def test_credo_expired_credential_offer(
         "id": f"ExpiredOfferCredential_{random_suffix}",
         "format": "vc+sd-jwt",
         "scope": "ExpiredOfferTest",
-        "proof_types_supported": {"jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}},
+        "proof_types_supported": {
+            "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
+        },
         "format_data": {
             "cryptographic_binding_methods_supported": ["did:key"],
             "cryptographic_suites_supported": ["EdDSA"],
@@ -82,7 +86,8 @@ async def test_credo_expired_credential_offer(
     )
 
     offer_response = await acapy_issuer_admin.get(
-        "/oid4vci/credential-offer", params={"exchange_id": exchange_response["exchange_id"]}
+        "/oid4vci/credential-offer",
+        params={"exchange_id": exchange_response["exchange_id"]},
     )
     credential_offer = offer_response["credential_offer"]
 
@@ -91,18 +96,22 @@ async def test_credo_expired_credential_offer(
         "/oid4vci/accept-offer",
         json={"credential_offer": credential_offer, "holder_did_method": "key"},
     )
-    assert first_response.status_code == 200, f"First accept failed: {first_response.text}"
+    assert (
+        first_response.status_code == 200
+    ), f"First accept failed: {first_response.text}"
 
     # Second attempt with same offer - should fail gracefully
     second_response = await credo_client.post(
         "/oid4vci/accept-offer",
         json={"credential_offer": credential_offer, "holder_did_method": "key"},
     )
-    
+
     # Document behavior
     print(f"Reused offer response status: {second_response.status_code}")
     if second_response.status_code == 200:
-        print("WARNING: Credential offer was accepted twice - potential token reuse bug")
+        print(
+            "WARNING: Credential offer was accepted twice - potential token reuse bug"
+        )
     else:
         print(f"Correctly rejected reused offer: {second_response.text[:200]}")
 
@@ -129,7 +138,9 @@ async def test_sphereon_expired_credential_offer(
     )
     supported_cred_id = supported["supported_cred_id"]
 
-    did_result = await acapy_issuer_admin.post("/did/jwk/create", json={"key_type": "p256"})
+    did_result = await acapy_issuer_admin.post(
+        "/did/jwk/create", json={"key_type": "p256"}
+    )
     issuer_did = did_result["did"]
 
     exchange = await acapy_issuer_admin.post(
@@ -173,7 +184,7 @@ async def test_credo_expired_presentation_request(
     credo_client,
 ):
     """Test Credo behavior with already-fulfilled presentation request.
-    
+
     Bug discovery: Does Credo handle double-submission errors correctly?
     """
     # Issue credential first
@@ -182,7 +193,9 @@ async def test_credo_expired_presentation_request(
         "id": f"ReplayTestCredential_{random_suffix}",
         "format": "vc+sd-jwt",
         "scope": "ReplayTest",
-        "proof_types_supported": {"jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}},
+        "proof_types_supported": {
+            "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
+        },
         "format_data": {
             "cryptographic_binding_methods_supported": ["did:key"],
             "cryptographic_suites_supported": ["EdDSA"],
@@ -210,12 +223,16 @@ async def test_credo_expired_presentation_request(
     )
 
     offer_response = await acapy_issuer_admin.get(
-        "/oid4vci/credential-offer", params={"exchange_id": exchange_response["exchange_id"]}
+        "/oid4vci/credential-offer",
+        params={"exchange_id": exchange_response["exchange_id"]},
     )
 
     credo_response = await credo_client.post(
         "/oid4vci/accept-offer",
-        json={"credential_offer": offer_response["credential_offer"], "holder_did_method": "key"},
+        json={
+            "credential_offer": offer_response["credential_offer"],
+            "holder_did_method": "key",
+        },
     )
     credential = extract_credential(credo_response, "Credo")
 
@@ -228,7 +245,9 @@ async def test_credo_expired_presentation_request(
                 "id": "replay-test",
                 "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA"]}},
                 "constraints": {
-                    "fields": [{"path": ["$.vct"], "filter": {"const": "ReplayTestCredential"}}]
+                    "fields": [
+                        {"path": ["$.vct"], "filter": {"const": "ReplayTestCredential"}}
+                    ]
                 },
             }
         ],
@@ -249,7 +268,8 @@ async def test_credo_expired_presentation_request(
 
     # First presentation - should succeed
     first_present = await credo_client.post(
-        "/oid4vp/present", json={"request_uri": request_uri, "credentials": [credential]}
+        "/oid4vp/present",
+        json={"request_uri": request_uri, "credentials": [credential]},
     )
     assert first_present.status_code == 200
 
@@ -258,12 +278,15 @@ async def test_credo_expired_presentation_request(
 
     # Second presentation with same request - should fail
     second_present = await credo_client.post(
-        "/oid4vp/present", json={"request_uri": request_uri, "credentials": [credential]}
+        "/oid4vp/present",
+        json={"request_uri": request_uri, "credentials": [credential]},
     )
 
     print(f"Replay presentation status: {second_present.status_code}")
     if second_present.status_code == 200 and second_present.json().get("success"):
-        print("WARNING: Presentation request accepted twice - potential replay vulnerability")
+        print(
+            "WARNING: Presentation request accepted twice - potential replay vulnerability"
+        )
 
 
 @pytest.mark.asyncio
@@ -273,7 +296,7 @@ async def test_credo_mismatched_credential_type(
     credo_client,
 ):
     """Test Credo presenting wrong credential type for request.
-    
+
     Issue Identity credential but try to satisfy Employment request.
     """
     random_suffix = str(uuid.uuid4())[:8]
@@ -283,7 +306,9 @@ async def test_credo_mismatched_credential_type(
         "id": f"IdentityOnly_{random_suffix}",
         "format": "vc+sd-jwt",
         "scope": "Identity",
-        "proof_types_supported": {"jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}},
+        "proof_types_supported": {
+            "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
+        },
         "format_data": {
             "cryptographic_binding_methods_supported": ["did:key"],
             "cryptographic_suites_supported": ["EdDSA"],
@@ -316,17 +341,20 @@ async def test_credo_mismatched_credential_type(
 
     credo_resp = await credo_client.post(
         "/oid4vci/accept-offer",
-        json={"credential_offer": offer["credential_offer"], "holder_did_method": "key"},
+        json={
+            "credential_offer": offer["credential_offer"],
+            "holder_did_method": "key",
+        },
     )
-    
+
     # Handle case where Credo fails to accept offer (e.g., wallet issues)
     if credo_resp.status_code != 200:
         pytest.skip(f"Credo failed to accept offer: {credo_resp.text}")
-    
+
     resp_json = credo_resp.json()
     if "credential" not in resp_json:
         pytest.skip(f"Credo did not return credential: {resp_json}")
-    
+
     identity_credential = resp_json["credential"]
 
     # Request EMPLOYMENT credential (which we don't have)
@@ -339,7 +367,10 @@ async def test_credo_mismatched_credential_type(
                 "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA"]}},
                 "constraints": {
                     "fields": [
-                        {"path": ["$.vct"], "filter": {"const": "EmploymentCredential"}},  # Wrong type!
+                        {
+                            "path": ["$.vct"],
+                            "filter": {"const": "EmploymentCredential"},
+                        },  # Wrong type!
                         {"path": ["$.employer"]},
                     ]
                 },
@@ -362,11 +393,14 @@ async def test_credo_mismatched_credential_type(
     # Try to present Identity credential for Employment request
     present_response = await credo_client.post(
         "/oid4vp/present",
-        json={"request_uri": request["request_uri"], "credentials": [identity_credential]},
+        json={
+            "request_uri": request["request_uri"],
+            "credentials": [identity_credential],
+        },
     )
 
     print(f"Mismatched credential type status: {present_response.status_code}")
-    
+
     if present_response.status_code == 200:
         result = present_response.json()
         # Check if Credo reports it couldn't satisfy the request
@@ -374,17 +408,24 @@ async def test_credo_mismatched_credential_type(
             # Check verifier side
             presentation_id = request["presentation"]["presentation_id"]
             for _ in range(5):
-                record = await acapy_verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
-                if record.get("state") in ["presentation-valid", "presentation-invalid"]:
+                record = await acapy_verifier_admin.get(
+                    f"/oid4vp/presentation/{presentation_id}"
+                )
+                if record.get("state") in [
+                    "presentation-valid",
+                    "presentation-invalid",
+                ]:
                     break
                 await asyncio.sleep(1)
-            
+
             if record.get("state") == "presentation-valid":
                 print("BUG: Mismatched credential type was accepted!")
             else:
                 print(f"Correctly rejected mismatched type: {record.get('state')}")
     else:
-        print(f"Credo correctly rejected mismatched credential: {present_response.text[:200]}")
+        print(
+            f"Credo correctly rejected mismatched credential: {present_response.text[:200]}"
+        )
 
 
 # =============================================================================
@@ -399,7 +440,7 @@ async def test_credo_empty_claim_values(
     credo_client,
 ):
     """Test credential with empty string claim values.
-    
+
     Bug discovery: How do wallets handle empty string vs null vs missing claims?
     """
     random_suffix = str(uuid.uuid4())[:8]
@@ -407,7 +448,9 @@ async def test_credo_empty_claim_values(
         "id": f"EmptyClaimCredential_{random_suffix}",
         "format": "vc+sd-jwt",
         "scope": "EmptyClaimTest",
-        "proof_types_supported": {"jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}},
+        "proof_types_supported": {
+            "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
+        },
         "format_data": {
             "cryptographic_binding_methods_supported": ["did:key"],
             "cryptographic_suites_supported": ["EdDSA"],
@@ -448,16 +491,19 @@ async def test_credo_empty_claim_values(
     # Credo accepts
     credo_response = await credo_client.post(
         "/oid4vci/accept-offer",
-        json={"credential_offer": offer["credential_offer"], "holder_did_method": "key"},
+        json={
+            "credential_offer": offer["credential_offer"],
+            "holder_did_method": "key",
+        },
     )
-    
+
     print(f"Empty claim credential issuance: {credo_response.status_code}")
     if credo_response.status_code == 200:
         resp_json = credo_response.json()
         if "credential" not in resp_json:
             pytest.skip(f"Credo did not return credential: {resp_json}")
         credential = resp_json["credential"]
-        
+
         # Try to present with empty claim
         pres_def = {
             "id": str(uuid.uuid4()),
@@ -468,8 +514,16 @@ async def test_credo_empty_claim_values(
                     "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA"]}},
                     "constraints": {
                         "fields": [
-                            {"path": ["$.vct"], "filter": {"const": "EmptyClaimCredential"}},
-                            {"path": ["$.optional_empty", "$.credentialSubject.optional_empty"]},
+                            {
+                                "path": ["$.vct"],
+                                "filter": {"const": "EmptyClaimCredential"},
+                            },
+                            {
+                                "path": [
+                                    "$.optional_empty",
+                                    "$.credentialSubject.optional_empty",
+                                ]
+                            },
                         ]
                     },
                 }
@@ -497,8 +551,13 @@ async def test_credo_empty_claim_values(
         if present_resp.status_code == 200:
             presentation_id = request["presentation"]["presentation_id"]
             for _ in range(5):
-                record = await acapy_verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
-                if record.get("state") in ["presentation-valid", "presentation-invalid"]:
+                record = await acapy_verifier_admin.get(
+                    f"/oid4vp/presentation/{presentation_id}"
+                )
+                if record.get("state") in [
+                    "presentation-valid",
+                    "presentation-invalid",
+                ]:
                     break
                 await asyncio.sleep(1)
             print(f"Empty claim verification: {record.get('state')}")
@@ -516,7 +575,7 @@ async def test_credo_special_characters_in_claims(
     credo_client,
 ):
     """Test handling of special characters in claim values.
-    
+
     Bug discovery: Unicode, quotes, newlines in credential subjects.
     """
     random_suffix = str(uuid.uuid4())[:8]
@@ -524,7 +583,9 @@ async def test_credo_special_characters_in_claims(
         "id": f"SpecialCharCredential_{random_suffix}",
         "format": "vc+sd-jwt",
         "scope": "SpecialCharTest",
-        "proof_types_supported": {"jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}},
+        "proof_types_supported": {
+            "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
+        },
         "format_data": {
             "cryptographic_binding_methods_supported": ["did:key"],
             "cryptographic_suites_supported": ["EdDSA"],
@@ -564,7 +625,10 @@ async def test_credo_special_characters_in_claims(
 
     credo_response = await credo_client.post(
         "/oid4vci/accept-offer",
-        json={"credential_offer": offer["credential_offer"], "holder_did_method": "key"},
+        json={
+            "credential_offer": offer["credential_offer"],
+            "holder_did_method": "key",
+        },
     )
 
     print(f"Special char credential issuance: {credo_response.status_code}")
@@ -575,7 +639,7 @@ async def test_credo_special_characters_in_claims(
         if "credential" not in resp_json:
             pytest.skip(f"Credo did not return credential: {resp_json}")
         credential = resp_json["credential"]
-        
+
         # Present and verify special chars are preserved
         pres_def = {
             "id": str(uuid.uuid4()),
@@ -586,8 +650,16 @@ async def test_credo_special_characters_in_claims(
                     "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA"]}},
                     "constraints": {
                         "fields": [
-                            {"path": ["$.vct"], "filter": {"const": "SpecialCharCredential"}},
-                            {"path": ["$.unicode_name", "$.credentialSubject.unicode_name"]},
+                            {
+                                "path": ["$.vct"],
+                                "filter": {"const": "SpecialCharCredential"},
+                            },
+                            {
+                                "path": [
+                                    "$.unicode_name",
+                                    "$.credentialSubject.unicode_name",
+                                ]
+                            },
                         ]
                     },
                 }
@@ -614,11 +686,16 @@ async def test_credo_special_characters_in_claims(
 
         if present_resp.status_code == 200:
             for _ in range(5):
-                record = await acapy_verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
-                if record.get("state") in ["presentation-valid", "presentation-invalid"]:
+                record = await acapy_verifier_admin.get(
+                    f"/oid4vp/presentation/{presentation_id}"
+                )
+                if record.get("state") in [
+                    "presentation-valid",
+                    "presentation-invalid",
+                ]:
                     break
                 await asyncio.sleep(1)
-            
+
             print(f"Special char verification: {record.get('state')}")
             # Check if values were preserved
             verified = record.get("verified_claims", {})
@@ -636,11 +713,11 @@ async def test_concurrent_credential_offers_credo(
     credo_client,
 ):
     """Test Credo handling multiple credential offers simultaneously.
-    
+
     Bug discovery: Race conditions in token handling.
     """
     random_suffix = str(uuid.uuid4())[:8]
-    
+
     # Create credential config
     config = await acapy_issuer_admin.post(
         "/oid4vci/credential-supported/create",
@@ -648,7 +725,9 @@ async def test_concurrent_credential_offers_credo(
             "id": f"ConcurrentCredential_{random_suffix}",
             "format": "vc+sd-jwt",
             "scope": "ConcurrentTest",
-            "proof_types_supported": {"jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}},
+            "proof_types_supported": {
+                "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
+            },
             "format_data": {
                 "cryptographic_binding_methods_supported": ["did:key"],
                 "cryptographic_suites_supported": ["EdDSA"],
@@ -685,11 +764,15 @@ async def test_concurrent_credential_offers_credo(
             "/oid4vci/accept-offer",
             json={"credential_offer": offer_uri, "holder_did_method": "key"},
         )
-        return idx, response.status_code, response.json() if response.status_code == 200 else response.text
+        return (
+            idx,
+            response.status_code,
+            response.json() if response.status_code == 200 else response.text,
+        )
 
     results = await asyncio.gather(
         *[accept_offer(offer, i) for i, offer in enumerate(offers)],
-        return_exceptions=True
+        return_exceptions=True,
     )
 
     # Analyze results
@@ -704,14 +787,14 @@ async def test_concurrent_credential_offers_credo(
                 success_count += 1
 
     print(f"Concurrent credential acceptance: {success_count}/{len(offers)} succeeded")
-    
+
     # All should succeed if there's no race condition
     if success_count < len(offers):
         print("WARNING: Some concurrent offers failed - potential race condition")
 
 
 # =============================================================================
-# Large Payload Edge Cases  
+# Large Payload Edge Cases
 # =============================================================================
 
 
@@ -721,15 +804,15 @@ async def test_large_credential_subject(
     credo_client,
 ):
     """Test handling of large credential subject payloads.
-    
+
     Bug discovery: Payload size limits, truncation issues.
     """
     random_suffix = str(uuid.uuid4())[:8]
-    
+
     # Create credential with many claims
     claims = {f"claim_{i}": {"mandatory": False} for i in range(50)}
     claims["id_field"] = {"mandatory": True}
-    
+
     sd_list = [f"/claim_{i}" for i in range(50)]
     sd_list.append("/id_field")
 
@@ -739,7 +822,9 @@ async def test_large_credential_subject(
             "id": f"LargeCredential_{random_suffix}",
             "format": "vc+sd-jwt",
             "scope": "LargeTest",
-            "proof_types_supported": {"jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}},
+            "proof_types_supported": {
+                "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
+            },
             "format_data": {
                 "cryptographic_binding_methods_supported": ["did:key"],
                 "cryptographic_suites_supported": ["EdDSA"],
@@ -758,7 +843,9 @@ async def test_large_credential_subject(
     credential_subject = {"id_field": "large_credential_test"}
     for i in range(50):
         # Use moderately long values
-        credential_subject[f"claim_{i}"] = f"This is claim number {i} with some additional text to make it longer " * 3
+        credential_subject[f"claim_{i}"] = (
+            f"This is claim number {i} with some additional text to make it longer " * 3
+        )
 
     exchange = await acapy_issuer_admin.post(
         "/oid4vci/exchange/create",
@@ -776,7 +863,10 @@ async def test_large_credential_subject(
     # Try to accept large credential
     credo_response = await credo_client.post(
         "/oid4vci/accept-offer",
-        json={"credential_offer": offer["credential_offer"], "holder_did_method": "key"},
+        json={
+            "credential_offer": offer["credential_offer"],
+            "holder_did_method": "key",
+        },
         timeout=60.0,  # Extended timeout for large payload
     )
 

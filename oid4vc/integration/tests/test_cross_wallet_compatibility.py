@@ -17,24 +17,26 @@ from .test_config import MDOC_AVAILABLE  # noqa: F401
 
 def extract_credential(response, wallet_name: str) -> str:
     """Safely extract credential from wallet response, skipping test if unavailable.
-    
+
     Args:
         response: The HTTP response from wallet accept-offer call
         wallet_name: Name of wallet for error messages (e.g., "Credo", "Sphereon")
-        
+
     Returns:
         The credential string
-        
+
     Raises:
         pytest.skip: If credential could not be obtained (infrastructure issue)
     """
     if response.status_code != 200:
-        pytest.skip(f"{wallet_name} failed to accept offer (status {response.status_code}): {response.text}")
-    
+        pytest.skip(
+            f"{wallet_name} failed to accept offer (status {response.status_code}): {response.text}"
+        )
+
     resp_json = response.json()
     if "credential" not in resp_json:
         pytest.skip(f"{wallet_name} did not return credential: {resp_json}")
-    
+
     return resp_json["credential"]
 
 
@@ -51,7 +53,7 @@ async def test_issue_to_credo_verify_with_sphereon_jwt_vc(
     sphereon_client,  # noqa: ARG001
 ):
     """Issue JWT VC to Credo, then verify presentation from Credo via Sphereon-style request.
-    
+
     This tests whether credentials issued to Credo can be presented to a verifier
     that uses Sphereon-compatible verification patterns.
     """
@@ -73,9 +75,7 @@ async def test_issue_to_credo_verify_with_sphereon_jwt_vc(
                 "email": {"mandatory": False},
             },
         },
-        "vc_additional_data": {
-            "sd_list": ["/name", "/email"]
-        },
+        "vc_additional_data": {"sd_list": ["/name", "/email"]},
     }
 
     credential_config_response = await acapy_issuer_admin.post(
@@ -130,7 +130,10 @@ async def test_issue_to_credo_verify_with_sphereon_jwt_vc(
                     "fields": [
                         {
                             "path": ["$.vct", "$.type"],
-                            "filter": {"type": "string", "const": "CrossWalletCredential"},
+                            "filter": {
+                                "type": "string",
+                                "const": "CrossWalletCredential",
+                            },
                         },
                         {"path": ["$.name", "$.credentialSubject.name"]},
                     ]
@@ -156,15 +159,21 @@ async def test_issue_to_credo_verify_with_sphereon_jwt_vc(
 
     # Step 3: Credo presents the credential
     present_request = {"request_uri": request_uri, "credentials": [credo_credential]}
-    presentation_response = await credo_client.post("/oid4vp/present", json=present_request)
-    
-    assert presentation_response.status_code == 200, f"Presentation failed: {presentation_response.text}"
+    presentation_response = await credo_client.post(
+        "/oid4vp/present", json=present_request
+    )
+
+    assert (
+        presentation_response.status_code == 200
+    ), f"Presentation failed: {presentation_response.text}"
     presentation_result = presentation_response.json()
     assert presentation_result.get("success") is True
 
     # Step 4: Verify ACA-Py received and validated
     for _ in range(10):
-        latest = await acapy_verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
+        latest = await acapy_verifier_admin.get(
+            f"/oid4vp/presentation/{presentation_id}"
+        )
         if latest.get("state") == "presentation-valid":
             break
         await asyncio.sleep(1)
@@ -180,13 +189,13 @@ async def test_issue_to_sphereon_verify_with_credo_jwt_vc(
     sphereon_client,
 ):
     """Issue JWT VC to Sphereon, then try to verify if Credo can handle similar patterns.
-    
+
     This tests format compatibility between wallets for JWT VC credentials.
     """
     # Step 1: Issue JWT VC to Sphereon
     random_suffix = str(uuid.uuid4())[:8]
     cred_id = f"SphereonIssuedCredential-{random_suffix}"
-    
+
     supported = await acapy_issuer_admin.post(
         "/oid4vci/credential-supported/create/jwt",
         json={
@@ -230,7 +239,7 @@ async def test_issue_to_sphereon_verify_with_credo_jwt_vc(
     sphereon_credential = extract_credential(response, "Sphereon")
 
     # Step 2: Create presentation definition for JWT VP
-    # NOTE: Using schema-based definition (like existing Sphereon tests) 
+    # NOTE: Using schema-based definition (like existing Sphereon tests)
     # instead of format+constraints pattern which may cause interop issues
     presentation_definition = {
         "id": str(uuid.uuid4()),
@@ -238,9 +247,7 @@ async def test_issue_to_sphereon_verify_with_credo_jwt_vc(
             {
                 "id": "university_degree",
                 "name": "University Degree",
-                "schema": [
-                    {"uri": "https://www.w3.org/2018/credentials/examples/v1"}
-                ],
+                "schema": [{"uri": "https://www.w3.org/2018/credentials/examples/v1"}],
             }
         ],
     }
@@ -268,12 +275,16 @@ async def test_issue_to_sphereon_verify_with_credo_jwt_vc(
             "verifiable_credentials": [sphereon_credential],
         },
     )
-    assert present_response.status_code == 200, f"Sphereon present failed: {present_response.text}"
+    assert (
+        present_response.status_code == 200
+    ), f"Sphereon present failed: {present_response.text}"
 
     # Step 4: Verify on ACA-Py side
     record = None
     for _ in range(10):
-        record = await acapy_verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
+        record = await acapy_verifier_admin.get(
+            f"/oid4vp/presentation/{presentation_id}"
+        )
         if record["state"] == "presentation-valid":
             break
         await asyncio.sleep(1)
@@ -293,22 +304,24 @@ async def test_issue_to_sphereon_verify_with_credo_jwt_vc(
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Known bug: Sphereon VP with format+constraints pattern rejected by ACA-Py")
+@pytest.mark.xfail(
+    reason="Known bug: Sphereon VP with format+constraints pattern rejected by ACA-Py"
+)
 async def test_sphereon_jwt_vp_with_constraints_pattern(
     acapy_issuer_admin,
     acapy_verifier_admin,
     sphereon_client,
 ):
     """Test Sphereon JWT VP with format+constraints presentation definition.
-    
+
     KNOWN BUG: When using 'format' and 'constraints' in input_descriptors
     instead of 'schema', Sphereon's VP is rejected by ACA-Py verifier.
-    
+
     This test documents the interoperability issue for future fixes.
     """
     random_suffix = str(uuid.uuid4())[:8]
     cred_id = f"ConstraintsBugTest-{random_suffix}"
-    
+
     # Issue JWT VC to Sphereon
     supported = await acapy_issuer_admin.post(
         "/oid4vci/credential-supported/create/jwt",
@@ -325,7 +338,9 @@ async def test_sphereon_jwt_vp_with_constraints_pattern(
         },
     )
 
-    did_result = await acapy_issuer_admin.post("/did/jwk/create", json={"key_type": "p256"})
+    did_result = await acapy_issuer_admin.post(
+        "/did/jwk/create", json={"key_type": "p256"}
+    )
     issuer_did = did_result["did"]
 
     exchange = await acapy_issuer_admin.post(
@@ -393,12 +408,16 @@ async def test_sphereon_jwt_vp_with_constraints_pattern(
     # This should fail - documenting the bug
     presentation_id = request_response["presentation"]["presentation_id"]
     for _ in range(10):
-        record = await acapy_verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
+        record = await acapy_verifier_admin.get(
+            f"/oid4vp/presentation/{presentation_id}"
+        )
         if record["state"] == "presentation-valid":
             break
         await asyncio.sleep(1)
     else:
-        pytest.fail(f"Expected failure: format+constraints pattern rejected. State: {record['state']}")
+        pytest.fail(
+            f"Expected failure: format+constraints pattern rejected. State: {record['state']}"
+        )
 
 
 # =============================================================================
@@ -413,7 +432,7 @@ async def test_credo_unsupported_algorithm_request(
     credo_client,
 ):
     """Test Credo behavior when verifier requests unsupported algorithm.
-    
+
     Issue credential with EdDSA, but request presentation with only ES256.
     This tests algorithm negotiation handling.
     """
@@ -461,7 +480,10 @@ async def test_credo_unsupported_algorithm_request(
     # Credo accepts offer
     credo_response = await credo_client.post(
         "/oid4vci/accept-offer",
-        json={"credential_offer": offer_response["credential_offer"], "holder_did_method": "key"},
+        json={
+            "credential_offer": offer_response["credential_offer"],
+            "holder_did_method": "key",
+        },
     )
     credo_credential = extract_credential(credo_response, "Credo")
 
@@ -475,7 +497,10 @@ async def test_credo_unsupported_algorithm_request(
                 "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["ES256"]}},
                 "constraints": {
                     "fields": [
-                        {"path": ["$.vct"], "filter": {"type": "string", "const": "AlgoTestCredential"}},
+                        {
+                            "path": ["$.vct"],
+                            "filter": {"type": "string", "const": "AlgoTestCredential"},
+                        },
                     ]
                 },
             }
@@ -498,9 +523,10 @@ async def test_credo_unsupported_algorithm_request(
 
     # Attempt presentation - this should either fail or Credo should handle algorithm mismatch
     present_response = await credo_client.post(
-        "/oid4vp/present", json={"request_uri": request_uri, "credentials": [credo_credential]}
+        "/oid4vp/present",
+        json={"request_uri": request_uri, "credentials": [credo_credential]},
     )
-    
+
     # Document the behavior - this test discovers if there's a bug
     # Expected: Either Credo rejects with meaningful error, or verifier rejects the presentation
     if present_response.status_code == 200:
@@ -511,11 +537,16 @@ async def test_credo_unsupported_algorithm_request(
             # Check if ACA-Py correctly rejects the mismatched algorithm
             presentation_id = presentation_request["presentation"]["presentation_id"]
             for _ in range(5):
-                record = await acapy_verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
-                if record.get("state") in ["presentation-valid", "presentation-invalid"]:
+                record = await acapy_verifier_admin.get(
+                    f"/oid4vp/presentation/{presentation_id}"
+                )
+                if record.get("state") in [
+                    "presentation-valid",
+                    "presentation-invalid",
+                ]:
                     break
                 await asyncio.sleep(1)
-            
+
             # Document the actual behavior for bug discovery
             print(f"Algorithm mismatch test result: state={record.get('state')}")
             # If state is "presentation-valid", this indicates a potential bug where
@@ -532,7 +563,7 @@ async def test_sphereon_unsupported_format_request(
     sphereon_client,
 ):
     """Test Sphereon behavior when asked to present unsupported format.
-    
+
     Issue JWT VC but request SD-JWT presentation format.
     """
     random_suffix = str(uuid.uuid4())[:8]
@@ -552,7 +583,9 @@ async def test_sphereon_unsupported_format_request(
     )
     supported_cred_id = supported["supported_cred_id"]
 
-    did_result = await acapy_issuer_admin.post("/did/jwk/create", json={"key_type": "p256"})
+    did_result = await acapy_issuer_admin.post(
+        "/did/jwk/create", json={"key_type": "p256"}
+    )
     issuer_did = did_result["did"]
 
     exchange = await acapy_issuer_admin.post(
@@ -582,9 +615,7 @@ async def test_sphereon_unsupported_format_request(
             {
                 "id": "format-test",
                 "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["ES256"]}},
-                "constraints": {
-                    "fields": [{"path": ["$.vct"]}]
-                },
+                "constraints": {"fields": [{"path": ["$.vct"]}]},
             }
         ],
     }
@@ -632,7 +663,7 @@ async def test_selective_disclosure_credo_vs_sphereon_parity(
     credo_client,
 ):
     """Test selective disclosure behavior in Credo matches expected behavior.
-    
+
     Issue SD-JWT with multiple disclosable claims, request only subset,
     verify only requested claims are disclosed.
     """
@@ -692,7 +723,10 @@ async def test_selective_disclosure_credo_vs_sphereon_parity(
     # Credo accepts
     credo_response = await credo_client.post(
         "/oid4vci/accept-offer",
-        json={"credential_offer": offer_response["credential_offer"], "holder_did_method": "key"},
+        json={
+            "credential_offer": offer_response["credential_offer"],
+            "holder_did_method": "key",
+        },
     )
     sd_jwt_credential = extract_credential(credo_response, "Credo")
 
@@ -707,10 +741,18 @@ async def test_selective_disclosure_credo_vs_sphereon_parity(
                 "constraints": {
                     "limit_disclosure": "required",
                     "fields": [
-                        {"path": ["$.vct"], "filter": {"type": "string", "const": "SDTestCredential"}},
-                        {"path": ["$.private_claim_1", "$.credentialSubject.private_claim_1"]},
+                        {
+                            "path": ["$.vct"],
+                            "filter": {"type": "string", "const": "SDTestCredential"},
+                        },
+                        {
+                            "path": [
+                                "$.private_claim_1",
+                                "$.credentialSubject.private_claim_1",
+                            ]
+                        },
                         # NOT requesting private_claim_2 or private_claim_3
-                    ]
+                    ],
                 },
             }
         ],
@@ -733,13 +775,18 @@ async def test_selective_disclosure_credo_vs_sphereon_parity(
 
     # Credo presents with selective disclosure
     present_response = await credo_client.post(
-        "/oid4vp/present", json={"request_uri": request_uri, "credentials": [sd_jwt_credential]}
+        "/oid4vp/present",
+        json={"request_uri": request_uri, "credentials": [sd_jwt_credential]},
     )
-    assert present_response.status_code == 200, f"Present failed: {present_response.text}"
+    assert (
+        present_response.status_code == 200
+    ), f"Present failed: {present_response.text}"
 
     # Verify presentation and check disclosed claims
     for _ in range(10):
-        record = await acapy_verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
+        record = await acapy_verifier_admin.get(
+            f"/oid4vp/presentation/{presentation_id}"
+        )
         if record.get("state") in ["presentation-valid", "presentation-invalid"]:
             break
         await asyncio.sleep(1)
@@ -749,11 +796,13 @@ async def test_selective_disclosure_credo_vs_sphereon_parity(
     # Check what was disclosed in the verified claims
     verified_claims = record.get("verified_claims", {})
     print(f"Selective disclosure test - verified claims: {verified_claims}")
-    
+
     # Bug discovery: Check if unrequested claims were incorrectly disclosed
     if verified_claims:
         # These should NOT be present if selective disclosure is working correctly
-        if "private_claim_2" in str(verified_claims) or "private_claim_3" in str(verified_claims):
+        if "private_claim_2" in str(verified_claims) or "private_claim_3" in str(
+            verified_claims
+        ):
             print("WARNING: Unrequested claims were disclosed - potential SD bug")
 
 
@@ -782,9 +831,7 @@ async def test_selective_disclosure_all_claims_disclosed(
                 "claim_c": {"mandatory": True},
             },
         },
-        "vc_additional_data": {
-            "sd_list": ["/claim_a", "/claim_b", "/claim_c"]
-        },
+        "vc_additional_data": {"sd_list": ["/claim_a", "/claim_b", "/claim_c"]},
     }
 
     config_response = await acapy_issuer_admin.post(
@@ -811,12 +858,16 @@ async def test_selective_disclosure_all_claims_disclosed(
     )
 
     offer_response = await acapy_issuer_admin.get(
-        "/oid4vci/credential-offer", params={"exchange_id": exchange_response["exchange_id"]}
+        "/oid4vci/credential-offer",
+        params={"exchange_id": exchange_response["exchange_id"]},
     )
 
     credo_response = await credo_client.post(
         "/oid4vci/accept-offer",
-        json={"credential_offer": offer_response["credential_offer"], "holder_did_method": "key"},
+        json={
+            "credential_offer": offer_response["credential_offer"],
+            "holder_did_method": "key",
+        },
     )
     credential = extract_credential(credo_response, "Credo")
 
@@ -835,7 +886,7 @@ async def test_selective_disclosure_all_claims_disclosed(
                         {"path": ["$.claim_a", "$.credentialSubject.claim_a"]},
                         {"path": ["$.claim_b", "$.credentialSubject.claim_b"]},
                         {"path": ["$.claim_c", "$.credentialSubject.claim_c"]},
-                    ]
+                    ],
                 },
             }
         ],
@@ -848,24 +899,32 @@ async def test_selective_disclosure_all_claims_disclosed(
 
     presentation_request = await acapy_verifier_admin.post(
         "/oid4vp/request",
-        json={"pres_def_id": pres_def_id, "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA"]}}},
+        json={
+            "pres_def_id": pres_def_id,
+            "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA"]}},
+        },
     )
     presentation_id = presentation_request["presentation"]["presentation_id"]
 
     present_response = await credo_client.post(
         "/oid4vp/present",
-        json={"request_uri": presentation_request["request_uri"], "credentials": [credential]},
+        json={
+            "request_uri": presentation_request["request_uri"],
+            "credentials": [credential],
+        },
     )
     assert present_response.status_code == 200
 
     for _ in range(10):
-        record = await acapy_verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
+        record = await acapy_verifier_admin.get(
+            f"/oid4vp/presentation/{presentation_id}"
+        )
         if record.get("state") == "presentation-valid":
             break
         await asyncio.sleep(1)
 
     assert record.get("state") == "presentation-valid"
-    
+
     # Verify all requested claims are present
     verified_claims = record.get("verified_claims", {})
     print(f"Full disclosure test - verified claims: {verified_claims}")
@@ -886,7 +945,7 @@ async def test_mdoc_issue_to_credo_verify_with_sphereon_patterns(
     setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
 ):
     """Issue mDOC to Credo and verify using Sphereon-compatible verification patterns.
-    
+
     Tests mDOC format interoperability between wallets.
     """
     random_suffix = str(uuid.uuid4())[:8]
@@ -935,16 +994,20 @@ async def test_mdoc_issue_to_credo_verify_with_sphereon_patterns(
     )
 
     offer_response = await acapy_issuer_admin.get(
-        "/oid4vci/credential-offer", params={"exchange_id": exchange_response["exchange_id"]}
+        "/oid4vci/credential-offer",
+        params={"exchange_id": exchange_response["exchange_id"]},
     )
 
     # Credo accepts mDOC
     credo_response = await credo_client.post(
         "/oid4vci/accept-offer",
-        json={"credential_offer": offer_response["credential_offer"], "holder_did_method": "key"},
+        json={
+            "credential_offer": offer_response["credential_offer"],
+            "holder_did_method": "key",
+        },
     )
     mdoc_credential = extract_credential(credo_response, "Credo")
-    
+
     # Verify format if response successful
     result = credo_response.json()
     if "format" in result:
@@ -961,9 +1024,15 @@ async def test_mdoc_issue_to_credo_verify_with_sphereon_patterns(
                 "constraints": {
                     "limit_disclosure": "required",
                     "fields": [
-                        {"path": ["$['org.iso.18013.5.1']['given_name']"], "intent_to_retain": False},
-                        {"path": ["$['org.iso.18013.5.1']['family_name']"], "intent_to_retain": False},
-                    ]
+                        {
+                            "path": ["$['org.iso.18013.5.1']['given_name']"],
+                            "intent_to_retain": False,
+                        },
+                        {
+                            "path": ["$['org.iso.18013.5.1']['family_name']"],
+                            "intent_to_retain": False,
+                        },
+                    ],
                 },
             }
         ],
@@ -976,25 +1045,37 @@ async def test_mdoc_issue_to_credo_verify_with_sphereon_patterns(
 
     presentation_request = await acapy_verifier_admin.post(
         "/oid4vp/request",
-        json={"pres_def_id": pres_def_id, "vp_formats": {"mso_mdoc": {"alg": ["ES256"]}}},
+        json={
+            "pres_def_id": pres_def_id,
+            "vp_formats": {"mso_mdoc": {"alg": ["ES256"]}},
+        },
     )
     presentation_id = presentation_request["presentation"]["presentation_id"]
 
     # Credo presents mDOC
     present_response = await credo_client.post(
         "/oid4vp/present",
-        json={"request_uri": presentation_request["request_uri"], "credentials": [mdoc_credential]},
+        json={
+            "request_uri": presentation_request["request_uri"],
+            "credentials": [mdoc_credential],
+        },
     )
-    assert present_response.status_code == 200, f"Credo mDOC present failed: {present_response.text}"
+    assert (
+        present_response.status_code == 200
+    ), f"Credo mDOC present failed: {present_response.text}"
 
     # Verify on ACA-Py
     for _ in range(10):
-        record = await acapy_verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
+        record = await acapy_verifier_admin.get(
+            f"/oid4vp/presentation/{presentation_id}"
+        )
         if record.get("state") == "presentation-valid":
             break
         await asyncio.sleep(1)
 
-    assert record.get("state") == "presentation-valid", f"mDOC verification failed: {record.get('state')}"
+    assert (
+        record.get("state") == "presentation-valid"
+    ), f"mDOC verification failed: {record.get('state')}"
     print("mDOC cross-wallet test passed!")
 
 
@@ -1007,7 +1088,7 @@ async def test_mdoc_issue_to_sphereon_verify_with_credo_patterns(
     setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
 ):
     """Issue mDOC to Sphereon and verify.
-    
+
     Tests Sphereon's mDOC handling and verification compatibility.
     """
     random_suffix = str(uuid.uuid4())[:8]
@@ -1032,7 +1113,9 @@ async def test_mdoc_issue_to_sphereon_verify_with_credo_patterns(
     )
     supported_cred_id = supported["supported_cred_id"]
 
-    did_result = await acapy_issuer_admin.post("/did/jwk/create", json={"key_type": "p256"})
+    did_result = await acapy_issuer_admin.post(
+        "/did/jwk/create", json={"key_type": "p256"}
+    )
     issuer_did = did_result["did"]
 
     exchange = await acapy_issuer_admin.post(
@@ -1070,8 +1153,11 @@ async def test_mdoc_issue_to_sphereon_verify_with_credo_patterns(
                 "constraints": {
                     "limit_disclosure": "required",
                     "fields": [
-                        {"path": ["$['org.iso.18013.5.1']['given_name']"], "intent_to_retain": False},
-                    ]
+                        {
+                            "path": ["$['org.iso.18013.5.1']['given_name']"],
+                            "intent_to_retain": False,
+                        },
+                    ],
                 },
             }
         ],
@@ -1084,7 +1170,10 @@ async def test_mdoc_issue_to_sphereon_verify_with_credo_patterns(
 
     request_response = await acapy_verifier_admin.post(
         "/oid4vp/request",
-        json={"pres_def_id": pres_def_id, "vp_formats": {"mso_mdoc": {"alg": ["ES256"]}}},
+        json={
+            "pres_def_id": pres_def_id,
+            "vp_formats": {"mso_mdoc": {"alg": ["ES256"]}},
+        },
     )
     presentation_id = request_response["presentation"]["presentation_id"]
 
@@ -1096,16 +1185,22 @@ async def test_mdoc_issue_to_sphereon_verify_with_credo_patterns(
             "verifiable_credentials": [mdoc_credential],
         },
     )
-    assert present_response.status_code == 200, f"Sphereon mDOC present failed: {present_response.text}"
+    assert (
+        present_response.status_code == 200
+    ), f"Sphereon mDOC present failed: {present_response.text}"
 
     # Verify
     for _ in range(10):
-        record = await acapy_verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
+        record = await acapy_verifier_admin.get(
+            f"/oid4vp/presentation/{presentation_id}"
+        )
         if record.get("state") == "presentation-valid":
             break
         await asyncio.sleep(1)
 
-    assert record.get("state") == "presentation-valid", f"Sphereon mDOC verification failed: {record.get('state')}"
+    assert (
+        record.get("state") == "presentation-valid"
+    ), f"Sphereon mDOC verification failed: {record.get('state')}"
 
 
 # =============================================================================
@@ -1120,7 +1215,7 @@ async def test_credo_multi_credential_presentation(
     credo_client,
 ):
     """Test Credo presenting multiple credentials in a single presentation.
-    
+
     This tests whether multi-credential flows work correctly.
     """
     random_suffix = str(uuid.uuid4())[:8]
@@ -1130,7 +1225,9 @@ async def test_credo_multi_credential_presentation(
         "id": f"IdentityCredential_{random_suffix}",
         "format": "vc+sd-jwt",
         "scope": "Identity",
-        "proof_types_supported": {"jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}},
+        "proof_types_supported": {
+            "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
+        },
         "format_data": {
             "cryptographic_binding_methods_supported": ["did:key"],
             "cryptographic_suites_supported": ["EdDSA"],
@@ -1144,7 +1241,9 @@ async def test_credo_multi_credential_presentation(
         "id": f"EmploymentCredential_{random_suffix}",
         "format": "vc+sd-jwt",
         "scope": "Employment",
-        "proof_types_supported": {"jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}},
+        "proof_types_supported": {
+            "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
+        },
         "format_data": {
             "cryptographic_binding_methods_supported": ["did:key"],
             "cryptographic_suites_supported": ["EdDSA"],
@@ -1154,8 +1253,12 @@ async def test_credo_multi_credential_presentation(
         "vc_additional_data": {"sd_list": ["/employer"]},
     }
 
-    config_1 = await acapy_issuer_admin.post("/oid4vci/credential-supported/create", json=cred_config_1)
-    config_2 = await acapy_issuer_admin.post("/oid4vci/credential-supported/create", json=cred_config_2)
+    config_1 = await acapy_issuer_admin.post(
+        "/oid4vci/credential-supported/create", json=cred_config_1
+    )
+    config_2 = await acapy_issuer_admin.post(
+        "/oid4vci/credential-supported/create", json=cred_config_2
+    )
 
     did_response = await acapy_issuer_admin.post(
         "/wallet/did/create", json={"method": "key", "options": {"key_type": "ed25519"}}
@@ -1176,7 +1279,10 @@ async def test_credo_multi_credential_presentation(
     )
     credo_resp_1 = await credo_client.post(
         "/oid4vci/accept-offer",
-        json={"credential_offer": offer_1["credential_offer"], "holder_did_method": "key"},
+        json={
+            "credential_offer": offer_1["credential_offer"],
+            "holder_did_method": "key",
+        },
     )
     credential_1 = extract_credential(credo_resp_1, "Credo")
 
@@ -1194,7 +1300,10 @@ async def test_credo_multi_credential_presentation(
     )
     credo_resp_2 = await credo_client.post(
         "/oid4vci/accept-offer",
-        json={"credential_offer": offer_2["credential_offer"], "holder_did_method": "key"},
+        json={
+            "credential_offer": offer_2["credential_offer"],
+            "holder_did_method": "key",
+        },
     )
     credential_2 = extract_credential(credo_resp_2, "Credo")
 
@@ -1218,7 +1327,10 @@ async def test_credo_multi_credential_presentation(
                 "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA"]}},
                 "constraints": {
                     "fields": [
-                        {"path": ["$.vct"], "filter": {"const": "EmploymentCredential"}},
+                        {
+                            "path": ["$.vct"],
+                            "filter": {"const": "EmploymentCredential"},
+                        },
                         {"path": ["$.employer", "$.credentialSubject.employer"]},
                     ]
                 },
@@ -1233,7 +1345,10 @@ async def test_credo_multi_credential_presentation(
 
     presentation_request = await acapy_verifier_admin.post(
         "/oid4vp/request",
-        json={"pres_def_id": pres_def_id, "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA"]}}},
+        json={
+            "pres_def_id": pres_def_id,
+            "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA"]}},
+        },
     )
     presentation_id = presentation_request["presentation"]["presentation_id"]
 
@@ -1251,14 +1366,16 @@ async def test_credo_multi_credential_presentation(
     if present_response.status_code == 200:
         result = present_response.json()
         print(f"Multi-credential result: {result}")
-        
+
         # Check verification
         for _ in range(10):
-            record = await acapy_verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
+            record = await acapy_verifier_admin.get(
+                f"/oid4vp/presentation/{presentation_id}"
+            )
             if record.get("state") in ["presentation-valid", "presentation-invalid"]:
                 break
             await asyncio.sleep(1)
-        
+
         print(f"Multi-credential verification state: {record.get('state')}")
         if record.get("state") != "presentation-valid":
             print("WARNING: Multi-credential presentation failed - potential bug")

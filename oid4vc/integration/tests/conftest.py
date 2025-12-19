@@ -12,8 +12,8 @@ Certificate Strategy:
 
 import asyncio
 import os
-from datetime import datetime, timedelta, timezone
-from typing import Dict, Any
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 import pytest
@@ -135,12 +135,14 @@ def _generate_ec_key():
 
 def _get_name(cn: str) -> x509.Name:
     """Create an X.509 name with a common name."""
-    return x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
-        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "UT"),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "TestOrg"),
-        x509.NameAttribute(NameOID.COMMON_NAME, cn),
-    ])
+    return x509.Name(
+        [
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
+            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "UT"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "TestOrg"),
+            x509.NameAttribute(NameOID.COMMON_NAME, cn),
+        ]
+    )
 
 
 def _add_iaca_extensions(builder, key, issuer_key, is_ca=True, is_root=False):
@@ -148,65 +150,75 @@ def _add_iaca_extensions(builder, key, issuer_key, is_ca=True, is_root=False):
     if is_ca:
         path_length = 1 if is_root else 0
         builder = builder.add_extension(
-            x509.BasicConstraints(ca=True, path_length=path_length),
-            critical=True
+            x509.BasicConstraints(ca=True, path_length=path_length), critical=True
         )
         builder = builder.add_extension(
             x509.KeyUsage(
-                digital_signature=False, content_commitment=False,
-                key_encipherment=False, data_encipherment=False,
-                key_agreement=False, key_cert_sign=True, crl_sign=True,
-                encipher_only=False, decipher_only=False
+                digital_signature=False,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=True,
+                crl_sign=True,
+                encipher_only=False,
+                decipher_only=False,
             ),
-            critical=True
+            critical=True,
         )
     else:
         builder = builder.add_extension(
             x509.KeyUsage(
-                digital_signature=True, content_commitment=False,
-                key_encipherment=False, data_encipherment=False,
-                key_agreement=False, key_cert_sign=False, crl_sign=False,
-                encipher_only=False, decipher_only=False
+                digital_signature=True,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=False,
+                crl_sign=False,
+                encipher_only=False,
+                decipher_only=False,
             ),
-            critical=True
+            critical=True,
         )
         builder = builder.add_extension(
             x509.ExtendedKeyUsage([x509.ObjectIdentifier("1.0.18013.5.1.2")]),
-            critical=True
+            critical=True,
         )
 
     # Subject Key Identifier
     builder = builder.add_extension(
-        x509.SubjectKeyIdentifier.from_public_key(key.public_key()),
-        critical=False
+        x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False
     )
 
     # Authority Key Identifier
     builder = builder.add_extension(
         x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_key.public_key()),
-        critical=False
+        critical=False,
     )
 
     # CRL Distribution Points
     builder = builder.add_extension(
-        x509.CRLDistributionPoints([
-            x509.DistributionPoint(
-                full_name=[x509.UniformResourceIdentifier(
-                    "https://example.com/test.crl"
-                )],
-                relative_name=None,
-                crl_issuer=None,
-                reasons=None,
-            )
-        ]),
+        x509.CRLDistributionPoints(
+            [
+                x509.DistributionPoint(
+                    full_name=[
+                        x509.UniformResourceIdentifier("https://example.com/test.crl")
+                    ],
+                    relative_name=None,
+                    crl_issuer=None,
+                    reasons=None,
+                )
+            ]
+        ),
         critical=False,
     )
 
     # Issuer Alternative Name
     builder = builder.add_extension(
-        x509.IssuerAlternativeName([
-            x509.UniformResourceIdentifier("https://example.com")
-        ]),
+        x509.IssuerAlternativeName(
+            [x509.UniformResourceIdentifier("https://example.com")]
+        ),
         critical=False,
     )
 
@@ -219,8 +231,8 @@ def _generate_root_ca(key):
     builder = x509.CertificateBuilder()
     builder = builder.subject_name(name)
     builder = builder.issuer_name(name)
-    builder = builder.not_valid_before(datetime.now(timezone.utc))
-    builder = builder.not_valid_after(datetime.now(timezone.utc) + timedelta(days=365))
+    builder = builder.not_valid_before(datetime.now(UTC))
+    builder = builder.not_valid_after(datetime.now(UTC) + timedelta(days=365))
     builder = builder.serial_number(x509.random_serial_number())
     builder = builder.public_key(key.public_key())
     builder = _add_iaca_extensions(builder, key, key, is_ca=True, is_root=True)
@@ -233,8 +245,8 @@ def _generate_intermediate_ca(key, issuer_key, issuer_name):
     builder = x509.CertificateBuilder()
     builder = builder.subject_name(name)
     builder = builder.issuer_name(issuer_name)
-    builder = builder.not_valid_before(datetime.now(timezone.utc))
-    builder = builder.not_valid_after(datetime.now(timezone.utc) + timedelta(days=365))
+    builder = builder.not_valid_before(datetime.now(UTC))
+    builder = builder.not_valid_after(datetime.now(UTC) + timedelta(days=365))
     builder = builder.serial_number(x509.random_serial_number())
     builder = builder.public_key(key.public_key())
     builder = _add_iaca_extensions(builder, key, issuer_key, is_ca=True, is_root=False)
@@ -247,8 +259,8 @@ def _generate_leaf_ds(key, issuer_key, issuer_name):
     builder = x509.CertificateBuilder()
     builder = builder.subject_name(name)
     builder = builder.issuer_name(issuer_name)
-    builder = builder.not_valid_before(datetime.now(timezone.utc))
-    builder = builder.not_valid_after(datetime.now(timezone.utc) + timedelta(days=365))
+    builder = builder.not_valid_before(datetime.now(UTC))
+    builder = builder.not_valid_after(datetime.now(UTC) + timedelta(days=365))
     builder = builder.serial_number(x509.random_serial_number())
     builder = builder.public_key(key.public_key())
     builder = _add_iaca_extensions(builder, key, issuer_key, is_ca=False)
@@ -270,7 +282,7 @@ def _cert_to_pem(cert) -> str:
 
 
 @pytest.fixture(scope="session")
-def generated_test_certs() -> Dict[str, Any]:
+def generated_test_certs() -> dict[str, Any]:
     """Generate an ephemeral test certificate chain.
 
     This fixture generates a complete PKI hierarchy for testing:
@@ -339,7 +351,7 @@ async def setup_issuer_certs(acapy_issuer_admin):
     try:
         default_cert = await acapy_issuer_admin.get("/mso_mdoc/certificates/default")
         certificate_pem = default_cert.get("certificate_pem")
-        
+
         if certificate_pem:
             yield {
                 "key_id": default_cert.get("key_id"),
@@ -370,7 +382,9 @@ async def setup_issuer_certs(acapy_issuer_admin):
         certificate_pem = default_cert.get("certificate_pem")
 
         if not certificate_pem:
-            raise RuntimeError("Certificate PEM not found in default certificate response")
+            raise RuntimeError(
+                "Certificate PEM not found in default certificate response"
+            )
 
         yield {
             "key_id": default_cert.get("key_id"),
@@ -387,7 +401,7 @@ async def setup_issuer_certs(acapy_issuer_admin):
         if not certificates:
             raise RuntimeError(
                 f"No certificates found on issuer after key generation: {e}"
-            )
+            ) from e
 
         # Use the first certificate (fallback)
         issuer_cert = certificates[0]
@@ -446,7 +460,7 @@ async def setup_verifier_trust_anchors(acapy_verifier_admin, setup_issuer_certs)
         if anchors.get("trust_anchors"):
             yield {"anchor_id": anchors["trust_anchors"][0]["anchor_id"]}
         else:
-            raise RuntimeError(f"Failed to setup trust anchors: {e}")
+            raise RuntimeError(f"Failed to setup trust anchors: {e}") from e
 
 
 @pytest_asyncio.fixture
@@ -484,16 +498,14 @@ async def setup_credo_trust_anchors(credo_client, setup_issuer_certs):
             if anchors.get("count", 0) > 0:
                 yield {"status": "already_configured"}
             else:
-                raise RuntimeError(f"Failed to setup Credo trust anchors: {e}")
+                raise RuntimeError(f"Failed to setup Credo trust anchors: {e}") from e
         except Exception:
-            raise RuntimeError(f"Failed to setup Credo trust anchors: {e}")
+            raise RuntimeError(f"Failed to setup Credo trust anchors: {e}") from e
 
 
 @pytest_asyncio.fixture
 async def setup_all_trust_anchors(
-    setup_verifier_trust_anchors,
-    setup_credo_trust_anchors,
-    setup_issuer_certs
+    setup_verifier_trust_anchors, setup_credo_trust_anchors, setup_issuer_certs
 ):
     """Convenience fixture that sets up trust anchors in all agents.
 
@@ -565,4 +577,4 @@ async def setup_pki_chain_trust_anchor(acapy_verifier_admin, generated_test_cert
                     return
             yield {"anchor_id": anchors["trust_anchors"][0]["anchor_id"]}
         else:
-            raise RuntimeError(f"Failed to setup PKI chain trust anchor: {e}")
+            raise RuntimeError(f"Failed to setup PKI chain trust anchor: {e}") from e

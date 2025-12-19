@@ -11,7 +11,6 @@ organized into logical submodules:
 - vp_pres_def: Presentation definition CRUD operations
 - vp_presentation: Presentation CRUD operations
 - did_jwk: DID:JWK creation endpoint
-- x509: X.509 certificate utilities
 """
 
 from aiohttp import web
@@ -65,7 +64,6 @@ from .vp_request import (
     create_oid4vp_request,
     list_oid4vp_requests,
 )
-from .x509 import get_cert
 
 # Public API for backward compatibility
 __all__ = [
@@ -109,8 +107,6 @@ __all__ = [
     "oid4vp_pres_remove",
     # DID JWK
     "create_did_jwk",
-    # X509
-    "get_cert",
     # Registration
     "register",
     "post_process_routes",
@@ -133,7 +129,6 @@ async def register(app: web.Application):
                 list_exchange_records,
                 allow_head=False,
             ),
-            web.post("/oid4vci/cert/get", get_cert),
             web.post("/oid4vci/exchange/create", exchange_create),
             web.get(
                 "/oid4vci/exchange/records/{exchange_id}",

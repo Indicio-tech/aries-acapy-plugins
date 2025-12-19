@@ -1,18 +1,24 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-import json
-from unittest.mock import MagicMock, AsyncMock, patch
+
 from mso_mdoc.cred_processor import MsoMdocCredProcessor
-from mso_mdoc.key_generation import generate_ec_key_pair, generate_self_signed_certificate
-from oid4vc.models.supported_cred import SupportedCredential
+from mso_mdoc.key_generation import (
+    generate_ec_key_pair,
+    generate_self_signed_certificate,
+)
 from oid4vc.models.exchange import OID4VCIExchangeRecord
+from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.pop_result import PopResult
 
 # Check if isomdl is available
 try:
-    import isomdl_uniffi
+    import isomdl_uniffi  # noqa: F401 - availability check
+
     ISOMDL_AVAILABLE = True
 except ImportError:
     ISOMDL_AVAILABLE = False
+
 
 @pytest.mark.skipif(not ISOMDL_AVAILABLE, reason="isomdl_uniffi not available")
 @pytest.mark.asyncio
@@ -24,36 +30,38 @@ async def test_issue_credential_functional():
     # 1. Setup Keys
     private_key_pem, public_key_pem, jwk = generate_ec_key_pair()
     cert_pem = generate_self_signed_certificate(private_key_pem)
-    
+
     # 2. Mock Storage Manager
     # We patch the class in the module where it is used
     with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockStorageManager:
         mock_storage = MockStorageManager.return_value
-        
+
         # Mock get_signing_key to return our generated key
-        mock_storage.get_signing_key = AsyncMock(return_value={
-            "jwk": jwk,
-            "key_id": "test-key-id",
-            "metadata": {"private_key_pem": private_key_pem}
-        })
-        
+        mock_storage.get_signing_key = AsyncMock(
+            return_value={
+                "jwk": jwk,
+                "key_id": "test-key-id",
+                "metadata": {"private_key_pem": private_key_pem},
+            }
+        )
+
         # Mock get_certificate_for_key
         mock_storage.get_certificate_for_key = AsyncMock(return_value=cert_pem)
-        
+
         # 3. Setup Context
         mock_context = MagicMock()
         # Mock the session context manager
         mock_session = AsyncMock()
         mock_session.__aenter__.return_value = MagicMock()
         mock_context.profile.session.return_value = mock_session
-        
+
         # 4. Setup Input Data
         processor = MsoMdocCredProcessor()
-        
+
         supported = MagicMock(spec=SupportedCredential)
         supported.format = "mso_mdoc"
         supported.format_data = {"doctype": "org.example.test"}
-        
+
         ex_record = MagicMock(spec=OID4VCIExchangeRecord)
         ex_record.verification_method = "did:example:123#test-key-id"
         ex_record.credential_subject = {
@@ -70,17 +78,17 @@ async def test_issue_credential_functional():
                 {
                     "vehicle_category_code": "A",
                     "issue_date": "2023-01-01",
-                    "expiry_date": "2028-01-01"
+                    "expiry_date": "2028-01-01",
                 }
-            ]
+            ],
         }
-        
+
         # Holder Key (for PoP)
         holder_priv, holder_pub, holder_jwk = generate_ec_key_pair()
         pop = MagicMock(spec=PopResult)
         pop.holder_jwk = holder_jwk
         pop.holder_kid = None
-        
+
         # 5. Execute Issue
         # Try a generic doctype to see if isomdl supports it or if it enforces mDL
         credential = await processor.issue(
@@ -88,14 +96,14 @@ async def test_issue_credential_functional():
             supported=supported,
             ex_record=ex_record,
             pop=pop,
-            context=mock_context
+            context=mock_context,
         )
-        
+
         # 6. Verify Result
         assert credential is not None
         assert isinstance(credential, str)
         assert len(credential) > 0
-        
+
         # Verify it looks like a stringified CBOR (isomdl specific format)
         # It usually looks like a hex string or similar representation
         assert len(credential) > 10
@@ -109,30 +117,32 @@ async def test_issue_credential_functional():
         # 1. Setup Keys
         private_key_pem, public_key_pem, jwk = generate_ec_key_pair()
         cert_pem = generate_self_signed_certificate(private_key_pem)
-        
+
         # 2. Mock Storage Manager
         with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockStorageManager:
             mock_storage = MockStorageManager.return_value
-            mock_storage.get_signing_key = AsyncMock(return_value={
-                "jwk": jwk,
-                "key_id": "test-key-id-mdl",
-                "metadata": {"private_key_pem": private_key_pem}
-            })
+            mock_storage.get_signing_key = AsyncMock(
+                return_value={
+                    "jwk": jwk,
+                    "key_id": "test-key-id-mdl",
+                    "metadata": {"private_key_pem": private_key_pem},
+                }
+            )
             mock_storage.get_certificate_for_key = AsyncMock(return_value=cert_pem)
-            
+
             # 3. Setup Context
             mock_context = MagicMock()
             mock_session = AsyncMock()
             mock_session.__aenter__.return_value = MagicMock()
             mock_context.profile.session.return_value = mock_session
-            
+
             # 4. Setup Input Data
             processor = MsoMdocCredProcessor()
-            
+
             supported = MagicMock(spec=SupportedCredential)
             supported.format = "mso_mdoc"
             supported.format_data = {"doctype": "org.iso.18013.5.1.mDL"}
-            
+
             ex_record = MagicMock(spec=OID4VCIExchangeRecord)
             ex_record.verification_method = "did:example:123#test-key-id-mdl"
             ex_record.credential_subject = {
@@ -149,29 +159,28 @@ async def test_issue_credential_functional():
                     {
                         "vehicle_category_code": "B",
                         "issue_date": "2023-01-01",
-                        "expiry_date": "2028-01-01"
+                        "expiry_date": "2028-01-01",
                     }
-                ]
+                ],
             }
-            
+
             # Holder Key
             holder_priv, holder_pub, holder_jwk = generate_ec_key_pair()
             pop = MagicMock(spec=PopResult)
             pop.holder_jwk = holder_jwk
             pop.holder_kid = None
-            
+
             # 5. Execute Issue
             credential = await processor.issue(
                 body={"doctype": "org.iso.18013.5.1.mDL"},
                 supported=supported,
                 ex_record=ex_record,
                 pop=pop,
-                context=mock_context
+                context=mock_context,
             )
-            
+
             # 6. Verify Result
             assert credential is not None
             assert isinstance(credential, str)
             assert len(credential) > 10
         print(f"Generated Credential: {credential[:50]}...")
-

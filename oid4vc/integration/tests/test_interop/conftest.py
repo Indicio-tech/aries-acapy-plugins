@@ -53,9 +53,7 @@ async def offer(acapy_issuer: httpx.AsyncClient) -> dict[str, Any]:
         "cryptographic_binding_methods_supported": ["did"],
         "cryptographic_suites_supported": ["ES256K"],
         "proof_types_supported": {
-            "jwt": {
-                "proof_signing_alg_values_supported": ["ES256K", "EdDSA"]
-            }
+            "jwt": {"proof_signing_alg_values_supported": ["ES256K", "EdDSA"]}
         },
         "display": [
             {
@@ -118,9 +116,7 @@ async def sdjwt_offer(acapy_issuer: httpx.AsyncClient) -> str:
         "format": "vc+sd-jwt",
         "scope": "IdentityCredential",
         "proof_types_supported": {
-            "jwt": {
-                "proof_signing_alg_values_supported": ["EdDSA", "ES256"]
-            }
+            "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
         },
         "format_data": {
             "cryptographic_binding_methods_supported": ["did:key"],

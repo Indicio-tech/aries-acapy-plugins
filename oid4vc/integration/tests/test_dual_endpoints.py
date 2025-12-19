@@ -251,11 +251,15 @@ async def test_openid_configuration_endpoint():
 
         # Verify recommended fields
         if "scopes_supported" in config:
-            assert "openid" in config["scopes_supported"], "'openid' scope should be supported"
+            assert (
+                "openid" in config["scopes_supported"]
+            ), "'openid' scope should be supported"
             print("✅ 'openid' scope is supported")
 
         if "code_challenge_methods_supported" in config:
-            assert "S256" in config["code_challenge_methods_supported"], "PKCE S256 should be supported"
+            assert (
+                "S256" in config["code_challenge_methods_supported"]
+            ), "PKCE S256 should be supported"
             print("✅ PKCE S256 is supported")
 
         print("✅ OpenID Configuration endpoint is fully compliant")
@@ -285,17 +289,18 @@ async def test_openid_configuration_vs_credential_issuer_consistency():
         oid4vci_config = oid4vci_response.json()
 
         # Verify credential-related fields are consistent
-        assert (
-            oidc_config.get("credential_issuer") == oid4vci_config.get("credential_issuer")
+        assert oidc_config.get("credential_issuer") == oid4vci_config.get(
+            "credential_issuer"
         ), "credential_issuer should be consistent"
 
-        assert (
-            oidc_config.get("credential_endpoint") == oid4vci_config.get("credential_endpoint")
+        assert oidc_config.get("credential_endpoint") == oid4vci_config.get(
+            "credential_endpoint"
         ), "credential_endpoint should be consistent"
 
-        assert (
-            oidc_config.get("credential_configurations_supported")
-            == oid4vci_config.get("credential_configurations_supported")
+        assert oidc_config.get(
+            "credential_configurations_supported"
+        ) == oid4vci_config.get(
+            "credential_configurations_supported"
         ), "credential_configurations_supported should be consistent"
 
         print("✅ Discovery endpoints return consistent credential metadata")

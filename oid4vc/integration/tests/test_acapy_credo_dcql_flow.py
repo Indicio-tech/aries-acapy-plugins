@@ -18,9 +18,9 @@ References:
 import asyncio
 import uuid
 
-from .test_utils import assert_selective_disclosure
-
 import pytest
+
+from .test_utils import assert_selective_disclosure
 
 
 class TestDCQLSdJwtFlow:
@@ -34,7 +34,7 @@ class TestDCQLSdJwtFlow:
         credo_client,
     ):
         """Test DCQL flow with SD-JWT VC: issue → receive → present with DCQL → verify.
-        
+
         Uses the spec-compliant dc+sd-jwt format identifier and DCQL claims path syntax.
         """
 
@@ -45,9 +45,7 @@ class TestDCQLSdJwtFlow:
             "format": "vc+sd-jwt",  # ACA-Py uses vc+sd-jwt for issuance
             "scope": "IdentityCredential",
             "proof_types_supported": {
-                "jwt": {
-                    "proof_signing_alg_values_supported": ["EdDSA", "ES256"]
-                }
+                "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
             },
             "format_data": {
                 "cryptographic_binding_methods_supported": ["did:key"],
@@ -88,7 +86,8 @@ class TestDCQLSdJwtFlow:
 
         # Create a DID for the issuer
         did_response = await acapy_issuer_admin.post(
-            "/wallet/did/create", json={"method": "key", "options": {"key_type": "ed25519"}}
+            "/wallet/did/create",
+            json={"method": "key", "options": {"key_type": "ed25519"}},
         )
         issuer_did = did_response["result"]["did"]
 
@@ -126,7 +125,9 @@ class TestDCQLSdJwtFlow:
         credential_response = await credo_client.post(
             "/oid4vci/accept-offer", json=accept_offer_request
         )
-        assert credential_response.status_code == 200, f"Credential issuance failed: {credential_response.text}"
+        assert (
+            credential_response.status_code == 200
+        ), f"Credential issuance failed: {credential_response.text}"
         credential_result = credential_response.json()
 
         assert "credential" in credential_result
@@ -181,12 +182,19 @@ class TestDCQLSdJwtFlow:
         presentation_response = await credo_client.post(
             "/oid4vp/present", json=present_request
         )
-        assert presentation_response.status_code == 200, f"Presentation failed: {presentation_response.text}"
+        assert (
+            presentation_response.status_code == 200
+        ), f"Presentation failed: {presentation_response.text}"
         presentation_result = presentation_response.json()
 
         # Verify Credo reports success
         assert presentation_result.get("success") is True
-        assert presentation_result.get("result", {}).get("serverResponse", {}).get("status") == 200
+        assert (
+            presentation_result.get("result", {})
+            .get("serverResponse", {})
+            .get("status")
+            == 200
+        )
 
         # Step 7: Poll for presentation validation on ACA-Py verifier
         max_retries = 15
@@ -223,7 +231,7 @@ class TestDCQLSdJwtFlow:
         credo_client,
     ):
         """Test DCQL with nested claims path for SD-JWT VC.
-        
+
         Tests the DCQL claims path syntax for accessing nested properties:
         path: ["address", "street_address"]
         """
@@ -235,9 +243,7 @@ class TestDCQLSdJwtFlow:
             "format": "vc+sd-jwt",
             "scope": "AddressCredential",
             "proof_types_supported": {
-                "jwt": {
-                    "proof_signing_alg_values_supported": ["EdDSA", "ES256"]
-                }
+                "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
             },
             "format_data": {
                 "cryptographic_binding_methods_supported": ["did:key"],
@@ -268,7 +274,8 @@ class TestDCQLSdJwtFlow:
         config_id = credential_config_response["supported_cred_id"]
 
         did_response = await acapy_issuer_admin.post(
-            "/wallet/did/create", json={"method": "key", "options": {"key_type": "ed25519"}}
+            "/wallet/did/create",
+            json={"method": "key", "options": {"key_type": "ed25519"}},
         )
         issuer_did = did_response["result"]["did"]
 
@@ -375,7 +382,7 @@ class TestDCQLMdocFlow:
         setup_all_trust_anchors,  # noqa: ARG002 - required fixture for mDOC trust
     ):
         """Test DCQL flow with mDOC: issue → receive → present with DCQL → verify.
-        
+
         Uses mso_mdoc format with namespace-based claims paths.
         Note: Uses doctype_value (singular) for OID4VP v1.0 spec compliance.
         """
@@ -389,9 +396,7 @@ class TestDCQLMdocFlow:
             "cryptographic_binding_methods_supported": ["cose_key", "did:key", "did"],
             "cryptographic_suites_supported": ["ES256"],
             "proof_types_supported": {
-                "jwt": {
-                    "proof_signing_alg_values_supported": ["ES256"]
-                }
+                "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
             },
             "format_data": {
                 "doctype": "org.iso.18013.5.1.mDL",
@@ -419,7 +424,8 @@ class TestDCQLMdocFlow:
         config_id = credential_config_response["supported_cred_id"]
 
         did_response = await acapy_issuer_admin.post(
-            "/wallet/did/create", json={"method": "key", "options": {"key_type": "p256"}}
+            "/wallet/did/create",
+            json={"method": "key", "options": {"key_type": "p256"}},
         )
         issuer_did = did_response["result"]["did"]
 
@@ -454,7 +460,9 @@ class TestDCQLMdocFlow:
                 "holder_did_method": "key",
             },
         )
-        assert credential_response.status_code == 200, f"mDOC issuance failed: {credential_response.text}"
+        assert (
+            credential_response.status_code == 200
+        ), f"mDOC issuance failed: {credential_response.text}"
         credential_result = credential_response.json()
         assert credential_result["format"] == "mso_mdoc"
         received_credential = credential_result["credential"]
@@ -509,7 +517,9 @@ class TestDCQLMdocFlow:
             "/oid4vp/present",
             json={"request_uri": request_uri, "credentials": [received_credential]},
         )
-        assert presentation_response.status_code == 200, f"Presentation failed: {presentation_response.text}"
+        assert (
+            presentation_response.status_code == 200
+        ), f"Presentation failed: {presentation_response.text}"
         assert presentation_response.json().get("success") is True
 
         # Step 7: Verify presentation
@@ -543,7 +553,7 @@ class TestDCQLMdocFlow:
         setup_all_trust_anchors,  # noqa: ARG002 - required fixture for mDOC trust
     ):
         """Test DCQL mDOC with path array syntax.
-        
+
         mDOC claims can also be specified using path: [namespace, claim_name]
         instead of separate namespace/claim_name properties.
         """
@@ -576,7 +586,8 @@ class TestDCQLMdocFlow:
         config_id = config_response["supported_cred_id"]
 
         did_response = await acapy_issuer_admin.post(
-            "/wallet/did/create", json={"method": "key", "options": {"key_type": "p256"}}
+            "/wallet/did/create",
+            json={"method": "key", "options": {"key_type": "p256"}},
         )
         issuer_did = did_response["result"]["did"]
 
@@ -595,7 +606,8 @@ class TestDCQLMdocFlow:
         )
 
         offer_response = await acapy_issuer_admin.get(
-            "/oid4vci/credential-offer", params={"exchange_id": exchange_response["exchange_id"]}
+            "/oid4vci/credential-offer",
+            params={"exchange_id": exchange_response["exchange_id"]},
         )
 
         credential_response = await credo_client.post(
@@ -615,9 +627,7 @@ class TestDCQLMdocFlow:
                 {
                     "id": "mdl_path_test",
                     "format": "mso_mdoc",
-                    "meta": {
-                        "doctype_value": "org.iso.18013.5.1.mDL"
-                    },
+                    "meta": {"doctype_value": "org.iso.18013.5.1.mDL"},
                     "claims": [
                         # Using path array syntax: [namespace, claim_name]
                         {"id": "name", "path": ["org.iso.18013.5.1", "given_name"]},
@@ -652,7 +662,9 @@ class TestDCQLMdocFlow:
         # Verify
         presentation_id = presentation_request["presentation"]["presentation_id"]
         for _ in range(15):
-            result = await acapy_verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
+            result = await acapy_verifier_admin.get(
+                f"/oid4vp/presentation/{presentation_id}"
+            )
             if result.get("state") == "presentation-valid":
                 break
             await asyncio.sleep(1.0)
@@ -672,7 +684,7 @@ class TestDCQLSelectiveDisclosure:
         credo_client,
     ):
         """Test selective disclosure with SD-JWT VC via DCQL.
-        
+
         Issues a credential with many claims but only requests specific claims
         in the DCQL query, verifying selective disclosure behavior.
         """
@@ -693,8 +705,12 @@ class TestDCQLSelectiveDisclosure:
                     "employee_id": {"mandatory": True},
                     "full_name": {"mandatory": True},
                     "department": {"mandatory": True},
-                    "salary": {"mandatory": False},  # Sensitive - should not be disclosed
-                    "ssn": {"mandatory": False},  # Very sensitive - should not be disclosed
+                    "salary": {
+                        "mandatory": False
+                    },  # Sensitive - should not be disclosed
+                    "ssn": {
+                        "mandatory": False
+                    },  # Very sensitive - should not be disclosed
                     "hire_date": {"mandatory": False},
                 },
             },
@@ -716,7 +732,8 @@ class TestDCQLSelectiveDisclosure:
         config_id = config_response["supported_cred_id"]
 
         did_response = await acapy_issuer_admin.post(
-            "/wallet/did/create", json={"method": "key", "options": {"key_type": "ed25519"}}
+            "/wallet/did/create",
+            json={"method": "key", "options": {"key_type": "ed25519"}},
         )
         issuer_did = did_response["result"]["did"]
 
@@ -737,7 +754,8 @@ class TestDCQLSelectiveDisclosure:
         )
 
         offer_response = await acapy_issuer_admin.get(
-            "/oid4vci/credential-offer", params={"exchange_id": exchange_response["exchange_id"]}
+            "/oid4vci/credential-offer",
+            params={"exchange_id": exchange_response["exchange_id"]},
         )
 
         credential_response = await credo_client.post(
@@ -757,7 +775,9 @@ class TestDCQLSelectiveDisclosure:
                     "id": "employee_verification",
                     "format": "vc+sd-jwt",
                     "meta": {
-                        "vct_values": ["https://credentials.example.com/employee_credential"]
+                        "vct_values": [
+                            "https://credentials.example.com/employee_credential"
+                        ]
                     },
                     "claims": [
                         # Only request non-sensitive claims
@@ -795,13 +815,15 @@ class TestDCQLSelectiveDisclosure:
         # Verify presentation succeeded
         presentation_id = presentation_request["presentation"]["presentation_id"]
         for _ in range(15):
-            result = await acapy_verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
+            result = await acapy_verifier_admin.get(
+                f"/oid4vp/presentation/{presentation_id}"
+            )
             if result.get("state") == "presentation-valid":
                 break
             await asyncio.sleep(1.0)
 
         assert result.get("state") == "presentation-valid"
-        
+
         # Verify selective disclosure: requested claims present, sensitive claims absent
         assert_selective_disclosure(
             result.get("matched_credentials"),
@@ -809,7 +831,7 @@ class TestDCQLSelectiveDisclosure:
             must_have=["employee_id", "full_name", "department"],
             must_not_have=["salary", "ssn"],
         )
-        
+
         print("✅ DCQL SD-JWT selective disclosure flow completed successfully!")
 
     @pytest.mark.asyncio
@@ -821,7 +843,7 @@ class TestDCQLSelectiveDisclosure:
         setup_all_trust_anchors,  # noqa: ARG002 - required fixture for mDOC trust
     ):
         """Test selective disclosure with mDOC via DCQL.
-        
+
         mDOC inherently supports selective disclosure at the element level.
         Only requested claims should be included in the presentation.
         """
@@ -857,7 +879,8 @@ class TestDCQLSelectiveDisclosure:
         config_id = config_response["supported_cred_id"]
 
         did_response = await acapy_issuer_admin.post(
-            "/wallet/did/create", json={"method": "key", "options": {"key_type": "p256"}}
+            "/wallet/did/create",
+            json={"method": "key", "options": {"key_type": "p256"}},
         )
         issuer_did = did_response["result"]["did"]
 
@@ -880,7 +903,8 @@ class TestDCQLSelectiveDisclosure:
         )
 
         offer_response = await acapy_issuer_admin.get(
-            "/oid4vci/credential-offer", params={"exchange_id": exchange_response["exchange_id"]}
+            "/oid4vci/credential-offer",
+            params={"exchange_id": exchange_response["exchange_id"]},
         )
 
         credential_response = await credo_client.post(
@@ -899,9 +923,7 @@ class TestDCQLSelectiveDisclosure:
                 {
                     "id": "age_verification",
                     "format": "mso_mdoc",
-                    "meta": {
-                        "doctype_value": "org.iso.18013.5.1.mDL"
-                    },
+                    "meta": {"doctype_value": "org.iso.18013.5.1.mDL"},
                     "claims": [
                         # Only request birth_date for age verification
                         {"namespace": "org.iso.18013.5.1", "claim_name": "birth_date"},
@@ -935,7 +957,9 @@ class TestDCQLSelectiveDisclosure:
 
         presentation_id = presentation_request["presentation"]["presentation_id"]
         for _ in range(15):
-            result = await acapy_verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
+            result = await acapy_verifier_admin.get(
+                f"/oid4vp/presentation/{presentation_id}"
+            )
             if result.get("state") == "presentation-valid":
                 break
             await asyncio.sleep(1.0)
@@ -955,7 +979,7 @@ class TestDCQLCredentialSets:
         credo_client,
     ):
         """Test DCQL credential_sets with multiple credentials.
-        
+
         credential_sets allows specifying alternative credential combinations
         that can satisfy a verification request.
         """
@@ -1014,7 +1038,8 @@ class TestDCQLCredentialSets:
         age_config_id = age_response["supported_cred_id"]
 
         did_response = await acapy_issuer_admin.post(
-            "/wallet/did/create", json={"method": "key", "options": {"key_type": "ed25519"}}
+            "/wallet/did/create",
+            json={"method": "key", "options": {"key_type": "ed25519"}},
         )
         issuer_did = did_response["result"]["did"]
 
@@ -1031,7 +1056,8 @@ class TestDCQLCredentialSets:
             },
         )
         identity_offer = await acapy_issuer_admin.get(
-            "/oid4vci/credential-offer", params={"exchange_id": identity_exchange["exchange_id"]}
+            "/oid4vci/credential-offer",
+            params={"exchange_id": identity_exchange["exchange_id"]},
         )
 
         age_exchange = await acapy_issuer_admin.post(
@@ -1046,7 +1072,8 @@ class TestDCQLCredentialSets:
             },
         )
         age_offer = await acapy_issuer_admin.get(
-            "/oid4vci/credential-offer", params={"exchange_id": age_exchange["exchange_id"]}
+            "/oid4vci/credential-offer",
+            params={"exchange_id": age_exchange["exchange_id"]},
         )
 
         # Credo receives both credentials
@@ -1077,7 +1104,9 @@ class TestDCQLCredentialSets:
                 {
                     "id": "identity_cred",
                     "format": "vc+sd-jwt",
-                    "meta": {"vct_values": ["https://credentials.example.com/identity"]},
+                    "meta": {
+                        "vct_values": ["https://credentials.example.com/identity"]
+                    },
                     "claims": [
                         {"id": "name", "path": ["given_name"]},
                         {"id": "surname", "path": ["family_name"]},
@@ -1086,7 +1115,11 @@ class TestDCQLCredentialSets:
                 {
                     "id": "age_cred",
                     "format": "vc+sd-jwt",
-                    "meta": {"vct_values": ["https://credentials.example.com/age_verification"]},
+                    "meta": {
+                        "vct_values": [
+                            "https://credentials.example.com/age_verification"
+                        ]
+                    },
                     "claims": [
                         {"id": "age_check", "path": ["is_over_21"]},
                     ],
@@ -1133,7 +1166,9 @@ class TestDCQLCredentialSets:
 
         # Verify presentation
         for _ in range(15):
-            result = await acapy_verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
+            result = await acapy_verifier_admin.get(
+                f"/oid4vp/presentation/{presentation_id}"
+            )
             if result.get("state") == "presentation-valid":
                 break
             await asyncio.sleep(1.0)
@@ -1153,7 +1188,7 @@ class TestDCQLSpecCompliance:
         credo_client,
     ):
         """Test using dc+sd-jwt format identifier (OID4VP v1.0 spec).
-        
+
         The OID4VP v1.0 spec uses dc+sd-jwt as the format identifier
         for SD-JWT VC in DCQL queries. ACA-Py should accept both
         vc+sd-jwt and dc+sd-jwt.
@@ -1182,7 +1217,8 @@ class TestDCQLSpecCompliance:
         config_id = config_response["supported_cred_id"]
 
         did_response = await acapy_issuer_admin.post(
-            "/wallet/did/create", json={"method": "key", "options": {"key_type": "ed25519"}}
+            "/wallet/did/create",
+            json={"method": "key", "options": {"key_type": "ed25519"}},
         )
 
         exchange_response = await acapy_issuer_admin.post(
@@ -1195,7 +1231,8 @@ class TestDCQLSpecCompliance:
         )
 
         offer_response = await acapy_issuer_admin.get(
-            "/oid4vci/credential-offer", params={"exchange_id": exchange_response["exchange_id"]}
+            "/oid4vci/credential-offer",
+            params={"exchange_id": exchange_response["exchange_id"]},
         )
 
         credential_response = await credo_client.post(
@@ -1250,7 +1287,9 @@ class TestDCQLSpecCompliance:
 
         presentation_id = presentation_request["presentation"]["presentation_id"]
         for _ in range(15):
-            result = await acapy_verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
+            result = await acapy_verifier_admin.get(
+                f"/oid4vp/presentation/{presentation_id}"
+            )
             if result.get("state") == "presentation-valid":
                 break
             await asyncio.sleep(1.0)

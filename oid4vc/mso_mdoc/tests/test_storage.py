@@ -2,10 +2,9 @@
 
 import json
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from acapy_agent.storage.base import StorageRecord
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
 
@@ -14,8 +13,11 @@ from ..storage import (
     MDOC_KEY_RECORD_TYPE,
     MDOC_TRUST_ANCHOR_RECORD_TYPE,
     MdocStorageManager,
+    certificates,
+    config,
+    keys,
+    trust_anchors,
 )
-from ..storage import keys, certificates, trust_anchors, config
 
 
 @pytest.fixture
@@ -33,8 +35,12 @@ def storage(monkeypatch):
     mock_storage = AsyncMock()
     # Patch get_storage in all submodules so they return our mock
     monkeypatch.setattr(keys, "get_storage", MagicMock(return_value=mock_storage))
-    monkeypatch.setattr(certificates, "get_storage", MagicMock(return_value=mock_storage))
-    monkeypatch.setattr(trust_anchors, "get_storage", MagicMock(return_value=mock_storage))
+    monkeypatch.setattr(
+        certificates, "get_storage", MagicMock(return_value=mock_storage)
+    )
+    monkeypatch.setattr(
+        trust_anchors, "get_storage", MagicMock(return_value=mock_storage)
+    )
     monkeypatch.setattr(config, "get_storage", MagicMock(return_value=mock_storage))
     return mock_storage
 
@@ -153,7 +159,9 @@ async def test_delete_key_returns_false_when_missing(storage_manager, session, s
 
 
 @pytest.mark.asyncio
-async def test_store_signing_key_requires_jwk(storage_manager, session, storage, sample_jwk):
+async def test_store_signing_key_requires_jwk(
+    storage_manager, session, storage, sample_jwk
+):
     with pytest.raises(ValueError):
         await storage_manager.store_signing_key(session, "key-1", {})
 
@@ -169,11 +177,15 @@ async def test_store_signing_key_requires_jwk(storage_manager, session, storage,
 
 
 @pytest.mark.asyncio
-async def test_store_config_updates_when_record_exists(storage_manager, session, storage):
+async def test_store_config_updates_when_record_exists(
+    storage_manager, session, storage
+):
     storage.add_record = AsyncMock(side_effect=StorageError("duplicate"))
     storage.update_record = AsyncMock()
 
-    await storage_manager.store_config(session, "default_certificate", {"cert_id": "cert-1"})
+    await storage_manager.store_config(
+        session, "default_certificate", {"cert_id": "cert-1"}
+    )
 
     storage.update_record.assert_awaited_once()
     update_record, value, tags = storage.update_record.await_args.args
@@ -221,7 +233,9 @@ async def test_get_certificate_returns_pem_and_key(storage_manager, session, sto
 
 
 @pytest.mark.asyncio
-async def test_list_certificates_returns_formatted_data(storage_manager, session, storage):
+async def test_list_certificates_returns_formatted_data(
+    storage_manager, session, storage
+):
     records = [
         StorageRecord(
             type=MDOC_CERT_RECORD_TYPE,
@@ -257,17 +271,19 @@ async def test_get_default_signing_key_auto_selects_when_missing_config(
 ):
     # Mock get_config to return None (no default configured)
     storage.get_record = AsyncMock(side_effect=StorageNotFoundError())
-    
+
     # Mock list_keys to return a key
     key_record = StorageRecord(
         type=MDOC_KEY_RECORD_TYPE,
         id="key-1",
-        value=json.dumps({
-            "jwk": sample_jwk,
-            "purpose": "signing",
-            "created_at": "ts",
-            "metadata": {},
-        }),
+        value=json.dumps(
+            {
+                "jwk": sample_jwk,
+                "purpose": "signing",
+                "created_at": "ts",
+                "metadata": {},
+            }
+        ),
         tags={"purpose": "signing"},
     )
     storage.find_all_records = AsyncMock(return_value=[key_record])
@@ -288,23 +304,27 @@ async def test_get_signing_key_matches_verification_method_fragment(
         StorageRecord(
             type=MDOC_KEY_RECORD_TYPE,
             id="key-1",
-            value=json.dumps({
-                "jwk": sample_jwk,
-                "purpose": "signing",
-                "created_at": "ts",
-                "metadata": {"verification_method": "did:example#key-1"},
-            }),
+            value=json.dumps(
+                {
+                    "jwk": sample_jwk,
+                    "purpose": "signing",
+                    "created_at": "ts",
+                    "metadata": {"verification_method": "did:example#key-1"},
+                }
+            ),
             tags={"purpose": "signing"},
         ),
         StorageRecord(
             type=MDOC_KEY_RECORD_TYPE,
             id="key-2",
-            value=json.dumps({
-                "jwk": sample_jwk,
-                "purpose": "signing",
-                "created_at": "ts",
-                "metadata": {"key_id": "frag-key"},
-            }),
+            value=json.dumps(
+                {
+                    "jwk": sample_jwk,
+                    "purpose": "signing",
+                    "created_at": "ts",
+                    "metadata": {"key_id": "frag-key"},
+                }
+            ),
             tags={"purpose": "signing"},
         ),
     ]
@@ -318,7 +338,9 @@ async def test_get_signing_key_matches_verification_method_fragment(
 
 
 @pytest.mark.asyncio
-async def test_get_default_certificate_returns_configured_certificate(storage_manager, session, storage):
+async def test_get_default_certificate_returns_configured_certificate(
+    storage_manager, session, storage
+):
     now = datetime.utcnow()
     cert_data = {
         "certificate_pem": "pem-data",
@@ -329,7 +351,7 @@ async def test_get_default_certificate_returns_configured_certificate(storage_ma
             "valid_to": (now + timedelta(days=1)).isoformat(),
         },
     }
-    
+
     # Mock get_config to return the cert_id
     config_record = StorageRecord(
         type="mdoc_config",
@@ -337,7 +359,7 @@ async def test_get_default_certificate_returns_configured_certificate(storage_ma
         value=json.dumps({"cert_id": "cert-1"}),
         tags={},
     )
-    
+
     # Mock list_certificates to return the certificate
     cert_record = StorageRecord(
         type=MDOC_CERT_RECORD_TYPE,
@@ -345,7 +367,7 @@ async def test_get_default_certificate_returns_configured_certificate(storage_ma
         value=json.dumps(cert_data),
         tags={"key_id": "key-1"},
     )
-    
+
     storage.get_record = AsyncMock(return_value=config_record)
     storage.find_all_records = AsyncMock(return_value=[cert_record])
 
@@ -363,42 +385,48 @@ async def test_get_signing_key_and_cert_combines_key_and_certificate(
         StorageRecord(
             type=MDOC_KEY_RECORD_TYPE,
             id="key-1",
-            value=json.dumps({
-                "jwk": sample_jwk,
-                "purpose": "signing",
-                "created_at": "t1",
-                "metadata": {},
-            }),
+            value=json.dumps(
+                {
+                    "jwk": sample_jwk,
+                    "purpose": "signing",
+                    "created_at": "t1",
+                    "metadata": {},
+                }
+            ),
             tags={"purpose": "signing"},
         ),
         StorageRecord(
             type=MDOC_KEY_RECORD_TYPE,
             id="key-2",
-            value=json.dumps({
-                "jwk": sample_jwk,
-                "purpose": "signing",
-                "created_at": "t2",
-                "metadata": {},
-            }),
+            value=json.dumps(
+                {
+                    "jwk": sample_jwk,
+                    "purpose": "signing",
+                    "created_at": "t2",
+                    "metadata": {},
+                }
+            ),
             tags={"purpose": "signing"},
         ),
     ]
-    
+
     # Mock certificates - only key-1 has a cert
     cert_records = [
         StorageRecord(
             type=MDOC_CERT_RECORD_TYPE,
             id="cert-1",
-            value=json.dumps({
-                "certificate_pem": "pem-1",
-                "key_id": "key-1",
-                "created_at": "tc",
-                "metadata": {},
-            }),
+            value=json.dumps(
+                {
+                    "certificate_pem": "pem-1",
+                    "key_id": "key-1",
+                    "created_at": "tc",
+                    "metadata": {},
+                }
+            ),
             tags={"key_id": "key-1"},
         )
     ]
-    
+
     # Set up storage mock to return different records based on type filter
     async def find_records_side_effect(type_filter, tag_query=None):
         if type_filter == MDOC_KEY_RECORD_TYPE:
@@ -406,7 +434,7 @@ async def test_get_signing_key_and_cert_combines_key_and_certificate(
         elif type_filter == MDOC_CERT_RECORD_TYPE:
             return cert_records
         return []
-    
+
     storage.find_all_records = AsyncMock(side_effect=find_records_side_effect)
     storage.get_record = AsyncMock(return_value=cert_records[0])
 
@@ -480,11 +508,13 @@ async def test_store_trust_anchor_persists_record(
 async def test_get_trust_anchor_returns_data(
     storage_manager, session, storage, sample_trust_anchor_pem
 ):
-    record_value = json.dumps({
-        "certificate_pem": sample_trust_anchor_pem,
-        "created_at": "2024-01-01T00:00:00",
-        "metadata": {"issuer": "Test CA"},
-    })
+    record_value = json.dumps(
+        {
+            "certificate_pem": sample_trust_anchor_pem,
+            "created_at": "2024-01-01T00:00:00",
+            "metadata": {"issuer": "Test CA"},
+        }
+    )
     storage.get_record = AsyncMock(
         return_value=StorageRecord(
             type=MDOC_TRUST_ANCHOR_RECORD_TYPE,
@@ -521,21 +551,25 @@ async def test_list_trust_anchors_returns_all(
         StorageRecord(
             type=MDOC_TRUST_ANCHOR_RECORD_TYPE,
             id="anchor-1",
-            value=json.dumps({
-                "certificate_pem": sample_trust_anchor_pem,
-                "created_at": "2024-01-01T00:00:00",
-                "metadata": {"issuer": "CA1"},
-            }),
+            value=json.dumps(
+                {
+                    "certificate_pem": sample_trust_anchor_pem,
+                    "created_at": "2024-01-01T00:00:00",
+                    "metadata": {"issuer": "CA1"},
+                }
+            ),
             tags={"type": "trust_anchor"},
         ),
         StorageRecord(
             type=MDOC_TRUST_ANCHOR_RECORD_TYPE,
             id="anchor-2",
-            value=json.dumps({
-                "certificate_pem": sample_trust_anchor_pem,
-                "created_at": "2024-01-02T00:00:00",
-                "metadata": {"issuer": "CA2"},
-            }),
+            value=json.dumps(
+                {
+                    "certificate_pem": sample_trust_anchor_pem,
+                    "created_at": "2024-01-02T00:00:00",
+                    "metadata": {"issuer": "CA2"},
+                }
+            ),
             tags={"type": "trust_anchor"},
         ),
     ]
@@ -556,10 +590,12 @@ async def test_get_all_trust_anchor_pems_returns_pems(
         StorageRecord(
             type=MDOC_TRUST_ANCHOR_RECORD_TYPE,
             id="anchor-1",
-            value=json.dumps({
-                "certificate_pem": sample_trust_anchor_pem,
-                "created_at": "2024-01-01T00:00:00",
-            }),
+            value=json.dumps(
+                {
+                    "certificate_pem": sample_trust_anchor_pem,
+                    "created_at": "2024-01-01T00:00:00",
+                }
+            ),
             tags={},
         ),
     ]

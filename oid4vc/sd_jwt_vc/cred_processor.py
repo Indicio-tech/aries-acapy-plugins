@@ -423,7 +423,9 @@ class SDJWTVerifierACAPy(SDJWTVerifier):
         # Pass the cnf (holder public key) to jwt_verify so it can verify the KB-JWT
         # The KB-JWT is signed by the holder, and their public key is in the cnf claim
         verified_kb_jwt = await jwt_verify(
-            self.profile, self._unverified_input_key_binding_jwt, cnf=self._holder_public_key_payload
+            self.profile,
+            self._unverified_input_key_binding_jwt,
+            cnf=self._holder_public_key_payload,
         )
 
         if verified_kb_jwt.headers["typ"] != self.KB_JWT_TYP_HEADER:
@@ -463,6 +465,7 @@ async def sd_jwt_verify(
         return VerifyResult(True, payload)
     except Exception as e:
         import logging
+
         logging.getLogger(__name__).error(
             f"SD-JWT verification failed: {e}, aud={expected_aud}, nonce={expected_nonce}"
         )

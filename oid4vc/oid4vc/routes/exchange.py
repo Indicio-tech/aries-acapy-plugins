@@ -188,7 +188,7 @@ async def create_exchange(request: web.Request, refresh_id: str | None = None):
         except StorageNotFoundError:
             raise web.HTTPNotFound(
                 reason=f"Supported cred identified by {supported_cred_id} not found"
-            )
+            ) from None
 
     registered_processors = context.inject(CredProcessors)
     if supported.format not in registered_processors.issuers:

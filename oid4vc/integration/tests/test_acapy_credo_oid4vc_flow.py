@@ -42,9 +42,7 @@ async def test_acapy_oid4vci_credential_issuance_to_credo(
         "format": "vc+sd-jwt",
         "scope": "IdentityCredential",
         "proof_types_supported": {
-            "jwt": {
-                "proof_signing_alg_values_supported": ["EdDSA", "ES256"]
-            }
+            "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
         },
         "format_data": {
             "cryptographic_binding_methods_supported": ["did:key"],
@@ -210,9 +208,7 @@ async def test_full_acapy_credo_oid4vc_flow(
         "format": "vc+sd-jwt",
         "scope": "UniversityDegree",
         "proof_types_supported": {
-            "jwt": {
-                "proof_signing_alg_values_supported": ["EdDSA", "ES256"]
-            }
+            "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
         },
         "format_data": {
             "cryptographic_binding_methods_supported": ["did:key"],
@@ -366,7 +362,10 @@ async def test_full_acapy_credo_oid4vc_flow(
     # Step 6: Verify presentation was successful
     # Credo API returns success=True and serverResponse.status=200 on successful presentation
     assert presentation_result.get("success") is True
-    assert presentation_result.get("result", {}).get("serverResponse", {}).get("status") == 200
+    assert (
+        presentation_result.get("result", {}).get("serverResponse", {}).get("status")
+        == 200
+    )
 
     # Step 7: Check that ACA-Py received and validated the presentation
     # Poll for presentation status
@@ -436,7 +435,7 @@ async def test_acapy_credo_mdoc_flow(
     setup_all_trust_anchors,
 ):
     """Test complete OID4VC flow for mso_mdoc: ACA-Py issues → Credo receives → Credo presents → ACA-Py verifies.
-    
+
     Note: This test requires trust anchors to be configured in both Credo and ACA-Py verifier.
     The setup_all_trust_anchors fixture handles this automatically by generating ephemeral
     certificates and uploading them via API.
@@ -451,9 +450,7 @@ async def test_acapy_credo_mdoc_flow(
         "cryptographic_binding_methods_supported": ["cose_key", "did:key", "did"],
         "cryptographic_suites_supported": ["ES256"],
         "proof_types_supported": {
-            "jwt": {
-                "proof_signing_alg_values_supported": ["ES256"]
-            }
+            "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
         },
         "format_data": {
             "doctype": "org.iso.18013.5.1.mDL",
@@ -546,7 +543,7 @@ async def test_acapy_credo_mdoc_flow(
                             "path": ["$['org.iso.18013.5.1']['family_name']"],
                             "intent_to_retain": False,
                         },
-                    ]
+                    ],
                 },
             }
         ],
@@ -586,7 +583,10 @@ async def test_acapy_credo_mdoc_flow(
     # Step 6: Verify presentation was successful
     assert presentation_result.get("success") is True
     # For mdoc presentations, the server response status should be 200
-    assert presentation_result.get("result", {}).get("serverResponse", {}).get("status") == 200
+    assert (
+        presentation_result.get("result", {}).get("serverResponse", {}).get("status")
+        == 200
+    )
 
     # Step 7: Check that ACA-Py received and validated the presentation
     # Poll for presentation status
@@ -633,9 +633,7 @@ async def test_acapy_credo_sd_jwt_selective_disclosure(
         "format": "vc+sd-jwt",
         "scope": "PersonalProfile",
         "proof_types_supported": {
-            "jwt": {
-                "proof_signing_alg_values_supported": ["EdDSA", "ES256"]
-            }
+            "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
         },
         "format_data": {
             "cryptographic_binding_methods_supported": ["did:key"],
@@ -648,9 +646,7 @@ async def test_acapy_credo_sd_jwt_selective_disclosure(
                 "address": {"mandatory": True},
             },
         },
-        "vc_additional_data": {
-            "sd_list": ["/name", "/email", "/phone", "/address"]
-        },
+        "vc_additional_data": {"sd_list": ["/name", "/email", "/phone", "/address"]},
     }
 
     credential_config_response = await acapy_issuer_admin.post(
@@ -719,7 +715,7 @@ async def test_acapy_credo_sd_jwt_selective_disclosure(
                             "path": ["$.email"],
                             "intent_to_retain": True,
                         },
-                    ]
+                    ],
                 },
             }
         ],
@@ -763,19 +759,21 @@ async def test_acapy_credo_sd_jwt_selective_disclosure(
             break
         await asyncio.sleep(1.0)
 
-    assert presentation_valid, f"Presentation failed: {latest_presentation.get('error_msg')}"
+    assert (
+        presentation_valid
+    ), f"Presentation failed: {latest_presentation.get('error_msg')}"
 
     # Verify disclosed claims in the presentation record
     # Note: The exact structure of the verified claims depends on ACA-Py's response format
     # We expect to see 'name' and 'email' but NOT 'phone' or 'address'
-    
+
     # This assumes ACA-Py stores the verified claims in the presentation record
     # Adjust based on actual ACA-Py API response structure for verified claims
     verified_claims = latest_presentation.get("verified_claims", {})
     # If verified_claims is nested or structured differently, we might need to dig deeper
-    # For now, let's assume we can inspect the presentation itself if available, 
+    # For now, let's assume we can inspect the presentation itself if available,
     # or rely on the fact that 'limit_disclosure': 'required' was respected if validation passed.
-    
+
     # Ideally, we should check the 'claims' in the presentation record
     # For this test, we'll assert that the validation passed with limit_disclosure=required
     print("✅ SD-JWT Selective Disclosure verified!")
@@ -789,7 +787,7 @@ async def test_acapy_credo_mdoc_selective_disclosure(
     setup_all_trust_anchors,
 ):
     """Test mdoc selective disclosure: Request subset of namespaces/elements.
-    
+
     Note: This test requires trust anchors to be configured in both Credo and ACA-Py verifier.
     The setup_all_trust_anchors fixture handles this automatically.
     """
@@ -801,9 +799,7 @@ async def test_acapy_credo_mdoc_selective_disclosure(
         "format": "mso_mdoc",
         "scope": "MdocProfile",
         "proof_types_supported": {
-            "jwt": {
-                "proof_signing_alg_values_supported": ["ES256"]
-            }
+            "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
         },
         "format_data": {
             "cryptographic_binding_methods_supported": ["cose_key"],
@@ -885,7 +881,7 @@ async def test_acapy_credo_mdoc_selective_disclosure(
                             "path": ["$['org.iso.18013.5.1']['family_name']"],
                             "intent_to_retain": True,
                         },
-                    ]
+                    ],
                 },
             }
         ],
@@ -929,5 +925,7 @@ async def test_acapy_credo_mdoc_selective_disclosure(
             break
         await asyncio.sleep(1.0)
 
-    assert presentation_valid, f"Presentation failed: {latest_presentation.get('error_msg')}"
+    assert (
+        presentation_valid
+    ), f"Presentation failed: {latest_presentation.get('error_msg')}"
     print("✅ mdoc Selective Disclosure verified!")
