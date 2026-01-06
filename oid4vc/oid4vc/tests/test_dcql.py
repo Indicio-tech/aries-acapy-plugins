@@ -1,4 +1,5 @@
 from unittest import mock
+
 import pytest
 from acapy_agent.core.profile import Profile
 from acapy_agent.tests.mock import CoroutineMock
@@ -6,7 +7,6 @@ from acapy_agent.tests.mock import CoroutineMock
 from oid4vc.cred_processor import CredProcessors, VerifyResult
 from oid4vc.dcql import DCQLQueryEvaluator
 from oid4vc.models.dcql_query import CredentialQuery, DCQLQuery
-
 
 raw_query = {
     "credentials": [
@@ -40,7 +40,9 @@ async def test_dcql_query_saving(profile: Profile):
     async with profile.session() as session:
         await des_query.save(session=session)
 
-        retrieved_query = await DCQLQuery.retrieve_by_id(session, des_query.dcql_query_id)
+        retrieved_query = await DCQLQuery.retrieve_by_id(
+            session, des_query.dcql_query_id
+        )
 
     assert len(retrieved_query.credentials) == 1
     assert isinstance(retrieved_query.credentials[0], CredentialQuery)

@@ -1,10 +1,10 @@
 """Models for DCQL queries."""
 
-from marshmallow import ValidationError, fields, validates_schema
 from typing import Any, List, Mapping, Optional, Union
-from acapy_agent.messaging.models.base_record import BaseRecord, BaseRecordSchema
-from acapy_agent.messaging.models.base import BaseModel, BaseModelSchema
 
+from acapy_agent.messaging.models.base import BaseModel, BaseModelSchema
+from acapy_agent.messaging.models.base_record import BaseRecord, BaseRecordSchema
+from marshmallow import ValidationError, fields, validates_schema
 
 ClaimsPath = List[str | int | None]
 
@@ -98,8 +98,12 @@ class ClaimsQuerySchema(BaseModelSchema):
         values = data.get("values")
         if values:
             for v in values:
-                if not (isinstance(v, str) or isinstance(v, int) or isinstance(v, bool)):
-                    raise ValidationError("Values elements must be string, int, or bool.")
+                if not (
+                    isinstance(v, str) or isinstance(v, int) or isinstance(v, bool)
+                ):
+                    raise ValidationError(
+                        "Values elements must be string, int, or bool."
+                    )
 
 
 ClaimQueryID = str
@@ -116,6 +120,7 @@ class CredentialMeta(BaseModel):
     def __init__(
         self,
         query_type: Optional[str] = None,
+        doctype_value: Optional[str] = None,
         doctype_values: Optional[List[str]] = None,
         vct_values: Optional[List[str]] = None,
     ):
@@ -123,6 +128,7 @@ class CredentialMeta(BaseModel):
         super().__init__()
 
         self.query_type = query_type
+        self.doctype_value = doctype_value
         self.doctype_values = doctype_values
         self.vct_values = vct_values
 
@@ -135,26 +141,48 @@ class CredentialMetaSchema(BaseModelSchema):
 
         model_class = "CredentialMeta"
 
+    doctype_value = fields.Str(
+        required=False,
+        metadata={
+            "description": "OID4VP v1.0 spec-compliant: string specifying the doctype "
+            "of the requested mDOC credential."
+        },
+    )
+
     doctype_values = fields.List(
         fields.Str,
         required=False,
+        metadata={
+            "description": "Array of doctype strings for mDOC credentials "
+            "(backward compatibility)."
+        },
     )
 
     vct_values = fields.List(
         fields.Str,
         required=False,
+        metadata={
+            "description": "Array of Verifiable Credential Type values for SD-JWT VC."
+        },
     )
 
     @validates_schema
     def validate_fields(self, data, **kwargs):
         """Validate CredentialMeta object."""
 
+        doctype_value = data.get("doctype_value")
         doctype_values = data.get("doctype_values")
         vct_values = data.get("vct_values")
 
-        if vct_values and doctype_values:
+        if doctype_value and doctype_values:
             raise ValidationError(
-                "Credential Metadata cannot have both vct_values and doctype_values."
+                "Cannot have both doctype_value and doctype_values. "
+                "Use doctype_value (singular) for OID4VP v1.0 spec compliance."
+            )
+
+        if vct_values and (doctype_values or doctype_value):
+            raise ValidationError(
+                "Credential Metadata cannot have both vct_values and doctype value(s)."
             )
 
 
@@ -309,20 +337,24 @@ class DCQLQuery(BaseRecord):
 
     RECORD_ID_NAME = "dcql_query_id"
     RECORD_TOPIC = "oid4vp"
-    RECORD_TYPE = "oid4vp"
+    RECORD_TYPE = "oid4vp_dcql_query"
 
     def __init__(
         self,
         *,
         dcql_query_id: Optional[str] = None,
-        credentials: Union[List[Mapping], List[CredentialQuery]],
-        credential_sets: Optional[Union[List[Mapping], List[CredentialSetQuery]]] = None,
+        credentials: Optional[Union[List[Mapping], List[CredentialQuery]]] = None,
+        credential_sets: Optional[
+            Union[List[Mapping], List[CredentialSetQuery]]
+        ] = None,
         **kwargs,
     ):
         """Initialize a new DCQL Credential Query Record."""
         super().__init__(dcql_query_id, **kwargs)
 
-        self._credentials = [CredentialQuery.serde(cred) for cred in credentials]
+        self._credentials = (
+            [CredentialQuery.serde(cred) for cred in credentials] if credentials else []
+        )
         self._credential_set = (
             [CredentialSetQuery.serde(cred) for cred in credential_sets]
             if credential_sets
