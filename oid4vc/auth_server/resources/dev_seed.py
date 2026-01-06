@@ -11,14 +11,13 @@ import asyncio
 import secrets
 from typing import Any
 
-from authlib.jose import JsonWebKey
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ec
-
 from admin.config import settings
 from admin.schemas.client import ClientIn
 from admin.services.tenant_service import TenantService
+from authlib.jose import JsonWebKey
 from core.db.session import DatabaseSessionManager
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 
 
 def _gen_es256_keypair() -> tuple[str, dict[str, Any]]:

@@ -3,7 +3,6 @@
 from typing import Any
 
 import httpx
-
 from core.observability.observability import current_request_id
 from core.utils.retry import with_retries
 from tenant.config import settings

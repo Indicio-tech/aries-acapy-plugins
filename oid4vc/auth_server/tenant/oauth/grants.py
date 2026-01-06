@@ -5,9 +5,8 @@ from urllib.parse import urlparse
 
 from authlib.oauth2.rfc6749 import grants
 from authlib.oauth2.rfc6749.errors import InvalidRequestError
-from starlette.requests import Request
-
 from core.consts import OAuth2Flow, OAuth2GrantType
+from starlette.requests import Request
 from tenant.oauth.integration.context import get_context, update_context
 
 

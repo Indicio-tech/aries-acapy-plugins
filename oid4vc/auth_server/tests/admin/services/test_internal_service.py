@@ -3,10 +3,9 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
+from admin.services import internal_service
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from admin.services import internal_service
 
 
 class DummyScalarResult:

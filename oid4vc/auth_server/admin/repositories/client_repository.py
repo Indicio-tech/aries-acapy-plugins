@@ -2,11 +2,10 @@
 
 from typing import Sequence
 
-from sqlalchemy import delete, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from core.models import Client
 from core.repositories.client_repository import ClientRepository as BaseClientRepository
+from sqlalchemy import delete, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class ClientRepository(BaseClientRepository):

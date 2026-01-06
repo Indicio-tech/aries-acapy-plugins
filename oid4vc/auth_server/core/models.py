@@ -2,12 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import (
-    Integer,
-    MetaData,
-    Text,
-    func,
-)
+from sqlalchemy import Integer, MetaData, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 

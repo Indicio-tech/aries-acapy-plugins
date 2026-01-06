@@ -1,10 +1,9 @@
 import json
 from contextlib import asynccontextmanager
 
+import admin.main as admin_main
 import pytest
 from fastapi import Request
-
-import admin.main as admin_main
 
 
 @pytest.mark.asyncio

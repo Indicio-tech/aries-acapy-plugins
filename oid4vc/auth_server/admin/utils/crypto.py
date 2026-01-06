@@ -4,12 +4,11 @@ import base64
 import os
 import secrets
 
+from admin.config import settings
 from authlib.jose import jwk
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
-from admin.config import settings
 
 
 def _b64url_decode_padded(s: str) -> bytes:

@@ -3,7 +3,6 @@ from typing import Any, cast
 
 import pytest
 from authlib.oauth2.rfc6749 import AuthorizationServer, OAuth2Request
-
 from tenant.oauth.grants import PreAuthorizedCodeGrant, RotatingRefreshTokenGrant
 
 
@@ -16,9 +15,13 @@ class DummyServer(AuthorizationServer):
         self.saved = (token, request)
 
 
-def make_request(data: dict, *, url: str = "https://example.org/token") -> OAuth2Request:
+def make_request(
+    data: dict, *, url: str = "https://example.org/token"
+) -> OAuth2Request:
     req = OAuth2Request(method="POST", uri=url)
-    cast(Any, req).payload = SimpleNamespace(data=data, grant_type=data.get("grant_type"))
+    cast(Any, req).payload = SimpleNamespace(
+        data=data, grant_type=data.get("grant_type")
+    )
     return req
 
 
@@ -58,7 +61,9 @@ async def test_pre_auth_grant_missing_uid(monkeypatch):
         "tenant.oauth.grants.get_context",
         lambda _req: SimpleNamespace(uid=None, db=object()),
     )
-    monkeypatch.setattr("tenant.oauth.grants.update_context", lambda req, token_ctx: None)
+    monkeypatch.setattr(
+        "tenant.oauth.grants.update_context", lambda req, token_ctx: None
+    )
 
     grant = PreAuthorizedCodeGrant(request, server)
     await grant.validate_token_request()

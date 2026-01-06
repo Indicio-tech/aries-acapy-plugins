@@ -2,14 +2,13 @@
 
 import uuid
 
-from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from admin.repositories.client_repository import ClientRepository
 from admin.schemas.client import ClientIn
 from core.consts import CLIENT_AUTH_METHODS, ClientAuthMethod
 from core.crypto.crypto import hash_secret_pbkdf2
 from core.models import Client
+from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class ClientService:
@@ -86,7 +85,9 @@ class ClientService:
         if not row:
             raise HTTPException(status_code=404, detail="client_not_found")
         values = {
-            k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None
+            k: v
+            for k, v in data.model_dump(exclude_unset=True).items()
+            if v is not None
         }
         changed = await self.repo.update_values(row.id, values)
         await self.session.commit()

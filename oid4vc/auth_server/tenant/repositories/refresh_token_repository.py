@@ -5,7 +5,6 @@ from typing import Union
 
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from tenant.models import RefreshToken
 
 
@@ -20,7 +19,9 @@ class RefreshTokenRepository:
     def _to_dt(value: Union[int, float, datetime]) -> datetime:
         if isinstance(value, datetime):
             return (
-                value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+                value
+                if value.tzinfo is not None
+                else value.replace(tzinfo=timezone.utc)
             )
         return datetime.fromtimestamp(float(value), tz=timezone.utc)
 

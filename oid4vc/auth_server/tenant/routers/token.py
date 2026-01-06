@@ -3,10 +3,9 @@
 from fastapi import APIRouter, Depends, Form, Path, Request
 from fastapi.responses import ORJSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from tenant.deps import get_db_session
-from tenant.oauth.server import get_authorization_server
 from tenant.oauth.integration.request import to_oauth2_request
+from tenant.oauth.server import get_authorization_server
 
 router = APIRouter(prefix="/tenants/{uid}")
 

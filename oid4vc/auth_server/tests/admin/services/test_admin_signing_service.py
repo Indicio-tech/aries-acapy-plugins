@@ -2,11 +2,10 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from admin.schemas.internal import JwtSignRequest
 from admin.services import signing_service
+from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class DummyScalarResult:
@@ -48,7 +47,9 @@ async def test_sign_tenant_jwt_success(monkeypatch):
     monkeypatch.setattr(
         signing_service, "datetime", SimpleNamespace(now=lambda tz=None: now)
     )
-    monkeypatch.setattr(signing_service, "decrypt_private_pem", lambda pem: "private-key")
+    monkeypatch.setattr(
+        signing_service, "decrypt_private_pem", lambda pem: "private-key"
+    )
     monkeypatch.setattr(signing_service.JsonWebKey, "import_key", lambda pem: "jwk")
 
     class FakeJwt:
@@ -65,7 +66,9 @@ async def test_sign_tenant_jwt_success(monkeypatch):
 
     session = DummySession([key])
     req = JwtSignRequest(
-        claims={"exp": int((now + timedelta(minutes=5)).timestamp())}, kid=None, alg=None
+        claims={"exp": int((now + timedelta(minutes=5)).timestamp())},
+        kid=None,
+        alg=None,
     )
 
     resp = await signing_service.sign_tenant_jwt(session, "tenant-1", req)
@@ -110,7 +113,9 @@ async def test_sign_tenant_jwt_enforces_exp(monkeypatch):
 
     # Exp in past
     req = JwtSignRequest(
-        claims={"exp": int((now - timedelta(seconds=1)).timestamp())}, kid=None, alg=None
+        claims={"exp": int((now - timedelta(seconds=1)).timestamp())},
+        kid=None,
+        alg=None,
     )
     with pytest.raises(HTTPException) as exc_info:
         await signing_service.sign_tenant_jwt(session, "tenant-1", req)
@@ -132,7 +137,9 @@ async def test_sign_tenant_jwt_enforces_exp(monkeypatch):
     )
     sess2 = DummySession([key2])
     req = JwtSignRequest(
-        claims={"exp": int((now + timedelta(minutes=10)).timestamp())}, kid=None, alg=None
+        claims={"exp": int((now + timedelta(minutes=10)).timestamp())},
+        kid=None,
+        alg=None,
     )
     with pytest.raises(HTTPException) as exc_info:
         await signing_service.sign_tenant_jwt(sess2, "tenant-1", req)

@@ -7,14 +7,6 @@ import uuid
 from datetime import datetime, timezone
 
 import psycopg
-from authlib.jose import JsonWebKey
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ec
-from fastapi import HTTPException
-from psycopg import sql
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from admin.config import settings
 from admin.models import Tenant, TenantKey
 from admin.repositories.tenant_key_repository import TenantKeyRepository
@@ -25,8 +17,15 @@ from admin.services.alembic_service import run_tenant_migration
 from admin.services.client_service import ClientService
 from admin.utils.crypto import encrypt_db_password, encrypt_private_pem
 from admin.utils.db_utils import build_sync_url, resolve_tenant_urls, url_to_dsn
+from authlib.jose import JsonWebKey
 from core.db.cached_session import cached_session
 from core.models import Client
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from fastapi import HTTPException
+from psycopg import sql
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class TenantService:
@@ -150,7 +149,9 @@ class TenantService:
         if not row:
             raise HTTPException(status_code=404, detail="tenant_not_found")
         values = {
-            k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None
+            k: v
+            for k, v in data.model_dump(exclude_unset=True).items()
+            if v is not None
         }
         changed = await self.repo.update_values(row.id, values)
         await self.session.commit()

@@ -3,18 +3,10 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import (
-    Boolean,
-    ForeignKey,
-    Integer,
-    Text,
-    UniqueConstraint,
-    func,
-)
+from core.models import Base
+from sqlalchemy import Boolean, ForeignKey, Integer, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from core.models import Base
 
 
 class Subject(Base):
@@ -64,8 +56,12 @@ class PreAuthCode(Base):
     authorization_details: Mapped[list[dict[str, Any]] | None] = mapped_column(
         JSONB, nullable=True
     )
-    expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
-    issued_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
+    issued_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
     used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     subject: Mapped["Subject"] = relationship(
         back_populates="pre_auth_codes", lazy="joined"
@@ -82,11 +78,17 @@ class AccessToken(Base):
         ForeignKey("subject.id", onupdate="CASCADE", ondelete="CASCADE"), nullable=False
     )
     token: Mapped[str] = mapped_column(Text, nullable=False)
-    issued_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
     revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     cnf_jkt: Mapped[str | None] = mapped_column(Text, nullable=True)
-    token_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
+    token_metadata: Mapped[dict | None] = mapped_column(
+        "metadata", JSONB, nullable=True
+    )
     subject: Mapped["Subject"] = relationship(
         back_populates="access_tokens", lazy="joined"
     )
@@ -109,11 +111,17 @@ class RefreshToken(Base):
         nullable=False,
     )
     token_hash: Mapped[str] = mapped_column(Text, nullable=False)
-    issued_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
     used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    token_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
+    token_metadata: Mapped[dict | None] = mapped_column(
+        "metadata", JSONB, nullable=True
+    )
     subject: Mapped["Subject"] = relationship(
         back_populates="refresh_tokens", lazy="joined"
     )
@@ -134,6 +142,10 @@ class DpopJti(Base):
     htm: Mapped[str | None] = mapped_column(Text, nullable=True)
     htu: Mapped[str | None] = mapped_column(Text, nullable=True)
     cnf_jkt: Mapped[str | None] = mapped_column(Text, nullable=True)
-    issued_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False
+    )
     subject: Mapped["Subject"] = relationship(back_populates="dpop_jtis", lazy="joined")

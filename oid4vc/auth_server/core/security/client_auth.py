@@ -5,10 +5,6 @@ from typing import Any, Mapping
 
 import httpx
 from authlib.jose import JsonWebKey, jwt
-from fastapi import HTTPException, Request, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBasicCredentials
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from core.consts import CLIENT_AUTH_METHODS
 from core.consts import ClientAuthMethod as CLIENT_AUTH_METHOD
 from core.crypto.crypto import verify_secret_pbkdf2
@@ -16,6 +12,9 @@ from core.models import Client as AuthClient
 from core.repositories.client_repository import ClientRepository
 from core.security.utils import jwt_header_unverified, jwt_payload_unverified
 from core.utils.logging import get_logger
+from fastapi import HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBasicCredentials
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -191,7 +190,8 @@ async def base_client_auth(
     if allowed == CLIENT_AUTH_METHOD.CLIENT_SECRET_BASIC and scheme != "basic":
         raise HTTPException(status_code=401, detail="unauthorized_client")
     if (
-        allowed in {CLIENT_AUTH_METHOD.PRIVATE_KEY_JWT, CLIENT_AUTH_METHOD.SHARED_KEY_JWT}
+        allowed
+        in {CLIENT_AUTH_METHOD.PRIVATE_KEY_JWT, CLIENT_AUTH_METHOD.SHARED_KEY_JWT}
         and scheme != "bearer"
     ):
         raise HTTPException(status_code=401, detail="unauthorized_client")

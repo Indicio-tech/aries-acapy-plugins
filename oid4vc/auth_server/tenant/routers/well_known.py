@@ -2,7 +2,6 @@
 
 from fastapi import APIRouter, Path, Request, Response
 from fastapi.responses import ORJSONResponse
-
 from tenant.config import settings
 from tenant.services.well_known_service import (
     build_openid_configuration,

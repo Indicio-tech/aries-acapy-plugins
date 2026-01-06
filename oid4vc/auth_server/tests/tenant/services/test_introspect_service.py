@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from tenant.services import introspect_service
 
 

@@ -1,9 +1,8 @@
 from typing import cast
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
-
 import tenant.main as tenant_main
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @pytest.mark.asyncio

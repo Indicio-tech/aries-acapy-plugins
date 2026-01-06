@@ -2,9 +2,8 @@
 
 import ipaddress
 
-from fastapi import Request
-
 from core.consts import OAuth2GrantType
+from fastapi import Request
 from tenant.config import settings
 from tenant.deps import get_tenant_jwks
 

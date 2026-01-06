@@ -4,9 +4,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from authlib.oauth2.rfc6749 import OAuth2Request
-
 import tenant.oauth.server as oauth_server
+from authlib.oauth2.rfc6749 import OAuth2Request
 from core.consts import OAuth2Flow
 
 

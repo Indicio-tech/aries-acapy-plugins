@@ -3,10 +3,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+import tenant.services.grant_service as grant_service
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-
-import tenant.services.grant_service as grant_service
 
 
 class DummySession(AsyncSession):

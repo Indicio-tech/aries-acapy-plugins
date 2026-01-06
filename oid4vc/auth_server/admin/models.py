@@ -2,12 +2,11 @@
 
 from datetime import datetime
 
+from admin.config import settings
+from core.models import Base
 from sqlalchemy import BigInteger, Boolean, ForeignKey, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 from sqlalchemy.orm import Mapped, mapped_column
-
-from core.models import Base
-from admin.config import settings
 
 
 class Tenant(Base):

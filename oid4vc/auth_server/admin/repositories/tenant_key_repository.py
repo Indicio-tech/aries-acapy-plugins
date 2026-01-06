@@ -1,8 +1,7 @@
 """Data-access layer for tenant keys."""
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from admin.models import TenantKey
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class TenantKeyRepository:

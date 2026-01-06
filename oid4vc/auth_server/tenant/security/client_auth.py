@@ -1,5 +1,7 @@
 """Tenant client authentication dependency."""
 
+from core.models import Client as AuthClient
+from core.security.client_auth import base_client_auth
 from fastapi import Depends, Request, Security
 from fastapi.security import (
     HTTPAuthorizationCredentials,
@@ -8,9 +10,6 @@ from fastapi.security import (
     HTTPBearer,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from core.models import Client as AuthClient
-from core.security.client_auth import base_client_auth
 from tenant.deps import get_db_session
 
 basic_security = HTTPBasic(auto_error=False)

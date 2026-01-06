@@ -1,10 +1,8 @@
 """Bearer auth dependencies for Admin API (router-level guards)."""
 
+from admin.config import settings
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-from admin.config import settings
-
 
 _security = HTTPBearer(auto_error=False)
 
