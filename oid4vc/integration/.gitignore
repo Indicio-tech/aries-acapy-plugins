@@ -142,3 +142,22 @@ dist
 .svelte-kit
 
 # End of https://www.toptal.com/developers/gitignore/api/node
+
+# =============================================================================
+# Certificate files - generated dynamically, should not be committed
+# =============================================================================
+# Private keys
+*.key
+certs/*.key
+certs/**/*.key
+
+# Certificate files (generated at runtime)
+certs/*.pem
+certs/*.crt
+certs/*.cer
+
+# Keep the generate_certs.py utility but ignore generated output
+!generate_certs.py
+
+# Trust anchor directories (certs stored in wallet now)
+certs/trust-anchors/
