@@ -3,8 +3,8 @@ from os import getenv
 import pytest_asyncio
 from jrpc_client import JsonRpcClient, TCPSocketTransport
 
-from sphereon_wrapper import SphereaonWrapper
 from credo_wrapper import CredoWrapper
+from sphereon_wrapper import SphereaonWrapper
 
 SPHEREON_HOST = getenv("SPHEREON_HOST", "localhost")
 SPHEREON_PORT = int(getenv("SPHEREON_PORT", "3000"))

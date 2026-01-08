@@ -1,12 +1,11 @@
 from os import getenv
+from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
-
-from acapy_controller.controller import Controller
-from aiohttp import ClientSession
-from urllib.parse import urlparse, parse_qs
 
 import pytest
 import pytest_asyncio
+from acapy_controller.controller import Controller
+from aiohttp import ClientSession
 
 from oid4vci_client.client import OpenID4VCIClient
 
