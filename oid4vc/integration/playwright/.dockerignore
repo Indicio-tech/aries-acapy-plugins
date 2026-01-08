@@ -2,8 +2,10 @@
 node_modules/
 npm-debug.log*
 
-# Build output (created during build)
-dist/
+# Test outputs
+test-results/
+playwright-report/
+*.xml
 
 # IDE
 .vscode/

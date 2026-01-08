@@ -1,26 +1,25 @@
-"""AFJ Wrapper."""
+"""Credo Wrapper."""
 
-from jrpc_client import BaseSocketTransport, JsonRpcClient
+import httpx
 
 
 class CredoWrapper:
-    """Credo Wrapper."""
+    """Credo Wrapper using HTTP."""
 
-    def __init__(self, transport: BaseSocketTransport, client: JsonRpcClient):
+    def __init__(self, base_url: str):
         """Initialize the wrapper."""
-        self.transport = transport
-        self.client = client
+        self.base_url = base_url.rstrip("/")
+        self.client = httpx.AsyncClient()
 
     async def start(self):
         """Start the wrapper."""
-        await self.transport.connect()
-        await self.client.start()
-        await self.client.request("initialize")
+        # Check Credo agent health
+        response = await self.client.get(f"{self.base_url}/health")
+        response.raise_for_status()
 
     async def stop(self):
         """Stop the wrapper."""
-        await self.client.stop()
-        await self.transport.close()
+        await self.client.aclose()
 
     async def __aenter__(self):
         """Start the wrapper when entering the context manager."""
@@ -33,16 +32,35 @@ class CredoWrapper:
 
     # Credo API
 
-    async def openid4vci_accept_offer(self, offer: str):
-        """Accept OpenID4VCI credential offer."""
-        return await self.client.request(
-            "openid4vci.acceptCredentialOffer",
-            offer=offer,
-        )
+    async def test(self):
+        """Test basic connectivity to Credo agent."""
+        response = await self.client.get(f"{self.base_url}/health")
+        response.raise_for_status()
+        return response.json()
 
-    async def openid4vp_accept_request(self, request: str):
-        """Accept OpenID4VP presentation (authorization) request."""
-        return await self.client.request(
-            "openid4vci.acceptAuthorizationRequest",
-            request=request,
+    async def openid4vci_accept_offer(self, offer: str, holder_did_method: str = "key"):
+        """Accept OpenID4VCI credential offer."""
+        response = await self.client.post(
+            f"{self.base_url}/oid4vci/accept-offer",
+            json={"credential_offer": offer, "holder_did_method": holder_did_method},
         )
+        response.raise_for_status()
+        return response.json()
+
+    async def openid4vp_accept_request(self, request: str, credentials: list = None):
+        """Accept OpenID4VP presentation (authorization) request.
+
+        Args:
+            request: The presentation request URI
+            credentials: List of credentials to present (can be strings for mso_mdoc or dicts)
+        """
+        payload = {"request_uri": request}
+        if credentials:
+            payload["credentials"] = credentials
+
+        response = await self.client.post(
+            f"{self.base_url}/oid4vp/present",
+            json=payload,
+        )
+        response.raise_for_status()
+        return response.json()
