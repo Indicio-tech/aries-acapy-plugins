@@ -5,14 +5,11 @@ import json
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Generic, TypeVar
 
 from aries_askar import Key, KeyAlg
 
-K = TypeVar("K")
 
-
-class OID4VCICryptoService(ABC, Generic[K]):
+class OID4VCICryptoService[K](ABC):
     """OpenID Connect for Verifiable Credentials (OID4VC) Crypto Service."""
 
     @abstractmethod
