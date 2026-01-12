@@ -105,9 +105,9 @@ class IntegrationTestRunner:
                 cwd=Path(__file__).parent,
             )
 
-            # Wait for services to be healthy
-            LOGGER.info("Waiting for services to be healthy...")
-            time.sleep(30)  # Give services time to start
+            # Docker Compose handles healthchecks via depends_on conditions
+            # Services will wait for dependencies to be healthy before starting
+            LOGGER.info("Services started, docker-compose managing healthchecks...")
 
             # Run tests
             test_cmd = ["docker-compose", "run", "--rm", "test-river"]

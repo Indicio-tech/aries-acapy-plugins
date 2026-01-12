@@ -41,6 +41,7 @@ services:
       - "3010:3010"
     environment:
       - PORT=3010
+    # Healthcheck defined in Dockerfile
 
   # ACA-Py Issuer - Issues credentials via OID4VCI
   acapy-issuer:
