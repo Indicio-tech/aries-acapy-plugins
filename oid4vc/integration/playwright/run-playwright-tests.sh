@@ -134,6 +134,14 @@ check_dependencies() {
     exit 1
   fi
   
+  # Check for ARM64 architecture and warn about walt.id compatibility
+  ARCH=$(uname -m)
+  if [[ "$ARCH" == "arm64" || "$ARCH" == "aarch64" ]]; then
+    log_warn "Running on ARM64 architecture detected"
+    log_warn "walt.id services are amd64-only and may require Rosetta 2 (macOS) or QEMU emulation (Linux)"
+    log_warn "Performance may be degraded. Consider using --mdoc-only or --sdjwt-only to skip walt.id tests"
+  fi
+  
   log_success "All dependencies found"
 }
 

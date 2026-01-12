@@ -1,0 +1,1468 @@
+diff --git a/oid4vc/auth_server/admin/deps.py b/oid4vc/auth_server/admin/deps.py
+index 5e6435e..5c6f787 100644
+--- a/oid4vc/auth_server/admin/deps.py
++++ b/oid4vc/auth_server/admin/deps.py
+@@ -2,6 +2,5 @@
+ 
+ from core.db.session import DatabaseSessionManager, make_session_dependency
+ 
+-
+ db_manager = DatabaseSessionManager(search_path="admin")
+ get_db_session = make_session_dependency(db_manager)
+diff --git a/oid4vc/auth_server/admin/main.py b/oid4vc/auth_server/admin/main.py
+index bc6bc19..fdcbdef 100644
+--- a/oid4vc/auth_server/admin/main.py
++++ b/oid4vc/auth_server/admin/main.py
+@@ -3,11 +3,6 @@
+ from contextlib import asynccontextmanager
+ from typing import AsyncIterator
+ 
+-from fastapi import FastAPI, Request, status
+-from fastapi.middleware.cors import CORSMiddleware
+-from fastapi.responses import ORJSONResponse
+-from sqlalchemy import text
+-
+ from admin.config import settings
+ from admin.deps import db_manager
+ from admin.routers import internal, migrations, tenants
+@@ -16,6 +11,10 @@ from core.observability.observability import (
+     setup_structlog_json,
+ )
+ from core.utils.logging import get_logger
++from fastapi import FastAPI, Request, status
++from fastapi.middleware.cors import CORSMiddleware
++from fastapi.responses import ORJSONResponse
++from sqlalchemy import text
+ 
+ logger = get_logger(__name__)
+ 
+diff --git a/oid4vc/auth_server/admin/models.py b/oid4vc/auth_server/admin/models.py
+index 0234ae8..1baa81f 100644
+--- a/oid4vc/auth_server/admin/models.py
++++ b/oid4vc/auth_server/admin/models.py
+@@ -2,13 +2,12 @@
+ 
+ from datetime import datetime
+ 
++from admin.config import settings
++from core.models import Base
+ from sqlalchemy import BigInteger, Boolean, ForeignKey, Text, UniqueConstraint, func
+ from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
+ from sqlalchemy.orm import Mapped, mapped_column
+ 
+-from core.models import Base
+-from admin.config import settings
+-
+ 
+ class Tenant(Base):
+     """Tenant model."""
+diff --git a/oid4vc/auth_server/admin/repositories/client_repository.py b/oid4vc/auth_server/admin/repositories/client_repository.py
+index 313903e..6af7805 100644
+--- a/oid4vc/auth_server/admin/repositories/client_repository.py
++++ b/oid4vc/auth_server/admin/repositories/client_repository.py
+@@ -2,11 +2,10 @@
+ 
+ from typing import Sequence
+ 
+-from sqlalchemy import delete, select, update
+-from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from core.models import Client
+ from core.repositories.client_repository import ClientRepository as BaseClientRepository
++from sqlalchemy import delete, select, update
++from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ 
+ class ClientRepository(BaseClientRepository):
+diff --git a/oid4vc/auth_server/admin/repositories/tenant_key_repository.py b/oid4vc/auth_server/admin/repositories/tenant_key_repository.py
+index f185262..5a36421 100644
+--- a/oid4vc/auth_server/admin/repositories/tenant_key_repository.py
++++ b/oid4vc/auth_server/admin/repositories/tenant_key_repository.py
+@@ -1,8 +1,7 @@
+ """Data-access layer for tenant keys."""
+ 
+-from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from admin.models import TenantKey
++from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ 
+ class TenantKeyRepository:
+diff --git a/oid4vc/auth_server/admin/repositories/tenant_repository.py b/oid4vc/auth_server/admin/repositories/tenant_repository.py
+index 3fa7a33..741422c 100644
+--- a/oid4vc/auth_server/admin/repositories/tenant_repository.py
++++ b/oid4vc/auth_server/admin/repositories/tenant_repository.py
+@@ -1,10 +1,10 @@
+ """Data-access layer for tenants."""
+ 
+ from typing import Sequence
+-from sqlalchemy import select, update, delete
+-from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ from admin.models import Tenant
++from sqlalchemy import delete, select, update
++from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ 
+ class TenantRepository:
+diff --git a/oid4vc/auth_server/admin/routers/internal.py b/oid4vc/auth_server/admin/routers/internal.py
+index d4a607f..03f1d2f 100644
+--- a/oid4vc/auth_server/admin/routers/internal.py
++++ b/oid4vc/auth_server/admin/routers/internal.py
+@@ -1,8 +1,5 @@
+ """API for tenant SERVICE helpers: DB info, JWKS, JWT signing."""
+ 
+-from fastapi import APIRouter, Depends, Path
+-from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from admin.deps import get_db_session
+ from admin.schemas.internal import (
+     JwtSignRequest,
+@@ -13,8 +10,12 @@ from admin.schemas.internal import (
+ from admin.security.bearer import require_interal_auth
+ from admin.services.internal_service import get_tenant_db, get_tenant_jwks
+ from admin.services.signing_service import sign_tenant_jwt
++from fastapi import APIRouter, Depends, Path
++from sqlalchemy.ext.asyncio import AsyncSession
+ 
+-router = APIRouter(prefix="/tenants/{uid}", dependencies=[Depends(require_interal_auth)])
++router = APIRouter(
++    prefix="/tenants/{uid}", dependencies=[Depends(require_interal_auth)]
++)
+ 
+ 
+ @router.get("/db", response_model=TenantDbResponse)
+diff --git a/oid4vc/auth_server/admin/routers/migrations.py b/oid4vc/auth_server/admin/routers/migrations.py
+index 68ab4ef..69621c6 100644
+--- a/oid4vc/auth_server/admin/routers/migrations.py
++++ b/oid4vc/auth_server/admin/routers/migrations.py
+@@ -1,14 +1,13 @@
+ """Router for tenant migrations."""
+ 
+-from fastapi import APIRouter, Depends, HTTPException
+-from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from admin.deps import get_db_session
+-from admin.security.bearer import require_admin_auth
+ from admin.repositories.tenant_repository import TenantRepository
+ from admin.schemas.migration import MigrationAction, MigrationRequest
++from admin.security.bearer import require_admin_auth
+ from admin.services.alembic_service import run_tenant_migration
+ from admin.utils.db_utils import resolve_tenant_urls
++from fastapi import APIRouter, Depends, HTTPException
++from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ router = APIRouter(dependencies=[Depends(require_admin_auth)])
+ 
+diff --git a/oid4vc/auth_server/admin/routers/tenants.py b/oid4vc/auth_server/admin/routers/tenants.py
+index de91c49..53e7da1 100644
+--- a/oid4vc/auth_server/admin/routers/tenants.py
++++ b/oid4vc/auth_server/admin/routers/tenants.py
+@@ -1,14 +1,13 @@
+ """Admin API for tenant management."""
+ 
+-from fastapi import APIRouter, Depends, HTTPException
+-from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from admin.deps import get_db_session
+ from admin.schemas.client import ClientIn, ClientOut
+ from admin.schemas.tenant import KeyGenIn, KeyStatusIn, TenantIn, TenantOut
+ from admin.security.bearer import require_admin_auth
+ from admin.services.internal_service import get_tenant_jwks
+ from admin.services.tenant_service import TenantService
++from fastapi import APIRouter, Depends, HTTPException
++from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ router = APIRouter(dependencies=[Depends(require_admin_auth)])
+ 
+diff --git a/oid4vc/auth_server/admin/schemas/internal.py b/oid4vc/auth_server/admin/schemas/internal.py
+index 8173082..04d2c56 100644
+--- a/oid4vc/auth_server/admin/schemas/internal.py
++++ b/oid4vc/auth_server/admin/schemas/internal.py
+@@ -1,6 +1,7 @@
+ """Schemas for signing JWTs for tenants."""
+ 
+ from typing import Literal
++
+ from pydantic import BaseModel
+ 
+ 
+diff --git a/oid4vc/auth_server/admin/schemas/migration.py b/oid4vc/auth_server/admin/schemas/migration.py
+index 01df439..6c425f5 100644
+--- a/oid4vc/auth_server/admin/schemas/migration.py
++++ b/oid4vc/auth_server/admin/schemas/migration.py
+@@ -1,6 +1,7 @@
+ """Schemas for migrations."""
+ 
+ from enum import Enum
++
+ from pydantic import BaseModel
+ 
+ 
+diff --git a/oid4vc/auth_server/admin/schemas/tenant.py b/oid4vc/auth_server/admin/schemas/tenant.py
+index 58ce9df..fe0d5de 100644
+--- a/oid4vc/auth_server/admin/schemas/tenant.py
++++ b/oid4vc/auth_server/admin/schemas/tenant.py
+@@ -1,7 +1,8 @@
+ """Schemas for tenants."""
+ 
+ from datetime import datetime
+-from pydantic import BaseModel, Field, ConfigDict
++
++from pydantic import BaseModel, ConfigDict, Field
+ 
+ 
+ class TenantIn(BaseModel):
+diff --git a/oid4vc/auth_server/admin/security/bearer.py b/oid4vc/auth_server/admin/security/bearer.py
+index c2f13b4..5bf0b66 100644
+--- a/oid4vc/auth_server/admin/security/bearer.py
++++ b/oid4vc/auth_server/admin/security/bearer.py
+@@ -1,11 +1,9 @@
+ """Bearer auth dependencies for Admin API (router-level guards)."""
+ 
++from admin.config import settings
+ from fastapi import Depends, HTTPException, status
+ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+ 
+-from admin.config import settings
+-
+-
+ _security = HTTPBearer(auto_error=False)
+ 
+ 
+diff --git a/oid4vc/auth_server/admin/services/client_service.py b/oid4vc/auth_server/admin/services/client_service.py
+index ccbc454..082152b 100644
+--- a/oid4vc/auth_server/admin/services/client_service.py
++++ b/oid4vc/auth_server/admin/services/client_service.py
+@@ -2,14 +2,13 @@
+ 
+ import uuid
+ 
+-from fastapi import HTTPException
+-from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from admin.repositories.client_repository import ClientRepository
+ from admin.schemas.client import ClientIn
+ from core.consts import CLIENT_AUTH_METHODS, ClientAuthMethod
+ from core.crypto.crypto import hash_secret_pbkdf2
+ from core.models import Client
++from fastapi import HTTPException
++from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ 
+ class ClientService:
+@@ -86,7 +85,9 @@ class ClientService:
+         if not row:
+             raise HTTPException(status_code=404, detail="client_not_found")
+         values = {
+-            k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None
++            k: v
++            for k, v in data.model_dump(exclude_unset=True).items()
++            if v is not None
+         }
+         changed = await self.repo.update_values(row.id, values)
+         await self.session.commit()
+diff --git a/oid4vc/auth_server/admin/services/internal_service.py b/oid4vc/auth_server/admin/services/internal_service.py
+index e2bd55b..08e154e 100644
+--- a/oid4vc/auth_server/admin/services/internal_service.py
++++ b/oid4vc/auth_server/admin/services/internal_service.py
+@@ -1,17 +1,16 @@
+ """INTERNAL helpers: DB info, JWKS, JWT signing."""
+ 
++from datetime import datetime, timedelta, timezone
+ from typing import Dict, List
+-from datetime import datetime, timezone, timedelta
+-
+-from authlib.jose import JsonWebKey
+-from fastapi import HTTPException
+-from sqlalchemy import select
+-from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ from admin.config import settings
+ from admin.models import Tenant, TenantKey
+ from admin.utils.db_utils import resolve_tenant_urls
+ from admin.utils.keys import is_time_valid
++from authlib.jose import JsonWebKey
++from fastapi import HTTPException
++from sqlalchemy import select
++from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ MAX_TTL_SECONDS = 3600
+ 
+@@ -61,7 +60,9 @@ async def get_tenant_jwks(session: AsyncSession, uid: str) -> Dict[str, List[dic
+         if not row.public_jwk or not _include(row):
+             continue
+         jwk_obj = JsonWebKey.import_key(row.public_jwk)
+-        jwk_dict = jwk_obj.as_dict(is_private=False, kid=row.kid, alg=row.alg, use="sig")
++        jwk_dict = jwk_obj.as_dict(
++            is_private=False, kid=row.kid, alg=row.alg, use="sig"
++        )
+         if jwk_dict is not None:
+             keys.append(jwk_dict)
+     return {"keys": keys}
+diff --git a/oid4vc/auth_server/admin/services/signing_service.py b/oid4vc/auth_server/admin/services/signing_service.py
+index 977ab30..9b788ae 100644
+--- a/oid4vc/auth_server/admin/services/signing_service.py
++++ b/oid4vc/auth_server/admin/services/signing_service.py
+@@ -2,15 +2,14 @@
+ 
+ from datetime import datetime, timezone
+ 
+-from authlib.jose import JsonWebKey, jwt
+-from fastapi import HTTPException
+-from sqlalchemy import select
+-from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from admin.models import Tenant, TenantKey
+ from admin.schemas.internal import JwtSignRequest, JwtSignResponse
+ from admin.utils.crypto import decrypt_private_pem
+ from admin.utils.keys import select_signing_key
++from authlib.jose import JsonWebKey, jwt
++from fastapi import HTTPException
++from sqlalchemy import select
++from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ MAX_TTL_SECONDS = 3600
+ 
+diff --git a/oid4vc/auth_server/admin/services/tenant_service.py b/oid4vc/auth_server/admin/services/tenant_service.py
+index 34dce8c..5ad0ae1 100644
+--- a/oid4vc/auth_server/admin/services/tenant_service.py
++++ b/oid4vc/auth_server/admin/services/tenant_service.py
+@@ -7,14 +7,6 @@ import uuid
+ from datetime import datetime, timezone
+ 
+ import psycopg
+-from authlib.jose import JsonWebKey
+-from cryptography.hazmat.primitives import serialization
+-from cryptography.hazmat.primitives.asymmetric import ec
+-from fastapi import HTTPException
+-from psycopg import sql
+-from sqlalchemy.exc import IntegrityError
+-from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from admin.config import settings
+ from admin.models import Tenant, TenantKey
+ from admin.repositories.tenant_key_repository import TenantKeyRepository
+@@ -25,8 +17,15 @@ from admin.services.alembic_service import run_tenant_migration
+ from admin.services.client_service import ClientService
+ from admin.utils.crypto import encrypt_db_password, encrypt_private_pem
+ from admin.utils.db_utils import build_sync_url, resolve_tenant_urls, url_to_dsn
++from authlib.jose import JsonWebKey
+ from core.db.cached_session import cached_session
+ from core.models import Client
++from cryptography.hazmat.primitives import serialization
++from cryptography.hazmat.primitives.asymmetric import ec
++from fastapi import HTTPException
++from psycopg import sql
++from sqlalchemy.exc import IntegrityError
++from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ 
+ class TenantService:
+@@ -150,7 +149,9 @@ class TenantService:
+         if not row:
+             raise HTTPException(status_code=404, detail="tenant_not_found")
+         values = {
+-            k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None
++            k: v
++            for k, v in data.model_dump(exclude_unset=True).items()
++            if v is not None
+         }
+         changed = await self.repo.update_values(row.id, values)
+         await self.session.commit()
+diff --git a/oid4vc/auth_server/admin/utils/crypto.py b/oid4vc/auth_server/admin/utils/crypto.py
+index a856ad1..8a2599a 100644
+--- a/oid4vc/auth_server/admin/utils/crypto.py
++++ b/oid4vc/auth_server/admin/utils/crypto.py
+@@ -4,13 +4,12 @@ import base64
+ import os
+ import secrets
+ 
++from admin.config import settings
+ from authlib.jose import jwk
+ from cryptography.hazmat.primitives import serialization
+ from cryptography.hazmat.primitives.asymmetric import ec
+ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+ 
+-from admin.config import settings
+-
+ 
+ def _b64url_decode_padded(s: str) -> bytes:
+     return base64.urlsafe_b64decode(s + "===")
+diff --git a/oid4vc/auth_server/admin/utils/db_utils.py b/oid4vc/auth_server/admin/utils/db_utils.py
+index 1eb5cfa..54b7d73 100644
+--- a/oid4vc/auth_server/admin/utils/db_utils.py
++++ b/oid4vc/auth_server/admin/utils/db_utils.py
+@@ -3,11 +3,10 @@
+ import re
+ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+ 
+-from sqlalchemy.engine import URL
+-
+ from admin.config import settings
+ from admin.models import Tenant
+ from admin.utils.crypto import decrypt_db_password
++from sqlalchemy.engine import URL
+ 
+ 
+ def build_async_url(db: str, user: str, password: str) -> str:
+diff --git a/oid4vc/auth_server/alembic/admin/versions/0001_init_admin.py b/oid4vc/auth_server/alembic/admin/versions/0001_init_admin.py
+index 864a590..d0d5ce0 100644
+--- a/oid4vc/auth_server/alembic/admin/versions/0001_init_admin.py
++++ b/oid4vc/auth_server/alembic/admin/versions/0001_init_admin.py
+@@ -1,4 +1,5 @@
+ from pathlib import Path
++
+ from alembic import op
+ 
+ revision = "0001_init_admin"
+diff --git a/oid4vc/auth_server/alembic/tenant/versions/0001_init_tenant.py b/oid4vc/auth_server/alembic/tenant/versions/0001_init_tenant.py
+index 95b05f3..76fd8d3 100644
+--- a/oid4vc/auth_server/alembic/tenant/versions/0001_init_tenant.py
++++ b/oid4vc/auth_server/alembic/tenant/versions/0001_init_tenant.py
+@@ -1,4 +1,5 @@
+ from pathlib import Path
++
+ from alembic import op
+ 
+ revision = "0001_init_tenant"
+@@ -13,7 +14,8 @@ def upgrade() -> None:
+ 
+ 
+ def downgrade() -> None:
+-    op.execute("""
++    op.execute(
++        """
+       DROP TABLE IF EXISTS auth.nonce;
+       DROP TABLE IF EXISTS auth.dpop_jti;
+       DROP TABLE IF EXISTS auth.refresh_token;
+@@ -21,4 +23,5 @@ def downgrade() -> None:
+       DROP TABLE IF EXISTS auth.pre_auth_code;
+       DROP TABLE IF EXISTS auth.subject;
+       DROP TABLE IF EXISTS auth.client;
+-    """)
++    """
++    )
+diff --git a/oid4vc/auth_server/core/db/alembic.py b/oid4vc/auth_server/core/db/alembic.py
+index 9921e6d..2b31af9 100644
+--- a/oid4vc/auth_server/core/db/alembic.py
++++ b/oid4vc/auth_server/core/db/alembic.py
+@@ -2,9 +2,8 @@
+ 
+ import os
+ 
+-from sqlalchemy import MetaData, engine_from_config, pool, text
+-
+ from alembic import context
++from sqlalchemy import MetaData, engine_from_config, pool, text
+ 
+ 
+ def _resolve_url_and_schema(default_schema: str) -> tuple[str, str]:
+diff --git a/oid4vc/auth_server/core/models.py b/oid4vc/auth_server/core/models.py
+index 17c2139..c4c7537 100644
+--- a/oid4vc/auth_server/core/models.py
++++ b/oid4vc/auth_server/core/models.py
+@@ -2,12 +2,7 @@
+ 
+ from datetime import datetime
+ 
+-from sqlalchemy import (
+-    Integer,
+-    MetaData,
+-    Text,
+-    func,
+-)
++from sqlalchemy import Integer, MetaData, Text, func
+ from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
+ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+ 
+diff --git a/oid4vc/auth_server/core/observability/observability.py b/oid4vc/auth_server/core/observability/observability.py
+index 4e596e4..a092549 100644
+--- a/oid4vc/auth_server/core/observability/observability.py
++++ b/oid4vc/auth_server/core/observability/observability.py
+@@ -14,7 +14,7 @@ try:
+     from structlog.contextvars import bind_contextvars, clear_contextvars
+     from structlog.contextvars import get_contextvars as _get_ctxvars
+     from structlog.processors import TimeStamper
+-    from structlog.stdlib import ProcessorFormatter, ExtraAdder
++    from structlog.stdlib import ExtraAdder, ProcessorFormatter
+ 
+     HAS_STRUCTLOG = True
+ except Exception:  # pragma: no cover - optional dependency
+diff --git a/oid4vc/auth_server/core/repositories/client_repository.py b/oid4vc/auth_server/core/repositories/client_repository.py
+index 9ff2dd0..0853d42 100644
+--- a/oid4vc/auth_server/core/repositories/client_repository.py
++++ b/oid4vc/auth_server/core/repositories/client_repository.py
+@@ -1,10 +1,9 @@
+ """Repository for OAuth2/OIDC clients (issuer auth)."""
+ 
++from core.models import Client
+ from sqlalchemy import select
+ from sqlalchemy.ext.asyncio import AsyncSession
+ 
+-from core.models import Client
+-
+ 
+ class ClientRepository:
+     """Data-access for clients."""
+diff --git a/oid4vc/auth_server/core/security/client_auth.py b/oid4vc/auth_server/core/security/client_auth.py
+index 2ababef..5212955 100644
+--- a/oid4vc/auth_server/core/security/client_auth.py
++++ b/oid4vc/auth_server/core/security/client_auth.py
+@@ -5,10 +5,6 @@ from typing import Any, Mapping
+ 
+ import httpx
+ from authlib.jose import JsonWebKey, jwt
+-from fastapi import HTTPException, Request, status
+-from fastapi.security import HTTPAuthorizationCredentials, HTTPBasicCredentials
+-from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from core.consts import CLIENT_AUTH_METHODS
+ from core.consts import ClientAuthMethod as CLIENT_AUTH_METHOD
+ from core.crypto.crypto import verify_secret_pbkdf2
+@@ -16,6 +12,9 @@ from core.models import Client as AuthClient
+ from core.repositories.client_repository import ClientRepository
+ from core.security.utils import jwt_header_unverified, jwt_payload_unverified
+ from core.utils.logging import get_logger
++from fastapi import HTTPException, Request, status
++from fastapi.security import HTTPAuthorizationCredentials, HTTPBasicCredentials
++from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ logger = get_logger(__name__)
+ 
+@@ -191,7 +190,8 @@ async def base_client_auth(
+     if allowed == CLIENT_AUTH_METHOD.CLIENT_SECRET_BASIC and scheme != "basic":
+         raise HTTPException(status_code=401, detail="unauthorized_client")
+     if (
+-        allowed in {CLIENT_AUTH_METHOD.PRIVATE_KEY_JWT, CLIENT_AUTH_METHOD.SHARED_KEY_JWT}
++        allowed
++        in {CLIENT_AUTH_METHOD.PRIVATE_KEY_JWT, CLIENT_AUTH_METHOD.SHARED_KEY_JWT}
+         and scheme != "bearer"
+     ):
+         raise HTTPException(status_code=401, detail="unauthorized_client")
+diff --git a/oid4vc/auth_server/core/security/utils.py b/oid4vc/auth_server/core/security/utils.py
+index 945d2e8..f3201d9 100644
+--- a/oid4vc/auth_server/core/security/utils.py
++++ b/oid4vc/auth_server/core/security/utils.py
+@@ -7,7 +7,6 @@ from datetime import datetime, timedelta, timezone
+ from typing import Any
+ 
+ from authlib.jose import JsonWebKey, jwt
+-
+ from core.utils.json import safe_json_loads
+ from tenant.config import settings
+ 
+diff --git a/oid4vc/auth_server/core/utils/json.py b/oid4vc/auth_server/core/utils/json.py
+index 8639b2d..75f635a 100644
+--- a/oid4vc/auth_server/core/utils/json.py
++++ b/oid4vc/auth_server/core/utils/json.py
+@@ -3,7 +3,6 @@
+ from typing import Any
+ 
+ import orjson
+-
+ from core.utils.logging import get_logger
+ 
+ logger = get_logger(__name__)
+diff --git a/oid4vc/auth_server/core/utils/logging.py b/oid4vc/auth_server/core/utils/logging.py
+index 51864fa..360964d 100755
+--- a/oid4vc/auth_server/core/utils/logging.py
++++ b/oid4vc/auth_server/core/utils/logging.py
+@@ -1,7 +1,7 @@
+ """Logging helpers: unified `get_logger` with structlog or stdlib fallback."""
+ 
+-import os
+ import logging
++import os
+ from logging.handlers import RotatingFileHandler
+ 
+ try:
+diff --git a/oid4vc/auth_server/poetry.lock b/oid4vc/auth_server/poetry.lock
+index 22fad1d..5da96f1 100644
+--- a/oid4vc/auth_server/poetry.lock
++++ b/oid4vc/auth_server/poetry.lock
+@@ -1,4 +1,4 @@
+-# This file is automatically @generated by Poetry 2.2.1 and should not be changed by hand.
++# This file is automatically @generated by Poetry 2.1.2 and should not be changed by hand.
+ 
+ [[package]]
+ name = "alembic"
+@@ -502,8 +502,6 @@ files = [
+     {file = "greenlet-3.2.4-cp310-cp310-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:c2ca18a03a8cfb5b25bc1cbe20f3d9a4c80d8c3b13ba3df49ac3961af0b1018d"},
+     {file = "greenlet-3.2.4-cp310-cp310-musllinux_1_1_aarch64.whl", hash = "sha256:9fe0a28a7b952a21e2c062cd5756d34354117796c6d9215a87f55e38d15402c5"},
+     {file = "greenlet-3.2.4-cp310-cp310-musllinux_1_1_x86_64.whl", hash = "sha256:8854167e06950ca75b898b104b63cc646573aa5fef1353d4508ecdd1ee76254f"},
+-    {file = "greenlet-3.2.4-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:f47617f698838ba98f4ff4189aef02e7343952df3a615f847bb575c3feb177a7"},
+-    {file = "greenlet-3.2.4-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:af41be48a4f60429d5cad9d22175217805098a9ef7c40bfef44f7669fb9d74d8"},
+     {file = "greenlet-3.2.4-cp310-cp310-win_amd64.whl", hash = "sha256:73f49b5368b5359d04e18d15828eecc1806033db5233397748f4ca813ff1056c"},
+     {file = "greenlet-3.2.4-cp311-cp311-macosx_11_0_universal2.whl", hash = "sha256:96378df1de302bc38e99c3a9aa311967b7dc80ced1dcc6f171e99842987882a2"},
+     {file = "greenlet-3.2.4-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:1ee8fae0519a337f2329cb78bd7a8e128ec0f881073d43f023c7b8d4831d5246"},
+@@ -513,8 +511,6 @@ files = [
+     {file = "greenlet-3.2.4-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:2523e5246274f54fdadbce8494458a2ebdcdbc7b802318466ac5606d3cded1f8"},
+     {file = "greenlet-3.2.4-cp311-cp311-musllinux_1_1_aarch64.whl", hash = "sha256:1987de92fec508535687fb807a5cea1560f6196285a4cde35c100b8cd632cc52"},
+     {file = "greenlet-3.2.4-cp311-cp311-musllinux_1_1_x86_64.whl", hash = "sha256:55e9c5affaa6775e2c6b67659f3a71684de4c549b3dd9afca3bc773533d284fa"},
+-    {file = "greenlet-3.2.4-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:c9c6de1940a7d828635fbd254d69db79e54619f165ee7ce32fda763a9cb6a58c"},
+-    {file = "greenlet-3.2.4-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:03c5136e7be905045160b1b9fdca93dd6727b180feeafda6818e6496434ed8c5"},
+     {file = "greenlet-3.2.4-cp311-cp311-win_amd64.whl", hash = "sha256:9c40adce87eaa9ddb593ccb0fa6a07caf34015a29bf8d344811665b573138db9"},
+     {file = "greenlet-3.2.4-cp312-cp312-macosx_11_0_universal2.whl", hash = "sha256:3b67ca49f54cede0186854a008109d6ee71f66bd57bb36abd6d0a0267b540cdd"},
+     {file = "greenlet-3.2.4-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:ddf9164e7a5b08e9d22511526865780a576f19ddd00d62f8a665949327fde8bb"},
+@@ -524,8 +520,6 @@ files = [
+     {file = "greenlet-3.2.4-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:3b3812d8d0c9579967815af437d96623f45c0f2ae5f04e366de62a12d83a8fb0"},
+     {file = "greenlet-3.2.4-cp312-cp312-musllinux_1_1_aarch64.whl", hash = "sha256:abbf57b5a870d30c4675928c37278493044d7c14378350b3aa5d484fa65575f0"},
+     {file = "greenlet-3.2.4-cp312-cp312-musllinux_1_1_x86_64.whl", hash = "sha256:20fb936b4652b6e307b8f347665e2c615540d4b42b3b4c8a321d8286da7e520f"},
+-    {file = "greenlet-3.2.4-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:ee7a6ec486883397d70eec05059353b8e83eca9168b9f3f9a361971e77e0bcd0"},
+-    {file = "greenlet-3.2.4-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:326d234cbf337c9c3def0676412eb7040a35a768efc92504b947b3e9cfc7543d"},
+     {file = "greenlet-3.2.4-cp312-cp312-win_amd64.whl", hash = "sha256:a7d4e128405eea3814a12cc2605e0e6aedb4035bf32697f72deca74de4105e02"},
+     {file = "greenlet-3.2.4-cp313-cp313-macosx_11_0_universal2.whl", hash = "sha256:1a921e542453fe531144e91e1feedf12e07351b1cf6c9e8a3325ea600a715a31"},
+     {file = "greenlet-3.2.4-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:cd3c8e693bff0fff6ba55f140bf390fa92c994083f838fece0f63be121334945"},
+@@ -535,8 +529,6 @@ files = [
+     {file = "greenlet-3.2.4-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:23768528f2911bcd7e475210822ffb5254ed10d71f4028387e5a99b4c6699671"},
+     {file = "greenlet-3.2.4-cp313-cp313-musllinux_1_1_aarch64.whl", hash = "sha256:00fadb3fedccc447f517ee0d3fd8fe49eae949e1cd0f6a611818f4f6fb7dc83b"},
+     {file = "greenlet-3.2.4-cp313-cp313-musllinux_1_1_x86_64.whl", hash = "sha256:d25c5091190f2dc0eaa3f950252122edbbadbb682aa7b1ef2f8af0f8c0afefae"},
+-    {file = "greenlet-3.2.4-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:6e343822feb58ac4d0a1211bd9399de2b3a04963ddeec21530fc426cc121f19b"},
+-    {file = "greenlet-3.2.4-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:ca7f6f1f2649b89ce02f6f229d7c19f680a6238af656f61e0115b24857917929"},
+     {file = "greenlet-3.2.4-cp313-cp313-win_amd64.whl", hash = "sha256:554b03b6e73aaabec3745364d6239e9e012d64c68ccd0b8430c64ccc14939a8b"},
+     {file = "greenlet-3.2.4-cp314-cp314-macosx_11_0_universal2.whl", hash = "sha256:49a30d5fda2507ae77be16479bdb62a660fa51b1eb4928b524975b3bde77b3c0"},
+     {file = "greenlet-3.2.4-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:299fd615cd8fc86267b47597123e3f43ad79c9d8a22bebdce535e53550763e2f"},
+@@ -544,8 +536,6 @@ files = [
+     {file = "greenlet-3.2.4-cp314-cp314-manylinux2014_s390x.manylinux_2_17_s390x.whl", hash = "sha256:b4a1870c51720687af7fa3e7cda6d08d801dae660f75a76f3845b642b4da6ee1"},
+     {file = "greenlet-3.2.4-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:061dc4cf2c34852b052a8620d40f36324554bc192be474b9e9770e8c042fd735"},
+     {file = "greenlet-3.2.4-cp314-cp314-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:44358b9bf66c8576a9f57a590d5f5d6e72fa4228b763d0e43fee6d3b06d3a337"},
+-    {file = "greenlet-3.2.4-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:2917bdf657f5859fbf3386b12d68ede4cf1f04c90c3a6bc1f013dd68a22e2269"},
+-    {file = "greenlet-3.2.4-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:015d48959d4add5d6c9f6c5210ee3803a830dce46356e3bc326d6776bde54681"},
+     {file = "greenlet-3.2.4-cp314-cp314-win_amd64.whl", hash = "sha256:e37ab26028f12dbb0ff65f29a8d3d44a765c61e729647bf2ddfbbed621726f01"},
+     {file = "greenlet-3.2.4-cp39-cp39-macosx_11_0_universal2.whl", hash = "sha256:b6a7c19cf0d2742d0809a4c05975db036fdff50cd294a93632d6a310bf9ac02c"},
+     {file = "greenlet-3.2.4-cp39-cp39-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:27890167f55d2387576d1f41d9487ef171849ea0359ce1510ca6e06c8bece11d"},
+@@ -555,8 +545,6 @@ files = [
+     {file = "greenlet-3.2.4-cp39-cp39-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:c9913f1a30e4526f432991f89ae263459b1c64d1608c0d22a5c79c287b3c70df"},
+     {file = "greenlet-3.2.4-cp39-cp39-musllinux_1_1_aarch64.whl", hash = "sha256:b90654e092f928f110e0007f572007c9727b5265f7632c2fa7415b4689351594"},
+     {file = "greenlet-3.2.4-cp39-cp39-musllinux_1_1_x86_64.whl", hash = "sha256:81701fd84f26330f0d5f4944d4e92e61afe6319dcd9775e39396e39d7c3e5f98"},
+-    {file = "greenlet-3.2.4-cp39-cp39-musllinux_1_2_aarch64.whl", hash = "sha256:28a3c6b7cd72a96f61b0e4b2a36f681025b60ae4779cc73c1535eb5f29560b10"},
+-    {file = "greenlet-3.2.4-cp39-cp39-musllinux_1_2_x86_64.whl", hash = "sha256:52206cd642670b0b320a1fd1cbfd95bca0e043179c1d8a045f2c6109dfe973be"},
+     {file = "greenlet-3.2.4-cp39-cp39-win32.whl", hash = "sha256:65458b409c1ed459ea899e939f0e1cdb14f58dbc803f2f93c5eab5694d32671b"},
+     {file = "greenlet-3.2.4-cp39-cp39-win_amd64.whl", hash = "sha256:d2e685ade4dafd447ede19c31277a224a239a0a1a4eca4e6390efedf20260cfb"},
+     {file = "greenlet-3.2.4.tar.gz", hash = "sha256:0dca0d95ff849f9a364385f36ab49f50065d76964944638be9691e1832e9f86d"},
+@@ -1097,14 +1085,14 @@ files = [
+ 
+ [[package]]
+ name = "pydantic"
+-version = "2.12.5"
++version = "2.12.4"
+ description = "Data validation using Python type hints"
+ optional = false
+ python-versions = ">=3.9"
+ groups = ["main"]
+ files = [
+-    {file = "pydantic-2.12.5-py3-none-any.whl", hash = "sha256:e561593fccf61e8a20fc46dfc2dfe075b8be7d0188df33f221ad1f0139180f9d"},
+-    {file = "pydantic-2.12.5.tar.gz", hash = "sha256:4d351024c75c0f085a9febbb665ce8c0c6ec5d30e903bdb6394b7ede26aebb49"},
++    {file = "pydantic-2.12.4-py3-none-any.whl", hash = "sha256:92d3d202a745d46f9be6df459ac5a064fdaa3c1c4cd8adcfa332ccf3c05f871e"},
++    {file = "pydantic-2.12.4.tar.gz", hash = "sha256:0f8cb9555000a4b5b617f66bfd2566264c4984b27589d3b845685983e8ea85ac"},
+ ]
+ 
+ [package.dependencies]
+diff --git a/oid4vc/auth_server/resources/dev_seed.py b/oid4vc/auth_server/resources/dev_seed.py
+index 368452e..0b27c33 100644
+--- a/oid4vc/auth_server/resources/dev_seed.py
++++ b/oid4vc/auth_server/resources/dev_seed.py
+@@ -11,14 +11,13 @@ import asyncio
+ import secrets
+ from typing import Any
+ 
+-from authlib.jose import JsonWebKey
+-from cryptography.hazmat.primitives import serialization
+-from cryptography.hazmat.primitives.asymmetric import ec
+-
+ from admin.config import settings
+ from admin.schemas.client import ClientIn
+ from admin.services.tenant_service import TenantService
++from authlib.jose import JsonWebKey
+ from core.db.session import DatabaseSessionManager
++from cryptography.hazmat.primitives import serialization
++from cryptography.hazmat.primitives.asymmetric import ec
+ 
+ 
+ def _gen_es256_keypair() -> tuple[str, dict[str, Any]]:
+diff --git a/oid4vc/auth_server/tenant/deps.py b/oid4vc/auth_server/tenant/deps.py
+index 59f9c2d..0245e29 100644
+--- a/oid4vc/auth_server/tenant/deps.py
++++ b/oid4vc/auth_server/tenant/deps.py
+@@ -5,12 +5,11 @@ from functools import lru_cache
+ from typing import AsyncIterator
+ 
+ import httpx
++from core.observability.observability import current_request_id
++from core.utils.retry import with_retries
+ from fastapi import Depends, HTTPException, Request
+ from sqlalchemy import text
+ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+-
+-from core.observability.observability import current_request_id
+-from core.utils.retry import with_retries
+ from tenant.config import settings
+ 
+ # In-memory cache: uid -> (timestamp, ctx)
+diff --git a/oid4vc/auth_server/tenant/main.py b/oid4vc/auth_server/tenant/main.py
+index 7648830..52aefc1 100644
+--- a/oid4vc/auth_server/tenant/main.py
++++ b/oid4vc/auth_server/tenant/main.py
+@@ -3,16 +3,15 @@
+ from contextlib import asynccontextmanager
+ from typing import AsyncIterator
+ 
+-from fastapi import Depends, FastAPI, Request, status
+-from fastapi.middleware.cors import CORSMiddleware
+-from fastapi.responses import ORJSONResponse
+-from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from core.observability.observability import (
+     RequestContextMiddleware,
+     setup_structlog_json,
+ )
+ from core.utils.logging import get_logger
++from fastapi import Depends, FastAPI, Request, status
++from fastapi.middleware.cors import CORSMiddleware
++from fastapi.responses import ORJSONResponse
++from sqlalchemy.ext.asyncio import AsyncSession
+ from tenant.config import settings
+ 
+ from .deps import get_db_session
+diff --git a/oid4vc/auth_server/tenant/models.py b/oid4vc/auth_server/tenant/models.py
+index 8ca0574..63177d9 100644
+--- a/oid4vc/auth_server/tenant/models.py
++++ b/oid4vc/auth_server/tenant/models.py
+@@ -3,19 +3,11 @@
+ from datetime import datetime
+ from typing import Any
+ 
+-from sqlalchemy import (
+-    Boolean,
+-    ForeignKey,
+-    Integer,
+-    Text,
+-    UniqueConstraint,
+-    func,
+-)
++from core.models import Base
++from sqlalchemy import Boolean, ForeignKey, Integer, Text, UniqueConstraint, func
+ from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
+ from sqlalchemy.orm import Mapped, mapped_column, relationship
+ 
+-from core.models import Base
+-
+ 
+ class Subject(Base):
+     """Subject model."""
+@@ -64,8 +56,12 @@ class PreAuthCode(Base):
+     authorization_details: Mapped[list[dict[str, Any]] | None] = mapped_column(
+         JSONB, nullable=True
+     )
+-    expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+-    issued_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
++    expires_at: Mapped[datetime] = mapped_column(
++        TIMESTAMP(timezone=True), nullable=False
++    )
++    issued_at: Mapped[datetime] = mapped_column(
++        TIMESTAMP(timezone=True), nullable=False
++    )
+     used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+     subject: Mapped["Subject"] = relationship(
+         back_populates="pre_auth_codes", lazy="joined"
+@@ -82,11 +78,17 @@ class AccessToken(Base):
+         ForeignKey("subject.id", onupdate="CASCADE", ondelete="CASCADE"), nullable=False
+     )
+     token: Mapped[str] = mapped_column(Text, nullable=False)
+-    issued_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+-    expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
++    issued_at: Mapped[datetime] = mapped_column(
++        TIMESTAMP(timezone=True), nullable=False
++    )
++    expires_at: Mapped[datetime] = mapped_column(
++        TIMESTAMP(timezone=True), nullable=False
++    )
+     revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+     cnf_jkt: Mapped[str | None] = mapped_column(Text, nullable=True)
+-    token_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
++    token_metadata: Mapped[dict | None] = mapped_column(
++        "metadata", JSONB, nullable=True
++    )
+     subject: Mapped["Subject"] = relationship(
+         back_populates="access_tokens", lazy="joined"
+     )
+@@ -109,11 +111,17 @@ class RefreshToken(Base):
+         nullable=False,
+     )
+     token_hash: Mapped[str] = mapped_column(Text, nullable=False)
+-    issued_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+-    expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
++    issued_at: Mapped[datetime] = mapped_column(
++        TIMESTAMP(timezone=True), nullable=False
++    )
++    expires_at: Mapped[datetime] = mapped_column(
++        TIMESTAMP(timezone=True), nullable=False
++    )
+     used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+     revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+-    token_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
++    token_metadata: Mapped[dict | None] = mapped_column(
++        "metadata", JSONB, nullable=True
++    )
+     subject: Mapped["Subject"] = relationship(
+         back_populates="refresh_tokens", lazy="joined"
+     )
+@@ -134,6 +142,10 @@ class DpopJti(Base):
+     htm: Mapped[str | None] = mapped_column(Text, nullable=True)
+     htu: Mapped[str | None] = mapped_column(Text, nullable=True)
+     cnf_jkt: Mapped[str | None] = mapped_column(Text, nullable=True)
+-    issued_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+-    expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
++    issued_at: Mapped[datetime] = mapped_column(
++        TIMESTAMP(timezone=True), nullable=False
++    )
++    expires_at: Mapped[datetime] = mapped_column(
++        TIMESTAMP(timezone=True), nullable=False
++    )
+     subject: Mapped["Subject"] = relationship(back_populates="dpop_jtis", lazy="joined")
+diff --git a/oid4vc/auth_server/tenant/oauth/grants.py b/oid4vc/auth_server/tenant/oauth/grants.py
+index a42e5bf..78d7bff 100644
+--- a/oid4vc/auth_server/tenant/oauth/grants.py
++++ b/oid4vc/auth_server/tenant/oauth/grants.py
+@@ -5,9 +5,8 @@ from urllib.parse import urlparse
+ 
+ from authlib.oauth2.rfc6749 import grants
+ from authlib.oauth2.rfc6749.errors import InvalidRequestError
+-from starlette.requests import Request
+-
+ from core.consts import OAuth2Flow, OAuth2GrantType
++from starlette.requests import Request
+ from tenant.oauth.integration.context import get_context, update_context
+ 
+ 
+diff --git a/oid4vc/auth_server/tenant/oauth/integration/request.py b/oid4vc/auth_server/tenant/oauth/integration/request.py
+index ffa7261..5ca34c8 100644
+--- a/oid4vc/auth_server/tenant/oauth/integration/request.py
++++ b/oid4vc/auth_server/tenant/oauth/integration/request.py
+@@ -3,7 +3,6 @@
+ from authlib.oauth2.rfc6749.requests import BasicOAuth2Payload, OAuth2Request
+ from sqlalchemy.ext.asyncio import AsyncSession
+ from starlette.requests import Request
+-
+ from tenant.oauth.integration.context import set_context
+ 
+ 
+diff --git a/oid4vc/auth_server/tenant/oauth/server.py b/oid4vc/auth_server/tenant/oauth/server.py
+index 514f716..7752f85 100644
+--- a/oid4vc/auth_server/tenant/oauth/server.py
++++ b/oid4vc/auth_server/tenant/oauth/server.py
+@@ -3,13 +3,9 @@
+ from typing import Any
+ 
+ from authlib.oauth2.rfc6749 import AuthorizationServer
+-from authlib.oauth2.rfc6749.errors import (
+-    InvalidGrantError,
+-    InvalidRequestError,
+-)
+-from fastapi import HTTPException as FastAPIHTTPException
+-
++from authlib.oauth2.rfc6749.errors import InvalidGrantError, InvalidRequestError
+ from core.consts import OAuth2Flow
++from fastapi import HTTPException as FastAPIHTTPException
+ from tenant.oauth.grants import PreAuthorizedCodeGrant, RotatingRefreshTokenGrant
+ from tenant.oauth.integration.context import get_context
+ from tenant.oauth.integration.server import CoreAuthorizationServer
+@@ -71,7 +67,9 @@ def get_authorization_server() -> AuthorizationServer:
+                 if response_meta.get("c_nonce"):
+                     token["c_nonce"] = response_meta["c_nonce"]
+                 if response_meta.get("c_nonce_expires_in"):
+-                    token["c_nonce_expires_in"] = int(response_meta["c_nonce_expires_in"])
++                    token["c_nonce_expires_in"] = int(
++                        response_meta["c_nonce_expires_in"]
++                    )
+                 return
+ 
+             if flow == OAuth2Flow.REFRESH_TOKEN:
+@@ -92,7 +90,9 @@ def get_authorization_server() -> AuthorizationServer:
+                         "refresh_token": new_refresh_token,
+                         "token_type": "Bearer",
+                         "expires_in": int(
+-                            (new_access.expires_at - new_access.issued_at).total_seconds()
++                            (
++                                new_access.expires_at - new_access.issued_at
++                            ).total_seconds()
+                         ),
+                     }
+                 )
+@@ -103,7 +103,9 @@ def get_authorization_server() -> AuthorizationServer:
+                 if response_meta.get("c_nonce"):
+                     token["c_nonce"] = response_meta["c_nonce"]
+                 if response_meta.get("c_nonce_expires_in"):
+-                    token["c_nonce_expires_in"] = int(response_meta["c_nonce_expires_in"])
++                    token["c_nonce_expires_in"] = int(
++                        response_meta["c_nonce_expires_in"]
++                    )
+                 return
+         except FastAPIHTTPException as e:  # map service errors to OAuth errors
+             if e.status_code == 400:
+diff --git a/oid4vc/auth_server/tenant/repositories/access_token_repository.py b/oid4vc/auth_server/tenant/repositories/access_token_repository.py
+index 6d136e6..d621efb 100644
+--- a/oid4vc/auth_server/tenant/repositories/access_token_repository.py
++++ b/oid4vc/auth_server/tenant/repositories/access_token_repository.py
+@@ -5,7 +5,6 @@ from typing import Union
+ 
+ from sqlalchemy import select
+ from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from tenant.models import AccessToken
+ 
+ 
+@@ -21,7 +20,9 @@ class AccessTokenRepository:
+         """Normalize epoch seconds or datetime to UTC datetime."""
+         if isinstance(value, datetime):
+             return (
+-                value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
++                value
++                if value.tzinfo is not None
++                else value.replace(tzinfo=timezone.utc)
+             )
+         return datetime.fromtimestamp(float(value), tz=timezone.utc)
+ 
+diff --git a/oid4vc/auth_server/tenant/repositories/grant_repository.py b/oid4vc/auth_server/tenant/repositories/grant_repository.py
+index 7374387..2978a35 100644
+--- a/oid4vc/auth_server/tenant/repositories/grant_repository.py
++++ b/oid4vc/auth_server/tenant/repositories/grant_repository.py
+@@ -4,7 +4,6 @@ from typing import Any
+ 
+ from sqlalchemy import select, update
+ from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from tenant.models import PreAuthCode
+ 
+ 
+diff --git a/oid4vc/auth_server/tenant/repositories/refresh_token_repository.py b/oid4vc/auth_server/tenant/repositories/refresh_token_repository.py
+index f1f05c4..268da36 100644
+--- a/oid4vc/auth_server/tenant/repositories/refresh_token_repository.py
++++ b/oid4vc/auth_server/tenant/repositories/refresh_token_repository.py
+@@ -5,7 +5,6 @@ from typing import Union
+ 
+ from sqlalchemy import update
+ from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from tenant.models import RefreshToken
+ 
+ 
+@@ -20,7 +19,9 @@ class RefreshTokenRepository:
+     def _to_dt(value: Union[int, float, datetime]) -> datetime:
+         if isinstance(value, datetime):
+             return (
+-                value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
++                value
++                if value.tzinfo is not None
++                else value.replace(tzinfo=timezone.utc)
+             )
+         return datetime.fromtimestamp(float(value), tz=timezone.utc)
+ 
+diff --git a/oid4vc/auth_server/tenant/repositories/subject_repository.py b/oid4vc/auth_server/tenant/repositories/subject_repository.py
+index 52a6cf7..0685840 100644
+--- a/oid4vc/auth_server/tenant/repositories/subject_repository.py
++++ b/oid4vc/auth_server/tenant/repositories/subject_repository.py
+@@ -2,7 +2,6 @@
+ 
+ from sqlalchemy import select
+ from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from tenant.models import Subject
+ 
+ 
+diff --git a/oid4vc/auth_server/tenant/routers/grants.py b/oid4vc/auth_server/tenant/routers/grants.py
+index 21d51c4..5e4fa10 100644
+--- a/oid4vc/auth_server/tenant/routers/grants.py
++++ b/oid4vc/auth_server/tenant/routers/grants.py
+@@ -1,10 +1,9 @@
+ """Pre-authorized code issuance (per-tenant)."""
+ 
++from core.models import Client as AuthClient
+ from fastapi import APIRouter, Depends, HTTPException, Path
+ from fastapi.responses import ORJSONResponse
+ from sqlalchemy.ext.asyncio import AsyncSession
+-
+-from core.models import Client as AuthClient
+ from tenant.deps import get_db_session
+ from tenant.schemas.grant import PreAuthGrantIn, PreAuthGrantOut
+ from tenant.security.client_auth import client_auth
+diff --git a/oid4vc/auth_server/tenant/routers/introspect.py b/oid4vc/auth_server/tenant/routers/introspect.py
+index 6737fce..9d24bc4 100644
+--- a/oid4vc/auth_server/tenant/routers/introspect.py
++++ b/oid4vc/auth_server/tenant/routers/introspect.py
+@@ -1,10 +1,9 @@
+ """API for token introspection."""
+ 
++from core.models import Client as AuthClient
+ from fastapi import APIRouter, Depends, Form, Path
+ from fastapi.responses import ORJSONResponse
+ from sqlalchemy.ext.asyncio import AsyncSession
+-
+-from core.models import Client as AuthClient
+ from tenant.deps import get_db_session
+ from tenant.security.client_auth import client_auth
+ from tenant.services.introspect_service import introspect_access_token
+diff --git a/oid4vc/auth_server/tenant/routers/token.py b/oid4vc/auth_server/tenant/routers/token.py
+index 35cf9c3..58d2bb5 100644
+--- a/oid4vc/auth_server/tenant/routers/token.py
++++ b/oid4vc/auth_server/tenant/routers/token.py
+@@ -3,10 +3,9 @@
+ from fastapi import APIRouter, Depends, Form, Path, Request
+ from fastapi.responses import ORJSONResponse
+ from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from tenant.deps import get_db_session
+-from tenant.oauth.server import get_authorization_server
+ from tenant.oauth.integration.request import to_oauth2_request
++from tenant.oauth.server import get_authorization_server
+ 
+ router = APIRouter(prefix="/tenants/{uid}")
+ 
+diff --git a/oid4vc/auth_server/tenant/routers/well_known.py b/oid4vc/auth_server/tenant/routers/well_known.py
+index 1f19002..3a77905 100644
+--- a/oid4vc/auth_server/tenant/routers/well_known.py
++++ b/oid4vc/auth_server/tenant/routers/well_known.py
+@@ -2,7 +2,6 @@
+ 
+ from fastapi import APIRouter, Path, Request, Response
+ from fastapi.responses import ORJSONResponse
+-
+ from tenant.config import settings
+ from tenant.services.well_known_service import (
+     build_openid_configuration,
+diff --git a/oid4vc/auth_server/tenant/security/client_auth.py b/oid4vc/auth_server/tenant/security/client_auth.py
+index c14ddb2..443925e 100644
+--- a/oid4vc/auth_server/tenant/security/client_auth.py
++++ b/oid4vc/auth_server/tenant/security/client_auth.py
+@@ -1,5 +1,7 @@
+ """Tenant client authentication dependency."""
+ 
++from core.models import Client as AuthClient
++from core.security.client_auth import base_client_auth
+ from fastapi import Depends, Request, Security
+ from fastapi.security import (
+     HTTPAuthorizationCredentials,
+@@ -8,9 +10,6 @@ from fastapi.security import (
+     HTTPBearer,
+ )
+ from sqlalchemy.ext.asyncio import AsyncSession
+-
+-from core.models import Client as AuthClient
+-from core.security.client_auth import base_client_auth
+ from tenant.deps import get_db_session
+ 
+ basic_security = HTTPBasic(auto_error=False)
+diff --git a/oid4vc/auth_server/tenant/services/grant_service.py b/oid4vc/auth_server/tenant/services/grant_service.py
+index d2f9cf2..6dcd586 100644
+--- a/oid4vc/auth_server/tenant/services/grant_service.py
++++ b/oid4vc/auth_server/tenant/services/grant_service.py
+@@ -4,10 +4,9 @@ import secrets
+ import uuid
+ from datetime import timedelta
+ 
++from core.security.utils import utcnow
+ from sqlalchemy.exc import IntegrityError
+ from sqlalchemy.ext.asyncio import AsyncSession
+-
+-from core.security.utils import utcnow
+ from tenant.config import settings
+ from tenant.models import PreAuthCode
+ from tenant.repositories.grant_repository import GrantRepository
+diff --git a/oid4vc/auth_server/tenant/services/introspect_service.py b/oid4vc/auth_server/tenant/services/introspect_service.py
+index d967135..a9efb1a 100644
+--- a/oid4vc/auth_server/tenant/services/introspect_service.py
++++ b/oid4vc/auth_server/tenant/services/introspect_service.py
+@@ -2,9 +2,8 @@
+ 
+ from typing import Any
+ 
+-from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from core.security.utils import utcnow
++from sqlalchemy.ext.asyncio import AsyncSession
+ from tenant.repositories.access_token_repository import AccessTokenRepository
+ 
+ 
+diff --git a/oid4vc/auth_server/tenant/services/signing_service.py b/oid4vc/auth_server/tenant/services/signing_service.py
+index 1670f2b..d4a091b 100644
+--- a/oid4vc/auth_server/tenant/services/signing_service.py
++++ b/oid4vc/auth_server/tenant/services/signing_service.py
+@@ -3,7 +3,6 @@
+ from typing import Any
+ 
+ import httpx
+-
+ from core.observability.observability import current_request_id
+ from core.utils.retry import with_retries
+ from tenant.config import settings
+diff --git a/oid4vc/auth_server/tenant/services/token_service.py b/oid4vc/auth_server/tenant/services/token_service.py
+index 18f5ec4..2eef3e4 100644
+--- a/oid4vc/auth_server/tenant/services/token_service.py
++++ b/oid4vc/auth_server/tenant/services/token_service.py
+@@ -3,9 +3,6 @@
+ import secrets
+ from typing import Any
+ 
+-from fastapi import HTTPException, status
+-from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from core.security.utils import (
+     compute_access_exp,
+     compute_refresh_exp,
+@@ -13,6 +10,8 @@ from core.security.utils import (
+     new_refresh_token,
+     utcnow,
+ )
++from fastapi import HTTPException, status
++from sqlalchemy.ext.asyncio import AsyncSession
+ from tenant.config import settings
+ from tenant.repositories.access_token_repository import AccessTokenRepository
+ from tenant.repositories.grant_repository import GrantRepository
+diff --git a/oid4vc/auth_server/tenant/services/well_known_service.py b/oid4vc/auth_server/tenant/services/well_known_service.py
+index a23939f..0955a01 100644
+--- a/oid4vc/auth_server/tenant/services/well_known_service.py
++++ b/oid4vc/auth_server/tenant/services/well_known_service.py
+@@ -2,9 +2,8 @@
+ 
+ import ipaddress
+ 
+-from fastapi import Request
+-
+ from core.consts import OAuth2GrantType
++from fastapi import Request
+ from tenant.config import settings
+ from tenant.deps import get_tenant_jwks
+ 
+diff --git a/oid4vc/auth_server/tests/admin/services/test_admin_signing_service.py b/oid4vc/auth_server/tests/admin/services/test_admin_signing_service.py
+index 6afed88..f813522 100644
+--- a/oid4vc/auth_server/tests/admin/services/test_admin_signing_service.py
++++ b/oid4vc/auth_server/tests/admin/services/test_admin_signing_service.py
+@@ -2,11 +2,10 @@ from datetime import datetime, timedelta, timezone
+ from types import SimpleNamespace
+ 
+ import pytest
+-from fastapi import HTTPException
+-from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from admin.schemas.internal import JwtSignRequest
+ from admin.services import signing_service
++from fastapi import HTTPException
++from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ 
+ class DummyScalarResult:
+@@ -48,7 +47,9 @@ async def test_sign_tenant_jwt_success(monkeypatch):
+     monkeypatch.setattr(
+         signing_service, "datetime", SimpleNamespace(now=lambda tz=None: now)
+     )
+-    monkeypatch.setattr(signing_service, "decrypt_private_pem", lambda pem: "private-key")
++    monkeypatch.setattr(
++        signing_service, "decrypt_private_pem", lambda pem: "private-key"
++    )
+     monkeypatch.setattr(signing_service.JsonWebKey, "import_key", lambda pem: "jwk")
+ 
+     class FakeJwt:
+@@ -65,7 +66,9 @@ async def test_sign_tenant_jwt_success(monkeypatch):
+ 
+     session = DummySession([key])
+     req = JwtSignRequest(
+-        claims={"exp": int((now + timedelta(minutes=5)).timestamp())}, kid=None, alg=None
++        claims={"exp": int((now + timedelta(minutes=5)).timestamp())},
++        kid=None,
++        alg=None,
+     )
+ 
+     resp = await signing_service.sign_tenant_jwt(session, "tenant-1", req)
+@@ -110,7 +113,9 @@ async def test_sign_tenant_jwt_enforces_exp(monkeypatch):
+ 
+     # Exp in past
+     req = JwtSignRequest(
+-        claims={"exp": int((now - timedelta(seconds=1)).timestamp())}, kid=None, alg=None
++        claims={"exp": int((now - timedelta(seconds=1)).timestamp())},
++        kid=None,
++        alg=None,
+     )
+     with pytest.raises(HTTPException) as exc_info:
+         await signing_service.sign_tenant_jwt(session, "tenant-1", req)
+@@ -132,7 +137,9 @@ async def test_sign_tenant_jwt_enforces_exp(monkeypatch):
+     )
+     sess2 = DummySession([key2])
+     req = JwtSignRequest(
+-        claims={"exp": int((now + timedelta(minutes=10)).timestamp())}, kid=None, alg=None
++        claims={"exp": int((now + timedelta(minutes=10)).timestamp())},
++        kid=None,
++        alg=None,
+     )
+     with pytest.raises(HTTPException) as exc_info:
+         await signing_service.sign_tenant_jwt(sess2, "tenant-1", req)
+diff --git a/oid4vc/auth_server/tests/admin/services/test_internal_service.py b/oid4vc/auth_server/tests/admin/services/test_internal_service.py
+index 4a3449c..e0f2bea 100644
+--- a/oid4vc/auth_server/tests/admin/services/test_internal_service.py
++++ b/oid4vc/auth_server/tests/admin/services/test_internal_service.py
+@@ -3,11 +3,10 @@ from types import SimpleNamespace
+ from typing import cast
+ 
+ import pytest
++from admin.services import internal_service
+ from fastapi import HTTPException
+ from sqlalchemy.ext.asyncio import AsyncSession
+ 
+-from admin.services import internal_service
+-
+ 
+ class DummyScalarResult:
+     def __init__(self, value):
+diff --git a/oid4vc/auth_server/tests/admin/test_deps.py b/oid4vc/auth_server/tests/admin/test_deps.py
+index e9e0f80..37ebecb 100644
+--- a/oid4vc/auth_server/tests/admin/test_deps.py
++++ b/oid4vc/auth_server/tests/admin/test_deps.py
+@@ -1,9 +1,8 @@
+ from contextlib import asynccontextmanager
+ from typing import AsyncIterator
+ 
+-import pytest
+-
+ import admin.deps as admin_deps
++import pytest
+ from core.db.session import DatabaseSessionManager, make_session_dependency
+ 
+ 
+diff --git a/oid4vc/auth_server/tests/admin/test_main.py b/oid4vc/auth_server/tests/admin/test_main.py
+index 60aa239..0eb5ca6 100644
+--- a/oid4vc/auth_server/tests/admin/test_main.py
++++ b/oid4vc/auth_server/tests/admin/test_main.py
+@@ -1,11 +1,10 @@
+ import json
+ from contextlib import asynccontextmanager
+ 
++import admin.main as admin_main
+ import pytest
+ from fastapi import Request
+ 
+-import admin.main as admin_main
+-
+ 
+ @pytest.mark.asyncio
+ async def test_health_check_success(monkeypatch):
+diff --git a/oid4vc/auth_server/tests/core/security/test_client_auth.py b/oid4vc/auth_server/tests/core/security/test_client_auth.py
+index bf37426..e489275 100644
+--- a/oid4vc/auth_server/tests/core/security/test_client_auth.py
++++ b/oid4vc/auth_server/tests/core/security/test_client_auth.py
+@@ -4,13 +4,12 @@ from typing import cast
+ from unittest.mock import AsyncMock, MagicMock
+ 
+ import pytest
++from core.consts import ClientAuthMethod
++from core.security import client_auth
+ from fastapi import HTTPException
+ from fastapi.security import HTTPAuthorizationCredentials, HTTPBasicCredentials
+ from starlette.requests import Request
+ 
+-from core.consts import ClientAuthMethod
+-from core.security import client_auth
+-
+ 
+ def make_request() -> Request:
+     scope = {
+@@ -133,13 +132,17 @@ async def test_load_jwks_uri_failure_returns_none(monkeypatch):
+ 
+ 
+ def test_validate_jwt_alg_success(monkeypatch):
+-    monkeypatch.setattr(client_auth, "jwt_header_unverified", lambda _: {"alg": "RS256"})
++    monkeypatch.setattr(
++        client_auth, "jwt_header_unverified", lambda _: {"alg": "RS256"}
++    )
+ 
+     client_auth._validate_jwt_alg("token", "RS256")
+ 
+ 
+ def test_validate_jwt_alg_failure(monkeypatch):
+-    monkeypatch.setattr(client_auth, "jwt_header_unverified", lambda _: {"alg": "HS256"})
++    monkeypatch.setattr(
++        client_auth, "jwt_header_unverified", lambda _: {"alg": "HS256"}
++    )
+ 
+     with pytest.raises(HTTPException) as exc_info:
+         client_auth._validate_jwt_alg("token", "RS256")
+@@ -338,7 +341,9 @@ async def test_authenticate_shared_key_jwt_sub_mismatch(monkeypatch):
+ 
+ def test_authenticate_client_secret_basic_success(monkeypatch):
+     client = fake_client(client_secret="stored-hash")
+-    monkeypatch.setattr(client_auth, "verify_secret_pbkdf2", lambda _token, _stored: True)
++    monkeypatch.setattr(
++        client_auth, "verify_secret_pbkdf2", lambda _token, _stored: True
++    )
+ 
+     client_auth._authenticate_client_secret_basic(client, "provided")
+ 
+@@ -407,7 +412,9 @@ async def test_base_client_auth_client_secret_basic_success(
+ 
+     stub_client_repo(lambda cid: client if cid == "client-1" else None)
+     monkeypatch.setattr(
+-        client_auth, "verify_secret_pbkdf2", lambda token, stored: token == "clear-secret"
++        client_auth,
++        "verify_secret_pbkdf2",
++        lambda token, stored: token == "clear-secret",
+     )
+ 
+     result = await client_auth.base_client_auth(
+@@ -436,7 +443,9 @@ async def test_base_client_auth_client_secret_basic_invalid_secret(
+     )
+ 
+     stub_client_repo(lambda cid: client if cid == "client-1" else None)
+-    monkeypatch.setattr(client_auth, "verify_secret_pbkdf2", lambda token, stored: False)
++    monkeypatch.setattr(
++        client_auth, "verify_secret_pbkdf2", lambda token, stored: False
++    )
+ 
+     with pytest.raises(HTTPException) as exc_info:
+         await client_auth.base_client_auth(
+diff --git a/oid4vc/auth_server/tests/tenant/oauth/test_grants.py b/oid4vc/auth_server/tests/tenant/oauth/test_grants.py
+index 6a2dffd..1fc60b7 100644
+--- a/oid4vc/auth_server/tests/tenant/oauth/test_grants.py
++++ b/oid4vc/auth_server/tests/tenant/oauth/test_grants.py
+@@ -3,7 +3,6 @@ from typing import Any, cast
+ 
+ import pytest
+ from authlib.oauth2.rfc6749 import AuthorizationServer, OAuth2Request
+-
+ from tenant.oauth.grants import PreAuthorizedCodeGrant, RotatingRefreshTokenGrant
+ 
+ 
+@@ -16,9 +15,13 @@ class DummyServer(AuthorizationServer):
+         self.saved = (token, request)
+ 
+ 
+-def make_request(data: dict, *, url: str = "https://example.org/token") -> OAuth2Request:
++def make_request(
++    data: dict, *, url: str = "https://example.org/token"
++) -> OAuth2Request:
+     req = OAuth2Request(method="POST", uri=url)
+-    cast(Any, req).payload = SimpleNamespace(data=data, grant_type=data.get("grant_type"))
++    cast(Any, req).payload = SimpleNamespace(
++        data=data, grant_type=data.get("grant_type")
++    )
+     return req
+ 
+ 
+@@ -58,7 +61,9 @@ async def test_pre_auth_grant_missing_uid(monkeypatch):
+         "tenant.oauth.grants.get_context",
+         lambda _req: SimpleNamespace(uid=None, db=object()),
+     )
+-    monkeypatch.setattr("tenant.oauth.grants.update_context", lambda req, token_ctx: None)
++    monkeypatch.setattr(
++        "tenant.oauth.grants.update_context", lambda req, token_ctx: None
++    )
+ 
+     grant = PreAuthorizedCodeGrant(request, server)
+     await grant.validate_token_request()
+diff --git a/oid4vc/auth_server/tests/tenant/oauth/test_server.py b/oid4vc/auth_server/tests/tenant/oauth/test_server.py
+index 3b2fc8b..75d3490 100644
+--- a/oid4vc/auth_server/tests/tenant/oauth/test_server.py
++++ b/oid4vc/auth_server/tests/tenant/oauth/test_server.py
+@@ -4,9 +4,8 @@ from types import SimpleNamespace
+ from unittest.mock import AsyncMock
+ 
+ import pytest
+-from authlib.oauth2.rfc6749 import OAuth2Request
+-
+ import tenant.oauth.server as oauth_server
++from authlib.oauth2.rfc6749 import OAuth2Request
+ from core.consts import OAuth2Flow
+ 
+ 
+diff --git a/oid4vc/auth_server/tests/tenant/services/test_grant_service.py b/oid4vc/auth_server/tests/tenant/services/test_grant_service.py
+index ec21a42..084b3d5 100644
+--- a/oid4vc/auth_server/tests/tenant/services/test_grant_service.py
++++ b/oid4vc/auth_server/tests/tenant/services/test_grant_service.py
+@@ -3,11 +3,10 @@ from types import SimpleNamespace
+ from typing import Any
+ 
+ import pytest
++import tenant.services.grant_service as grant_service
+ from sqlalchemy.exc import IntegrityError
+ from sqlalchemy.ext.asyncio import AsyncSession
+ 
+-import tenant.services.grant_service as grant_service
+-
+ 
+ class DummySession(AsyncSession):
+     def __init__(self):
+diff --git a/oid4vc/auth_server/tests/tenant/services/test_introspect_service.py b/oid4vc/auth_server/tests/tenant/services/test_introspect_service.py
+index 899e281..fb48d3b 100644
+--- a/oid4vc/auth_server/tests/tenant/services/test_introspect_service.py
++++ b/oid4vc/auth_server/tests/tenant/services/test_introspect_service.py
+@@ -3,7 +3,6 @@ from types import SimpleNamespace
+ 
+ import pytest
+ from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from tenant.services import introspect_service
+ 
+ 
+diff --git a/oid4vc/auth_server/tests/tenant/services/test_signing_service.py b/oid4vc/auth_server/tests/tenant/services/test_signing_service.py
+index 699209b..74717a0 100644
+--- a/oid4vc/auth_server/tests/tenant/services/test_signing_service.py
++++ b/oid4vc/auth_server/tests/tenant/services/test_signing_service.py
+@@ -1,7 +1,6 @@
+ from types import SimpleNamespace
+ 
+ import pytest
+-
+ import tenant.services.signing_service as signing_service
+ 
+ 
+@@ -87,7 +86,9 @@ async def test_remote_sign_jwt_without_kid(monkeypatch):
+     monkeypatch.setattr(signing_service.settings, "ADMIN_INTERNAL_AUTH_TOKEN", "token")
+     monkeypatch.setattr(signing_service, "current_request_id", lambda: None)
+ 
+-    result = await signing_service.remote_sign_jwt(uid="tenant-1", claims={"sub": "abc"})
++    result = await signing_service.remote_sign_jwt(
++        uid="tenant-1", claims={"sub": "abc"}
++    )
+ 
+     assert result == {"jwt": "signed"}
+ 
+diff --git a/oid4vc/auth_server/tests/tenant/services/test_token_service.py b/oid4vc/auth_server/tests/tenant/services/test_token_service.py
+index f3f9b3d..19a3e58 100644
+--- a/oid4vc/auth_server/tests/tenant/services/test_token_service.py
++++ b/oid4vc/auth_server/tests/tenant/services/test_token_service.py
+@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock
+ import pytest
+ from fastapi import HTTPException
+ from sqlalchemy.ext.asyncio import AsyncSession
+-
+ from tenant.services import token_service
+ 
+ 
+diff --git a/oid4vc/auth_server/tests/tenant/test_tenant_deps.py b/oid4vc/auth_server/tests/tenant/test_tenant_deps.py
+index c50df30..fbd57a8 100644
+--- a/oid4vc/auth_server/tests/tenant/test_tenant_deps.py
++++ b/oid4vc/auth_server/tests/tenant/test_tenant_deps.py
+@@ -2,9 +2,8 @@ from typing import cast
+ 
+ import httpx
+ import pytest
+-from fastapi import HTTPException
+-
+ import tenant.deps as deps
++from fastapi import HTTPException
+ 
+ 
+ def make_response(
+diff --git a/oid4vc/auth_server/tests/tenant/test_tenant_main.py b/oid4vc/auth_server/tests/tenant/test_tenant_main.py
+index 14d3dd5..d583e89 100644
+--- a/oid4vc/auth_server/tests/tenant/test_tenant_main.py
++++ b/oid4vc/auth_server/tests/tenant/test_tenant_main.py
+@@ -1,9 +1,8 @@
+ from typing import cast
+ 
+ import pytest
+-from sqlalchemy.ext.asyncio import AsyncSession
+-
+ import tenant.main as tenant_main
++from sqlalchemy.ext.asyncio import AsyncSession
+ 
+ 
+ @pytest.mark.asyncio

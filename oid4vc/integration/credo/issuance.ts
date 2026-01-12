@@ -155,26 +155,26 @@ router.post('/accept-offer', async (req: any, res: any) => {
 
             // Store based on record type
             if (recordType === 'MdocRecord' || record.type === 'MdocRecord') {
-                // @ts-ignore
+                // @ts-ignore - Credo 0.6.x mdoc module API has incomplete type definitions
                 await agent!.mdoc.store({ record });
                 console.log('✅ Stored MdocRecord');
             } else if (recordType === 'SdJwtVcRecord' || record.type === 'SdJwtVcRecord') {
-                // @ts-ignore
+                // @ts-ignore - Credo 0.6.x sdJwtVc module API has incomplete type definitions
                 await agent!.sdJwtVc.store({ record });
                 console.log('✅ Stored SdJwtVcRecord');
             } else if (recordType === 'W3cCredentialRecord' || recordType === 'W3cV2CredentialRecord') {
-                // @ts-ignore
+                // @ts-ignore - Credo 0.6.x w3cCredentials module API has incomplete type definitions
                 await agent!.w3cCredentials.store({ record });
                 console.log('✅ Stored W3cCredentialRecord');
             } else {
                 console.log(`⚠️ Unknown record type: ${recordType}, attempting generic storage`);
                 // Fallback for unknown types - try w3c storage
                 try {
-                    // @ts-ignore
+                    // @ts-ignore - Credo 0.6.x w3cCredentials module API has incomplete type definitions
                     await agent!.w3cCredentials.store({ record });
                 } catch (e) {
                     console.error('Failed to store with w3cCredentials, trying sdJwtVc:', e);
-                    // @ts-ignore
+                    // @ts-ignore - Credo 0.6.x sdJwtVc module API has incomplete type definitions
                     await agent!.sdJwtVc.store({ record });
                 }
             }

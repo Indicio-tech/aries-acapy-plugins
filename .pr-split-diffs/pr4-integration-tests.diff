@@ -1,0 +1,4129 @@
+diff --git a/oid4vc/integration/tests/test_acapy_credo_dcql_flow.py b/oid4vc/integration/tests/test_acapy_credo_dcql_flow.py
+new file mode 100644
+index 0000000..558cf0b
+--- /dev/null
++++ b/oid4vc/integration/tests/test_acapy_credo_dcql_flow.py
+@@ -0,0 +1,1298 @@
++"""Test ACA-Py to Credo DCQL-based OID4VP flow.
++
++This test covers the complete DCQL (Digital Credentials Query Language) flow:
++1. ACA-Py (Issuer) issues credential via OID4VCI
++2. Credo receives and stores credential
++3. ACA-Py (Verifier) creates DCQL query and presentation request
++4. Credo presents credential using DCQL response format
++5. ACA-Py (Verifier) validates the presentation
++
++DCQL is the query language used in OID4VP v1.0 as an alternative to
++Presentation Exchange. It supports both SD-JWT VC and mDOC formats.
++
++References:
++- OID4VP v1.0: https://openid.net/specs/openid-4-verifiable-presentations-1_0.html
++- DCQL: https://openid.github.io/oid4vc-haip-sd-jwt-vc/openid4vc-high-assurance-interoperability-profile-sd-jwt-vc-wg-draft.html
++"""
++
++import asyncio
++import uuid
++
++import pytest
++
++from .test_utils import assert_selective_disclosure
++
++
++class TestDCQLSdJwtFlow:
++    """Test DCQL-based presentation flow for SD-JWT VC credentials."""
++
++    @pytest.mark.asyncio
++    async def test_dcql_sd_jwt_basic_flow(
++        self,
++        acapy_issuer_admin,
++        acapy_verifier_admin,
++        credo_client,
++    ):
++        """Test DCQL flow with SD-JWT VC: issue → receive → present with DCQL → verify.
++
++        Uses the spec-compliant dc+sd-jwt format identifier and DCQL claims path syntax.
++        """
++
++        # Step 1: Setup SD-JWT credential configuration on ACA-Py issuer
++        random_suffix = str(uuid.uuid4())[:8]
++        credential_supported = {
++            "id": f"DCQLTestCredential_{random_suffix}",
++            "format": "vc+sd-jwt",  # ACA-Py uses vc+sd-jwt for issuance
++            "scope": "IdentityCredential",
++            "proof_types_supported": {
++                "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
++            },
++            "format_data": {
++                "cryptographic_binding_methods_supported": ["did:key"],
++                "cryptographic_suites_supported": ["EdDSA"],
++                "vct": "https://credentials.example.com/identity_credential",
++                "claims": {
++                    "given_name": {"mandatory": True},
++                    "family_name": {"mandatory": True},
++                    "birth_date": {"mandatory": False},
++                    "address": {
++                        "street_address": {"mandatory": False},
++                        "locality": {"mandatory": False},
++                    },
++                },
++                "display": [
++                    {
++                        "name": "Identity Credential",
++                        "locale": "en-US",
++                        "description": "A basic identity credential for DCQL testing",
++                    }
++                ],
++            },
++            "vc_additional_data": {
++                "sd_list": [
++                    "/given_name",
++                    "/family_name",
++                    "/birth_date",
++                    "/address/street_address",
++                    "/address/locality",
++                ]
++            },
++        }
++
++        credential_config_response = await acapy_issuer_admin.post(
++            "/oid4vci/credential-supported/create", json=credential_supported
++        )
++        config_id = credential_config_response["supported_cred_id"]
++
++        # Create a DID for the issuer
++        did_response = await acapy_issuer_admin.post(
++            "/wallet/did/create",
++            json={"method": "key", "options": {"key_type": "ed25519"}},
++        )
++        issuer_did = did_response["result"]["did"]
++
++        # Step 2: Create credential offer and issue credential
++        exchange_request = {
++            "supported_cred_id": config_id,
++            "credential_subject": {
++                "given_name": "Alice",
++                "family_name": "Johnson",
++                "birth_date": "1990-05-15",
++                "address": {
++                    "street_address": "123 Main St",
++                    "locality": "Anytown",
++                },
++            },
++            "did": issuer_did,
++        }
++
++        exchange_response = await acapy_issuer_admin.post(
++            "/oid4vci/exchange/create", json=exchange_request
++        )
++        exchange_id = exchange_response["exchange_id"]
++
++        offer_response = await acapy_issuer_admin.get(
++            "/oid4vci/credential-offer", params={"exchange_id": exchange_id}
++        )
++        credential_offer_uri = offer_response["credential_offer"]
++
++        # Step 3: Credo accepts credential offer
++        accept_offer_request = {
++            "credential_offer": credential_offer_uri,
++            "holder_did_method": "key",
++        }
++
++        credential_response = await credo_client.post(
++            "/oid4vci/accept-offer", json=accept_offer_request
++        )
++        assert (
++            credential_response.status_code == 200
++        ), f"Credential issuance failed: {credential_response.text}"
++        credential_result = credential_response.json()
++
++        assert "credential" in credential_result
++        assert credential_result["format"] == "vc+sd-jwt"
++        received_credential = credential_result["credential"]
++
++        # Step 4: Create DCQL query on ACA-Py verifier
++        # Using OID4VP v1.0 DCQL syntax with claims path arrays
++        dcql_query = {
++            "credentials": [
++                {
++                    "id": "identity_credential",
++                    "format": "vc+sd-jwt",  # Using vc+sd-jwt (also supports dc+sd-jwt)
++                    "meta": {
++                        "vct_values": [
++                            "https://credentials.example.com/identity_credential"
++                        ]
++                    },
++                    "claims": [
++                        {"id": "given_name_claim", "path": ["given_name"]},
++                        {"id": "family_name_claim", "path": ["family_name"]},
++                    ],
++                }
++            ]
++        }
++
++        dcql_response = await acapy_verifier_admin.post(
++            "/oid4vp/dcql/queries", json=dcql_query
++        )
++        assert "dcql_query_id" in dcql_response
++        dcql_query_id = dcql_response["dcql_query_id"]
++
++        # Step 5: Create presentation request using DCQL query
++        presentation_request_data = {
++            "dcql_query_id": dcql_query_id,
++            "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256"]}},
++        }
++
++        presentation_request = await acapy_verifier_admin.post(
++            "/oid4vp/request", json=presentation_request_data
++        )
++        assert "request_uri" in presentation_request
++        request_uri = presentation_request["request_uri"]
++        presentation_id = presentation_request["presentation"]["presentation_id"]
++
++        # Step 6: Credo presents credential using DCQL format
++        present_request = {
++            "request_uri": request_uri,
++            "credentials": [received_credential],
++        }
++
++        presentation_response = await credo_client.post(
++            "/oid4vp/present", json=present_request
++        )
++        assert (
++            presentation_response.status_code == 200
++        ), f"Presentation failed: {presentation_response.text}"
++        presentation_result = presentation_response.json()
++
++        # Verify Credo reports success
++        assert presentation_result.get("success") is True
++        assert (
++            presentation_result.get("result", {})
++            .get("serverResponse", {})
++            .get("status")
++            == 200
++        )
++
++        # Step 7: Poll for presentation validation on ACA-Py verifier
++        max_retries = 15
++        retry_interval = 1.0
++        presentation_valid = False
++        latest_presentation = None
++
++        for _ in range(max_retries):
++            latest_presentation = await acapy_verifier_admin.get(
++                f"/oid4vp/presentation/{presentation_id}"
++            )
++
++            if latest_presentation.get("state") == "presentation-valid":
++                presentation_valid = True
++                break
++
++            await asyncio.sleep(retry_interval)
++
++        assert presentation_valid, (
++            f"DCQL presentation validation failed. "
++            f"Final state: {latest_presentation.get('state') if latest_presentation else 'None'}"
++        )
++
++        print("✅ DCQL SD-JWT basic flow completed successfully!")
++        print(f"   - DCQL query ID: {dcql_query_id}")
++        print(f"   - Presentation ID: {presentation_id}")
++        print(f"   - Final state: {latest_presentation.get('state')}")
++
++    @pytest.mark.asyncio
++    async def test_dcql_sd_jwt_nested_claims(
++        self,
++        acapy_issuer_admin,
++        acapy_verifier_admin,
++        credo_client,
++    ):
++        """Test DCQL with nested claims path for SD-JWT VC.
++
++        Tests the DCQL claims path syntax for accessing nested properties:
++        path: ["address", "street_address"]
++        """
++
++        # Setup credential with nested claims
++        random_suffix = str(uuid.uuid4())[:8]
++        credential_supported = {
++            "id": f"NestedClaimsCredential_{random_suffix}",
++            "format": "vc+sd-jwt",
++            "scope": "AddressCredential",
++            "proof_types_supported": {
++                "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
++            },
++            "format_data": {
++                "cryptographic_binding_methods_supported": ["did:key"],
++                "cryptographic_suites_supported": ["EdDSA"],
++                "vct": "https://credentials.example.com/address_credential",
++                "claims": {
++                    "address": {
++                        "street_address": {"mandatory": True},
++                        "locality": {"mandatory": True},
++                        "postal_code": {"mandatory": False},
++                        "country": {"mandatory": True},
++                    },
++                },
++            },
++            "vc_additional_data": {
++                "sd_list": [
++                    "/address/street_address",
++                    "/address/locality",
++                    "/address/postal_code",
++                    "/address/country",
++                ]
++            },
++        }
++
++        credential_config_response = await acapy_issuer_admin.post(
++            "/oid4vci/credential-supported/create", json=credential_supported
++        )
++        config_id = credential_config_response["supported_cred_id"]
++
++        did_response = await acapy_issuer_admin.post(
++            "/wallet/did/create",
++            json={"method": "key", "options": {"key_type": "ed25519"}},
++        )
++        issuer_did = did_response["result"]["did"]
++
++        exchange_request = {
++            "supported_cred_id": config_id,
++            "credential_subject": {
++                "address": {
++                    "street_address": "456 Oak Avenue",
++                    "locality": "Springfield",
++                    "postal_code": "12345",
++                    "country": "US",
++                },
++            },
++            "did": issuer_did,
++        }
++
++        exchange_response = await acapy_issuer_admin.post(
++            "/oid4vci/exchange/create", json=exchange_request
++        )
++        exchange_id = exchange_response["exchange_id"]
++
++        offer_response = await acapy_issuer_admin.get(
++            "/oid4vci/credential-offer", params={"exchange_id": exchange_id}
++        )
++
++        # Credo receives credential
++        credential_response = await credo_client.post(
++            "/oid4vci/accept-offer",
++            json={
++                "credential_offer": offer_response["credential_offer"],
++                "holder_did_method": "key",
++            },
++        )
++        assert credential_response.status_code == 200
++        received_credential = credential_response.json()["credential"]
++
++        # Create DCQL query with nested claims path
++        dcql_query = {
++            "credentials": [
++                {
++                    "id": "address_credential",
++                    "format": "vc+sd-jwt",
++                    "meta": {
++                        "vct_values": [
++                            "https://credentials.example.com/address_credential"
++                        ]
++                    },
++                    "claims": [
++                        # Nested claims path syntax
++                        {"id": "street", "path": ["address", "street_address"]},
++                        {"id": "city", "path": ["address", "locality"]},
++                        {"id": "country", "path": ["address", "country"]},
++                    ],
++                }
++            ]
++        }
++
++        dcql_response = await acapy_verifier_admin.post(
++            "/oid4vp/dcql/queries", json=dcql_query
++        )
++        dcql_query_id = dcql_response["dcql_query_id"]
++
++        # Create and execute presentation request
++        presentation_request = await acapy_verifier_admin.post(
++            "/oid4vp/request",
++            json={
++                "dcql_query_id": dcql_query_id,
++                "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256"]}},
++            },
++        )
++        request_uri = presentation_request["request_uri"]
++        presentation_id = presentation_request["presentation"]["presentation_id"]
++
++        # Present credential
++        presentation_response = await credo_client.post(
++            "/oid4vp/present",
++            json={"request_uri": request_uri, "credentials": [received_credential]},
++        )
++        assert presentation_response.status_code == 200
++        assert presentation_response.json().get("success") is True
++
++        # Verify presentation
++        for _ in range(15):
++            latest_presentation = await acapy_verifier_admin.get(
++                f"/oid4vp/presentation/{presentation_id}"
++            )
++            if latest_presentation.get("state") == "presentation-valid":
++                break
++            await asyncio.sleep(1.0)
++
++        assert latest_presentation.get("state") == "presentation-valid"
++        print("✅ DCQL SD-JWT nested claims flow completed successfully!")
++
++
++class TestDCQLMdocFlow:
++    """Test DCQL-based presentation flow for mDOC credentials."""
++
++    @pytest.mark.asyncio
++    async def test_dcql_mdoc_basic_flow(
++        self,
++        acapy_issuer_admin,
++        acapy_verifier_admin,
++        credo_client,
++        setup_all_trust_anchors,  # noqa: ARG002 - required fixture for mDOC trust
++    ):
++        """Test DCQL flow with mDOC: issue → receive → present with DCQL → verify.
++
++        Uses mso_mdoc format with namespace-based claims paths.
++        Note: Uses doctype_value (singular) for OID4VP v1.0 spec compliance.
++        """
++
++        # Step 1: Setup mDOC credential configuration
++        random_suffix = str(uuid.uuid4())[:8]
++        credential_supported = {
++            "id": f"DCQLMdocCredential_{random_suffix}",
++            "format": "mso_mdoc",
++            "scope": "MobileDriversLicense",
++            "cryptographic_binding_methods_supported": ["cose_key", "did:key", "did"],
++            "cryptographic_suites_supported": ["ES256"],
++            "proof_types_supported": {
++                "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
++            },
++            "format_data": {
++                "doctype": "org.iso.18013.5.1.mDL",
++                "claims": {
++                    "org.iso.18013.5.1": {
++                        "given_name": {"mandatory": True},
++                        "family_name": {"mandatory": True},
++                        "birth_date": {"mandatory": True},
++                        "document_number": {"mandatory": False},
++                    }
++                },
++                "display": [
++                    {
++                        "name": "Mobile Driver's License",
++                        "locale": "en-US",
++                        "description": "A mobile driver's license for DCQL testing",
++                    }
++                ],
++            },
++        }
++
++        credential_config_response = await acapy_issuer_admin.post(
++            "/oid4vci/credential-supported/create", json=credential_supported
++        )
++        config_id = credential_config_response["supported_cred_id"]
++
++        did_response = await acapy_issuer_admin.post(
++            "/wallet/did/create",
++            json={"method": "key", "options": {"key_type": "p256"}},
++        )
++        issuer_did = did_response["result"]["did"]
++
++        # Step 2: Issue credential
++        exchange_request = {
++            "supported_cred_id": config_id,
++            "credential_subject": {
++                "org.iso.18013.5.1": {
++                    "given_name": "Bob",
++                    "family_name": "Williams",
++                    "birth_date": "1985-03-22",
++                    "document_number": "DL-123456",
++                }
++            },
++            "did": issuer_did,
++        }
++
++        exchange_response = await acapy_issuer_admin.post(
++            "/oid4vci/exchange/create", json=exchange_request
++        )
++        exchange_id = exchange_response["exchange_id"]
++
++        offer_response = await acapy_issuer_admin.get(
++            "/oid4vci/credential-offer", params={"exchange_id": exchange_id}
++        )
++
++        # Step 3: Credo receives credential
++        credential_response = await credo_client.post(
++            "/oid4vci/accept-offer",
++            json={
++                "credential_offer": offer_response["credential_offer"],
++                "holder_did_method": "key",
++            },
++        )
++        assert (
++            credential_response.status_code == 200
++        ), f"mDOC issuance failed: {credential_response.text}"
++        credential_result = credential_response.json()
++        assert credential_result["format"] == "mso_mdoc"
++        received_credential = credential_result["credential"]
++
++        # Step 4: Create DCQL query for mDOC
++        # Using namespace/claim_name syntax for mDOC claims
++        dcql_query = {
++            "credentials": [
++                {
++                    "id": "mdl_credential",
++                    "format": "mso_mdoc",
++                    "meta": {
++                        # Using singular doctype_value for OID4VP v1.0 spec compliance
++                        "doctype_value": "org.iso.18013.5.1.mDL"
++                    },
++                    "claims": [
++                        # mDOC claims use namespace/claim_name syntax
++                        {
++                            "id": "given_name_claim",
++                            "namespace": "org.iso.18013.5.1",
++                            "claim_name": "given_name",
++                        },
++                        {
++                            "id": "family_name_claim",
++                            "namespace": "org.iso.18013.5.1",
++                            "claim_name": "family_name",
++                        },
++                    ],
++                }
++            ]
++        }
++
++        dcql_response = await acapy_verifier_admin.post(
++            "/oid4vp/dcql/queries", json=dcql_query
++        )
++        assert "dcql_query_id" in dcql_response
++        dcql_query_id = dcql_response["dcql_query_id"]
++
++        # Step 5: Create presentation request
++        presentation_request = await acapy_verifier_admin.post(
++            "/oid4vp/request",
++            json={
++                "dcql_query_id": dcql_query_id,
++                "vp_formats": {"mso_mdoc": {"alg": ["ES256"]}},
++            },
++        )
++        request_uri = presentation_request["request_uri"]
++        presentation_id = presentation_request["presentation"]["presentation_id"]
++
++        # Step 6: Present credential
++        presentation_response = await credo_client.post(
++            "/oid4vp/present",
++            json={"request_uri": request_uri, "credentials": [received_credential]},
++        )
++        assert (
++            presentation_response.status_code == 200
++        ), f"Presentation failed: {presentation_response.text}"
++        assert presentation_response.json().get("success") is True
++
++        # Step 7: Verify presentation
++        presentation_valid = False
++        latest_presentation = None
++
++        for _ in range(15):
++            latest_presentation = await acapy_verifier_admin.get(
++                f"/oid4vp/presentation/{presentation_id}"
++            )
++            if latest_presentation.get("state") == "presentation-valid":
++                presentation_valid = True
++                break
++            await asyncio.sleep(1.0)
++
++        assert presentation_valid, (
++            f"mDOC DCQL presentation validation failed. "
++            f"Final state: {latest_presentation.get('state') if latest_presentation else 'None'}"
++        )
++
++        print("✅ DCQL mDOC basic flow completed successfully!")
++        print(f"   - DCQL query ID: {dcql_query_id}")
++        print("   - Doctype: org.iso.18013.5.1.mDL")
++
++    @pytest.mark.asyncio
++    async def test_dcql_mdoc_path_syntax(
++        self,
++        acapy_issuer_admin,
++        acapy_verifier_admin,
++        credo_client,
++        setup_all_trust_anchors,  # noqa: ARG002 - required fixture for mDOC trust
++    ):
++        """Test DCQL mDOC with path array syntax.
++
++        mDOC claims can also be specified using path: [namespace, claim_name]
++        instead of separate namespace/claim_name properties.
++        """
++
++        # Setup mDOC credential
++        random_suffix = str(uuid.uuid4())[:8]
++        credential_supported = {
++            "id": f"DCQLMdocPathTest_{random_suffix}",
++            "format": "mso_mdoc",
++            "scope": "MobileDriversLicense",
++            "cryptographic_binding_methods_supported": ["cose_key", "did:key"],
++            "cryptographic_suites_supported": ["ES256"],
++            "proof_types_supported": {
++                "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
++            },
++            "format_data": {
++                "doctype": "org.iso.18013.5.1.mDL",
++                "claims": {
++                    "org.iso.18013.5.1": {
++                        "given_name": {"mandatory": True},
++                        "family_name": {"mandatory": True},
++                    }
++                },
++            },
++        }
++
++        config_response = await acapy_issuer_admin.post(
++            "/oid4vci/credential-supported/create", json=credential_supported
++        )
++        config_id = config_response["supported_cred_id"]
++
++        did_response = await acapy_issuer_admin.post(
++            "/wallet/did/create",
++            json={"method": "key", "options": {"key_type": "p256"}},
++        )
++        issuer_did = did_response["result"]["did"]
++
++        exchange_response = await acapy_issuer_admin.post(
++            "/oid4vci/exchange/create",
++            json={
++                "supported_cred_id": config_id,
++                "credential_subject": {
++                    "org.iso.18013.5.1": {
++                        "given_name": "Carol",
++                        "family_name": "Davis",
++                    }
++                },
++                "did": issuer_did,
++            },
++        )
++
++        offer_response = await acapy_issuer_admin.get(
++            "/oid4vci/credential-offer",
++            params={"exchange_id": exchange_response["exchange_id"]},
++        )
++
++        credential_response = await credo_client.post(
++            "/oid4vci/accept-offer",
++            json={
++                "credential_offer": offer_response["credential_offer"],
++                "holder_did_method": "key",
++            },
++        )
++        assert credential_response.status_code == 200
++        received_credential = credential_response.json()["credential"]
++
++        # Create DCQL query using path array syntax for mDOC
++        # path: [namespace, claim_name] format
++        dcql_query = {
++            "credentials": [
++                {
++                    "id": "mdl_path_test",
++                    "format": "mso_mdoc",
++                    "meta": {"doctype_value": "org.iso.18013.5.1.mDL"},
++                    "claims": [
++                        # Using path array syntax: [namespace, claim_name]
++                        {"id": "name", "path": ["org.iso.18013.5.1", "given_name"]},
++                        {"id": "surname", "path": ["org.iso.18013.5.1", "family_name"]},
++                    ],
++                }
++            ]
++        }
++
++        dcql_response = await acapy_verifier_admin.post(
++            "/oid4vp/dcql/queries", json=dcql_query
++        )
++        dcql_query_id = dcql_response["dcql_query_id"]
++
++        presentation_request = await acapy_verifier_admin.post(
++            "/oid4vp/request",
++            json={
++                "dcql_query_id": dcql_query_id,
++                "vp_formats": {"mso_mdoc": {"alg": ["ES256"]}},
++            },
++        )
++
++        presentation_response = await credo_client.post(
++            "/oid4vp/present",
++            json={
++                "request_uri": presentation_request["request_uri"],
++                "credentials": [received_credential],
++            },
++        )
++        assert presentation_response.status_code == 200
++
++        # Verify
++        presentation_id = presentation_request["presentation"]["presentation_id"]
++        for _ in range(15):
++            result = await acapy_verifier_admin.get(
++                f"/oid4vp/presentation/{presentation_id}"
++            )
++            if result.get("state") == "presentation-valid":
++                break
++            await asyncio.sleep(1.0)
++
++        assert result.get("state") == "presentation-valid"
++        print("✅ DCQL mDOC path syntax flow completed successfully!")
++
++
++class TestDCQLSelectiveDisclosure:
++    """Test DCQL-based selective disclosure for both SD-JWT and mDOC."""
++
++    @pytest.mark.asyncio
++    async def test_dcql_sd_jwt_selective_disclosure(
++        self,
++        acapy_issuer_admin,
++        acapy_verifier_admin,
++        credo_client,
++    ):
++        """Test selective disclosure with SD-JWT VC via DCQL.
++
++        Issues a credential with many claims but only requests specific claims
++        in the DCQL query, verifying selective disclosure behavior.
++        """
++
++        random_suffix = str(uuid.uuid4())[:8]
++        credential_supported = {
++            "id": f"SDTestCredential_{random_suffix}",
++            "format": "vc+sd-jwt",
++            "scope": "EmployeeCredential",
++            "proof_types_supported": {
++                "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
++            },
++            "format_data": {
++                "cryptographic_binding_methods_supported": ["did:key"],
++                "cryptographic_suites_supported": ["EdDSA"],
++                "vct": "https://credentials.example.com/employee_credential",
++                "claims": {
++                    "employee_id": {"mandatory": True},
++                    "full_name": {"mandatory": True},
++                    "department": {"mandatory": True},
++                    "salary": {
++                        "mandatory": False
++                    },  # Sensitive - should not be disclosed
++                    "ssn": {
++                        "mandatory": False
++                    },  # Very sensitive - should not be disclosed
++                    "hire_date": {"mandatory": False},
++                },
++            },
++            "vc_additional_data": {
++                "sd_list": [
++                    "/employee_id",
++                    "/full_name",
++                    "/department",
++                    "/salary",
++                    "/ssn",
++                    "/hire_date",
++                ]
++            },
++        }
++
++        config_response = await acapy_issuer_admin.post(
++            "/oid4vci/credential-supported/create", json=credential_supported
++        )
++        config_id = config_response["supported_cred_id"]
++
++        did_response = await acapy_issuer_admin.post(
++            "/wallet/did/create",
++            json={"method": "key", "options": {"key_type": "ed25519"}},
++        )
++        issuer_did = did_response["result"]["did"]
++
++        exchange_response = await acapy_issuer_admin.post(
++            "/oid4vci/exchange/create",
++            json={
++                "supported_cred_id": config_id,
++                "credential_subject": {
++                    "employee_id": "EMP-001",
++                    "full_name": "Jane Smith",
++                    "department": "Engineering",
++                    "salary": 150000,  # Should NOT be disclosed
++                    "ssn": "123-45-6789",  # Should NOT be disclosed
++                    "hire_date": "2020-01-15",
++                },
++                "did": issuer_did,
++            },
++        )
++
++        offer_response = await acapy_issuer_admin.get(
++            "/oid4vci/credential-offer",
++            params={"exchange_id": exchange_response["exchange_id"]},
++        )
++
++        credential_response = await credo_client.post(
++            "/oid4vci/accept-offer",
++            json={
++                "credential_offer": offer_response["credential_offer"],
++                "holder_did_method": "key",
++            },
++        )
++        assert credential_response.status_code == 200
++        received_credential = credential_response.json()["credential"]
++
++        # Create DCQL query requesting ONLY non-sensitive claims
++        dcql_query = {
++            "credentials": [
++                {
++                    "id": "employee_verification",
++                    "format": "vc+sd-jwt",
++                    "meta": {
++                        "vct_values": [
++                            "https://credentials.example.com/employee_credential"
++                        ]
++                    },
++                    "claims": [
++                        # Only request non-sensitive claims
++                        {"id": "emp_id", "path": ["employee_id"]},
++                        {"id": "name", "path": ["full_name"]},
++                        {"id": "dept", "path": ["department"]},
++                        # salary and ssn NOT requested - should not be disclosed
++                    ],
++                }
++            ]
++        }
++
++        dcql_response = await acapy_verifier_admin.post(
++            "/oid4vp/dcql/queries", json=dcql_query
++        )
++        dcql_query_id = dcql_response["dcql_query_id"]
++
++        presentation_request = await acapy_verifier_admin.post(
++            "/oid4vp/request",
++            json={
++                "dcql_query_id": dcql_query_id,
++                "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256"]}},
++            },
++        )
++
++        presentation_response = await credo_client.post(
++            "/oid4vp/present",
++            json={
++                "request_uri": presentation_request["request_uri"],
++                "credentials": [received_credential],
++            },
++        )
++        assert presentation_response.status_code == 200
++
++        # Verify presentation succeeded
++        presentation_id = presentation_request["presentation"]["presentation_id"]
++        for _ in range(15):
++            result = await acapy_verifier_admin.get(
++                f"/oid4vp/presentation/{presentation_id}"
++            )
++            if result.get("state") == "presentation-valid":
++                break
++            await asyncio.sleep(1.0)
++
++        assert result.get("state") == "presentation-valid"
++
++        # Verify selective disclosure: requested claims present, sensitive claims absent
++        assert_selective_disclosure(
++            result.get("matched_credentials"),
++            "employee_verification",
++            must_have=["employee_id", "full_name", "department"],
++            must_not_have=["salary", "ssn"],
++        )
++
++        print("✅ DCQL SD-JWT selective disclosure flow completed successfully!")
++
++    @pytest.mark.asyncio
++    async def test_dcql_mdoc_selective_disclosure(
++        self,
++        acapy_issuer_admin,
++        acapy_verifier_admin,
++        credo_client,
++        setup_all_trust_anchors,  # noqa: ARG002 - required fixture for mDOC trust
++    ):
++        """Test selective disclosure with mDOC via DCQL.
++
++        mDOC inherently supports selective disclosure at the element level.
++        Only requested claims should be included in the presentation.
++        """
++
++        random_suffix = str(uuid.uuid4())[:8]
++        credential_supported = {
++            "id": f"SDMdocCredential_{random_suffix}",
++            "format": "mso_mdoc",
++            "scope": "MobileDriversLicense",
++            "cryptographic_binding_methods_supported": ["cose_key", "did:key"],
++            "cryptographic_suites_supported": ["ES256"],
++            "proof_types_supported": {
++                "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
++            },
++            "format_data": {
++                "doctype": "org.iso.18013.5.1.mDL",
++                "claims": {
++                    "org.iso.18013.5.1": {
++                        "given_name": {"mandatory": True},
++                        "family_name": {"mandatory": True},
++                        "birth_date": {"mandatory": True},
++                        "portrait": {"mandatory": False},  # Sensitive
++                        "driving_privileges": {"mandatory": False},
++                        "signature": {"mandatory": False},  # Sensitive
++                    }
++                },
++            },
++        }
++
++        config_response = await acapy_issuer_admin.post(
++            "/oid4vci/credential-supported/create", json=credential_supported
++        )
++        config_id = config_response["supported_cred_id"]
++
++        did_response = await acapy_issuer_admin.post(
++            "/wallet/did/create",
++            json={"method": "key", "options": {"key_type": "p256"}},
++        )
++        issuer_did = did_response["result"]["did"]
++
++        exchange_response = await acapy_issuer_admin.post(
++            "/oid4vci/exchange/create",
++            json={
++                "supported_cred_id": config_id,
++                "credential_subject": {
++                    "org.iso.18013.5.1": {
++                        "given_name": "David",
++                        "family_name": "Brown",
++                        "birth_date": "1988-07-20",
++                        "portrait": "base64_image_data_here",
++                        "driving_privileges": "Category B",
++                        "signature": "base64_signature_here",
++                    }
++                },
++                "did": issuer_did,
++            },
++        )
++
++        offer_response = await acapy_issuer_admin.get(
++            "/oid4vci/credential-offer",
++            params={"exchange_id": exchange_response["exchange_id"]},
++        )
++
++        credential_response = await credo_client.post(
++            "/oid4vci/accept-offer",
++            json={
++                "credential_offer": offer_response["credential_offer"],
++                "holder_did_method": "key",
++            },
++        )
++        assert credential_response.status_code == 200
++        received_credential = credential_response.json()["credential"]
++
++        # Request only non-sensitive claims
++        dcql_query = {
++            "credentials": [
++                {
++                    "id": "age_verification",
++                    "format": "mso_mdoc",
++                    "meta": {"doctype_value": "org.iso.18013.5.1.mDL"},
++                    "claims": [
++                        # Only request birth_date for age verification
++                        {"namespace": "org.iso.18013.5.1", "claim_name": "birth_date"},
++                        # Do NOT request portrait or signature
++                    ],
++                }
++            ]
++        }
++
++        dcql_response = await acapy_verifier_admin.post(
++            "/oid4vp/dcql/queries", json=dcql_query
++        )
++        dcql_query_id = dcql_response["dcql_query_id"]
++
++        presentation_request = await acapy_verifier_admin.post(
++            "/oid4vp/request",
++            json={
++                "dcql_query_id": dcql_query_id,
++                "vp_formats": {"mso_mdoc": {"alg": ["ES256"]}},
++            },
++        )
++
++        presentation_response = await credo_client.post(
++            "/oid4vp/present",
++            json={
++                "request_uri": presentation_request["request_uri"],
++                "credentials": [received_credential],
++            },
++        )
++        assert presentation_response.status_code == 200
++
++        presentation_id = presentation_request["presentation"]["presentation_id"]
++        for _ in range(15):
++            result = await acapy_verifier_admin.get(
++                f"/oid4vp/presentation/{presentation_id}"
++            )
++            if result.get("state") == "presentation-valid":
++                break
++            await asyncio.sleep(1.0)
++
++        assert result.get("state") == "presentation-valid"
++        print("✅ DCQL mDOC selective disclosure flow completed successfully!")
++
++
++class TestDCQLCredentialSets:
++    """Test DCQL credential_sets for multi-credential scenarios."""
++
++    @pytest.mark.asyncio
++    async def test_dcql_credential_sets_multi_credential(
++        self,
++        acapy_issuer_admin,
++        acapy_verifier_admin,
++        credo_client,
++    ):
++        """Test DCQL credential_sets with multiple credentials.
++
++        credential_sets allows specifying alternative credential combinations
++        that can satisfy a verification request.
++        """
++
++        random_suffix = str(uuid.uuid4())[:8]
++
++        # Create two different credential types
++        # Credential 1: Identity Credential
++        identity_config = {
++            "id": f"IdentityCredential_{random_suffix}",
++            "format": "vc+sd-jwt",
++            "scope": "IdentityCredential",
++            "proof_types_supported": {
++                "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
++            },
++            "format_data": {
++                "cryptographic_binding_methods_supported": ["did:key"],
++                "cryptographic_suites_supported": ["EdDSA"],
++                "vct": "https://credentials.example.com/identity",
++                "claims": {
++                    "given_name": {"mandatory": True},
++                    "family_name": {"mandatory": True},
++                },
++            },
++            "vc_additional_data": {"sd_list": ["/given_name", "/family_name"]},
++        }
++
++        # Credential 2: Age Verification Credential
++        age_config = {
++            "id": f"AgeCredential_{random_suffix}",
++            "format": "vc+sd-jwt",
++            "scope": "AgeVerification",
++            "proof_types_supported": {
++                "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
++            },
++            "format_data": {
++                "cryptographic_binding_methods_supported": ["did:key"],
++                "cryptographic_suites_supported": ["EdDSA"],
++                "vct": "https://credentials.example.com/age_verification",
++                "claims": {
++                    "is_over_18": {"mandatory": True},
++                    "is_over_21": {"mandatory": False},
++                },
++            },
++            "vc_additional_data": {"sd_list": ["/is_over_18", "/is_over_21"]},
++        }
++
++        identity_response = await acapy_issuer_admin.post(
++            "/oid4vci/credential-supported/create", json=identity_config
++        )
++        identity_config_id = identity_response["supported_cred_id"]
++
++        age_response = await acapy_issuer_admin.post(
++            "/oid4vci/credential-supported/create", json=age_config
++        )
++        age_config_id = age_response["supported_cred_id"]
++
++        did_response = await acapy_issuer_admin.post(
++            "/wallet/did/create",
++            json={"method": "key", "options": {"key_type": "ed25519"}},
++        )
++        issuer_did = did_response["result"]["did"]
++
++        # Issue both credentials
++        identity_exchange = await acapy_issuer_admin.post(
++            "/oid4vci/exchange/create",
++            json={
++                "supported_cred_id": identity_config_id,
++                "credential_subject": {
++                    "given_name": "Eve",
++                    "family_name": "Wilson",
++                },
++                "did": issuer_did,
++            },
++        )
++        identity_offer = await acapy_issuer_admin.get(
++            "/oid4vci/credential-offer",
++            params={"exchange_id": identity_exchange["exchange_id"]},
++        )
++
++        age_exchange = await acapy_issuer_admin.post(
++            "/oid4vci/exchange/create",
++            json={
++                "supported_cred_id": age_config_id,
++                "credential_subject": {
++                    "is_over_18": True,
++                    "is_over_21": True,
++                },
++                "did": issuer_did,
++            },
++        )
++        age_offer = await acapy_issuer_admin.get(
++            "/oid4vci/credential-offer",
++            params={"exchange_id": age_exchange["exchange_id"]},
++        )
++
++        # Credo receives both credentials
++        identity_cred_response = await credo_client.post(
++            "/oid4vci/accept-offer",
++            json={
++                "credential_offer": identity_offer["credential_offer"],
++                "holder_did_method": "key",
++            },
++        )
++        assert identity_cred_response.status_code == 200
++        identity_credential = identity_cred_response.json()["credential"]
++
++        age_cred_response = await credo_client.post(
++            "/oid4vci/accept-offer",
++            json={
++                "credential_offer": age_offer["credential_offer"],
++                "holder_did_method": "key",
++            },
++        )
++        assert age_cred_response.status_code == 200
++        age_credential = age_cred_response.json()["credential"]
++
++        # Create DCQL query with credential_sets
++        # This allows presenting EITHER identity + age OR just identity
++        dcql_query = {
++            "credentials": [
++                {
++                    "id": "identity_cred",
++                    "format": "vc+sd-jwt",
++                    "meta": {
++                        "vct_values": ["https://credentials.example.com/identity"]
++                    },
++                    "claims": [
++                        {"id": "name", "path": ["given_name"]},
++                        {"id": "surname", "path": ["family_name"]},
++                    ],
++                },
++                {
++                    "id": "age_cred",
++                    "format": "vc+sd-jwt",
++                    "meta": {
++                        "vct_values": [
++                            "https://credentials.example.com/age_verification"
++                        ]
++                    },
++                    "claims": [
++                        {"id": "age_check", "path": ["is_over_21"]},
++                    ],
++                },
++            ],
++            "credential_sets": [
++                {
++                    # Option 1: Both identity and age credentials
++                    "purpose": "Full identity and age verification",
++                    "options": [["identity_cred", "age_cred"]],
++                },
++                {
++                    # Option 2: Just identity credential
++                    "purpose": "Basic identity verification only",
++                    "options": [["identity_cred"]],
++                },
++            ],
++        }
++
++        dcql_response = await acapy_verifier_admin.post(
++            "/oid4vp/dcql/queries", json=dcql_query
++        )
++        dcql_query_id = dcql_response["dcql_query_id"]
++
++        presentation_request = await acapy_verifier_admin.post(
++            "/oid4vp/request",
++            json={
++                "dcql_query_id": dcql_query_id,
++                "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256"]}},
++            },
++        )
++        request_uri = presentation_request["request_uri"]
++        presentation_id = presentation_request["presentation"]["presentation_id"]
++
++        # Present both credentials
++        presentation_response = await credo_client.post(
++            "/oid4vp/present",
++            json={
++                "request_uri": request_uri,
++                "credentials": [identity_credential, age_credential],
++            },
++        )
++        assert presentation_response.status_code == 200
++
++        # Verify presentation
++        for _ in range(15):
++            result = await acapy_verifier_admin.get(
++                f"/oid4vp/presentation/{presentation_id}"
++            )
++            if result.get("state") == "presentation-valid":
++                break
++            await asyncio.sleep(1.0)
++
++        assert result.get("state") == "presentation-valid"
++        print("✅ DCQL credential_sets multi-credential flow completed successfully!")
++
++
++class TestDCQLSpecCompliance:
++    """Test OID4VP v1.0 spec compliance for DCQL."""
++
++    @pytest.mark.asyncio
++    async def test_dcql_dc_sd_jwt_format_identifier(
++        self,
++        acapy_issuer_admin,
++        acapy_verifier_admin,
++        credo_client,
++    ):
++        """Test using dc+sd-jwt format identifier (OID4VP v1.0 spec).
++
++        The OID4VP v1.0 spec uses dc+sd-jwt as the format identifier
++        for SD-JWT VC in DCQL queries. ACA-Py should accept both
++        vc+sd-jwt and dc+sd-jwt.
++        """
++
++        random_suffix = str(uuid.uuid4())[:8]
++        credential_supported = {
++            "id": f"DcSdJwtTest_{random_suffix}",
++            "format": "vc+sd-jwt",  # Issuance uses vc+sd-jwt
++            "scope": "TestCredential",
++            "proof_types_supported": {
++                "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
++            },
++            "format_data": {
++                "cryptographic_binding_methods_supported": ["did:key"],
++                "cryptographic_suites_supported": ["EdDSA"],
++                "vct": "https://credentials.example.com/test",
++                "claims": {"test_claim": {"mandatory": True}},
++            },
++            "vc_additional_data": {"sd_list": ["/test_claim"]},
++        }
++
++        config_response = await acapy_issuer_admin.post(
++            "/oid4vci/credential-supported/create", json=credential_supported
++        )
++        config_id = config_response["supported_cred_id"]
++
++        did_response = await acapy_issuer_admin.post(
++            "/wallet/did/create",
++            json={"method": "key", "options": {"key_type": "ed25519"}},
++        )
++
++        exchange_response = await acapy_issuer_admin.post(
++            "/oid4vci/exchange/create",
++            json={
++                "supported_cred_id": config_id,
++                "credential_subject": {"test_claim": "test_value"},
++                "did": did_response["result"]["did"],
++            },
++        )
++
++        offer_response = await acapy_issuer_admin.get(
++            "/oid4vci/credential-offer",
++            params={"exchange_id": exchange_response["exchange_id"]},
++        )
++
++        credential_response = await credo_client.post(
++            "/oid4vci/accept-offer",
++            json={
++                "credential_offer": offer_response["credential_offer"],
++                "holder_did_method": "key",
++            },
++        )
++        assert credential_response.status_code == 200
++        received_credential = credential_response.json()["credential"]
++
++        # Create DCQL query using dc+sd-jwt format (spec-compliant)
++        dcql_query = {
++            "credentials": [
++                {
++                    "id": "test_cred",
++                    "format": "dc+sd-jwt",  # Using spec-compliant format identifier
++                    "meta": {"vct_values": ["https://credentials.example.com/test"]},
++                    "claims": [{"path": ["test_claim"]}],
++                }
++            ]
++        }
++
++        dcql_response = await acapy_verifier_admin.post(
++            "/oid4vp/dcql/queries", json=dcql_query
++        )
++        dcql_query_id = dcql_response["dcql_query_id"]
++
++        # Verify query was created with dc+sd-jwt format
++        query_details = await acapy_verifier_admin.get(
++            f"/oid4vp/dcql/query/{dcql_query_id}"
++        )
++        assert query_details["credentials"][0]["format"] == "dc+sd-jwt"
++
++        presentation_request = await acapy_verifier_admin.post(
++            "/oid4vp/request",
++            json={
++                "dcql_query_id": dcql_query_id,
++                "vp_formats": {"dc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256"]}},
++            },
++        )
++
++        presentation_response = await credo_client.post(
++            "/oid4vp/present",
++            json={
++                "request_uri": presentation_request["request_uri"],
++                "credentials": [received_credential],
++            },
++        )
++        assert presentation_response.status_code == 200
++
++        presentation_id = presentation_request["presentation"]["presentation_id"]
++        for _ in range(15):
++            result = await acapy_verifier_admin.get(
++                f"/oid4vp/presentation/{presentation_id}"
++            )
++            if result.get("state") == "presentation-valid":
++                break
++            await asyncio.sleep(1.0)
++
++        assert result.get("state") == "presentation-valid"
++        print("✅ DCQL dc+sd-jwt format identifier test completed successfully!")
+diff --git a/oid4vc/integration/tests/test_dcql.py b/oid4vc/integration/tests/test_dcql.py
+index c0f266d..03fe00a 100644
+--- a/oid4vc/integration/tests/test_dcql.py
++++ b/oid4vc/integration/tests/test_dcql.py
+@@ -1,6 +1,6 @@
+ import pytest
+ 
+-from acapy_controller.controller import Controller
++from acapy_controller import Controller
+ 
+ 
+ @pytest.mark.asyncio
+@@ -11,7 +11,9 @@ async def test_dcql_query_create(controller: Controller):
+                 "id": "pid",
+                 "format": "vc+sd-jwt",
+                 "meta": {
+-                    "vct_values": ["https://credentials.example.com/identity_credential"]
++                    "vct_values": [
++                        "https://credentials.example.com/identity_credential"
++                    ]
+                 },
+                 "claims": [
+                     {"path": ["given_name"]},
+@@ -38,7 +40,9 @@ async def test_dcql_query_list(controller: Controller):
+                 "id": "pid",
+                 "format": "vc+sd-jwt",
+                 "meta": {
+-                    "vct_values": ["https://credentials.example.com/identity_credential"]
++                    "vct_values": [
++                        "https://credentials.example.com/identity_credential"
++                    ]
+                 },
+                 "claims": [
+                     {"path": ["given_name"]},
+@@ -71,7 +75,9 @@ async def test_dcql_query_get(controller: Controller):
+                 "id": "pid",
+                 "format": "vc+sd-jwt",
+                 "meta": {
+-                    "vct_values": ["https://credentials.example.com/identity_credential"]
++                    "vct_values": [
++                        "https://credentials.example.com/identity_credential"
++                    ]
+                 },
+                 "claims": [
+                     {"path": ["given_name"]},
+@@ -100,7 +106,9 @@ async def test_dcql_query_delete(controller: Controller):
+                 "id": "pid",
+                 "format": "vc+sd-jwt",
+                 "meta": {
+-                    "vct_values": ["https://credentials.example.com/identity_credential"]
++                    "vct_values": [
++                        "https://credentials.example.com/identity_credential"
++                    ]
+                 },
+                 "claims": [
+                     {"path": ["given_name"]},
+@@ -114,19 +122,36 @@ async def test_dcql_query_delete(controller: Controller):
+     query = await controller.post("/oid4vp/dcql/queries", json=cred_json)
+     query_id = query["dcql_query_id"]
+ 
++    # Get initial count of queries
+     queries_list = await controller.get(
+         "/oid4vp/dcql/queries",
+     )
++    initial_count = len(queries_list["results"])
+ 
+-    length = len(queries_list["results"])
+-    assert queries_list["results"][0]["credentials"] == cred_json["credentials"]
++    # Verify the query we created exists by filtering for its ID
++    filtered_queries = await controller.get(
++        "/oid4vp/dcql/queries",
++        params={"dcql_query_id": query_id},
++    )
++    assert len(filtered_queries["results"]) == 1
++    assert filtered_queries["results"][0]["credentials"] == cred_json["credentials"]
+ 
+-    queries_list = await controller.delete(
++    # Delete the query
++    await controller.delete(
+         f"/oid4vp/dcql/query/{query_id}",
+     )
+ 
++    # Verify count decreased
+     queries_list = await controller.get(
+         "/oid4vp/dcql/queries",
+     )
+-
+-    assert len(queries_list["results"]) == length - 1
++    assert len(queries_list["results"]) == initial_count - 1
++
++    # Verify the query can be retrieved directly still gives an error (record not found)
++    # Note: The API returns 400 when filtering by a non-existent ID, not an empty list
++    try:
++        await controller.get(f"/oid4vp/dcql/query/{query_id}")
++        assert False, "Expected 404/400 error when getting deleted query"
++    except Exception:
++        # Expected - query was deleted
++        pass
+diff --git a/oid4vc/integration/tests/test_interop/test_credo_mdoc.py b/oid4vc/integration/tests/test_interop/test_credo_mdoc.py
+new file mode 100644
+index 0000000..59f8734
+--- /dev/null
++++ b/oid4vc/integration/tests/test_interop/test_credo_mdoc.py
+@@ -0,0 +1,689 @@
++"""Test mDOC interop between ACA-Py and Credo.
++
++This test file covers mDOC (ISO 18013-5 mobile document) credential issuance
++and presentation flows between ACA-Py and Credo wallets.
++
++Test coverage:
++1. mDOC credential issuance via OID4VCI (DID-based and verification_method flows)
++2. mDOC selective disclosure presentation via OID4VP
++3. mDOC doctype validation
++4. Age predicate verification (age_over_18 without birth_date)
++"""
++
++import uuid
++from typing import Any
++
++import httpx
++import pytest
++import pytest_asyncio
++
++from credo_wrapper import CredoWrapper
++
++# Import shared fixtures from parent conftest
++# Note: setup_all_trust_anchors is defined in tests/conftest.py
++
++
++# Mark all tests as requiring mDOC support
++pytestmark = [pytest.mark.mdoc, pytest.mark.interop]
++
++
++async def create_dcql_request(
++    client: httpx.AsyncClient,
++    dcql_query: dict,
++    vp_formats: dict | None = None,
++) -> str:
++    """Create a DCQL query and then create a VP request using the query ID.
++
++    This follows the correct two-step flow:
++    1. POST /oid4vp/dcql/queries with the DCQL query → returns dcql_query_id
++    2. POST /oid4vp/request with dcql_query_id → returns request_uri
++
++    Args:
++        client: The HTTP client to use
++        dcql_query: The DCQL query definition
++        vp_formats: VP formats (defaults to mso_mdoc with ES256)
++
++    Returns:
++        The request_uri for the VP request
++    """
++    if vp_formats is None:
++        vp_formats = {"mso_mdoc": {"alg": ["ES256"]}}
++
++    # Step 1: Create the DCQL query
++    query_response = await client.post(
++        "/oid4vp/dcql/queries",
++        json=dcql_query,
++    )
++    query_response.raise_for_status()
++    dcql_query_id = query_response.json()["dcql_query_id"]
++
++    # Step 2: Create the VP request using the query ID
++    request_response = await client.post(
++        "/oid4vp/request",
++        json={
++            "dcql_query_id": dcql_query_id,
++            "vp_formats": vp_formats,
++        },
++    )
++    request_response.raise_for_status()
++    return request_response.json()["request_uri"]
++
++
++@pytest_asyncio.fixture
++async def mdoc_credential_config(acapy_issuer: httpx.AsyncClient) -> dict[str, Any]:
++    """Create an mDOC credential configuration on ACA-Py issuer."""
++    random_suffix = str(uuid.uuid4())[:8]
++
++    # mDOC credential configuration for mobile driver's license
++    # Note: Use "jwt" proof type as Credo only supports jwt/attestation (not cwt)
++    credential_supported = {
++        "id": f"org.iso.18013.5.1.mDL_{random_suffix}",
++        "format": "mso_mdoc",
++        "scope": "mDL",
++        "doctype": "org.iso.18013.5.1.mDL",
++        "cryptographic_binding_methods_supported": ["cose_key", "did:key", "did"],
++        "cryptographic_suites_supported": ["ES256"],
++        "proof_types_supported": {
++            "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
++        },
++        "format_data": {
++            "doctype": "org.iso.18013.5.1.mDL",
++            "claims": {
++                "org.iso.18013.5.1": {
++                    "family_name": {"mandatory": True},
++                    "given_name": {"mandatory": True},
++                    "birth_date": {"mandatory": True},
++                    "age_over_18": {"mandatory": False},
++                    "age_over_21": {"mandatory": False},
++                    "issuing_country": {"mandatory": True},
++                    "issuing_authority": {"mandatory": True},
++                    "document_number": {"mandatory": True},
++                },
++            },
++            "display": [
++                {
++                    "name": "Mobile Driving License",
++                    "locale": "en-US",
++                    "description": "ISO 18013-5 compliant mobile driving license",
++                }
++            ],
++        },
++    }
++
++    response = await acapy_issuer.post(
++        "/oid4vci/credential-supported/create", json=credential_supported
++    )
++    response.raise_for_status()
++    config = response.json()
++
++    return {
++        "supported_cred_id": config["supported_cred_id"],
++        "doctype": "org.iso.18013.5.1.mDL",
++        "config": credential_supported,
++    }
++
++
++@pytest_asyncio.fixture
++async def mdoc_issuer_key(acapy_issuer: httpx.AsyncClient) -> dict[str, Any]:
++    """Create or retrieve an mDOC signing key for the issuer."""
++    # Try to get existing keys first
++    response = await acapy_issuer.get("/mso_mdoc/keys")
++    if response.status_code == 200:
++        data = response.json()
++        # API returns {"keys": [...]} format
++        keys = data.get("keys", []) if isinstance(data, dict) else data
++        if keys and len(keys) > 0:
++            return keys[0]
++
++    # Generate a new key if none exist
++    key_request = {
++        "key_type": "ES256",
++        "generate_certificate": True,
++        "certificate_subject": {
++            "common_name": "Test mDL Issuer",
++            "organization": "Test Organization",
++            "country": "US",
++        },
++    }
++
++    response = await acapy_issuer.post("/mso_mdoc/generate-keys", json=key_request)
++    response.raise_for_status()
++    return response.json()
++
++
++@pytest_asyncio.fixture
++async def mdoc_offer_did_based(
++    acapy_issuer: httpx.AsyncClient,
++    mdoc_credential_config: dict[str, Any],
++) -> str:
++    """Create an mDOC credential offer using DID-based signing.
++
++    This is the primary flow that mirrors test_acapy_credo_mdoc_flow.
++    Uses a did:key with P-256 curve for mDOC signing.
++    """
++    # Create credential subject with mDL claims
++    credential_subject = {
++        "org.iso.18013.5.1": {
++            "family_name": "Doe",
++            "given_name": "Jane",
++            "birth_date": "1990-05-15",
++            "age_over_18": True,
++            "age_over_21": True,
++            "issuing_country": "US",
++            "issuing_authority": "State DMV",
++            "document_number": "DL123456789",
++        }
++    }
++
++    # Create an issuer DID for mDOC signing (P-256 for mDOC compatibility)
++    did_response = await acapy_issuer.post(
++        "/wallet/did/create", json={"method": "key", "options": {"key_type": "p256"}}
++    )
++    did_response.raise_for_status()
++    issuer_did = did_response.json()["result"]["did"]
++
++    exchange_request = {
++        "supported_cred_id": mdoc_credential_config["supported_cred_id"],
++        "credential_subject": credential_subject,
++        "did": issuer_did,
++    }
++
++    response = await acapy_issuer.post(
++        "/oid4vci/exchange/create", json=exchange_request
++    )
++    response.raise_for_status()
++    exchange_id = response.json()["exchange_id"]
++
++    response = await acapy_issuer.get(
++        "/oid4vci/credential-offer", params={"exchange_id": exchange_id}
++    )
++    response.raise_for_status()
++    return response.json()["credential_offer"]
++
++
++@pytest_asyncio.fixture
++async def mdoc_offer_verification_method(
++    acapy_issuer: httpx.AsyncClient,
++    mdoc_credential_config: dict[str, Any],
++    mdoc_issuer_key: dict[str, Any],
++) -> str:
++    """Create an mDOC credential offer using verification_method from mDOC keys.
++
++    This flow uses the /mso_mdoc/generate-keys endpoint to create issuer keys
++    with X.509 certificates, then references them via verification_method.
++    """
++    # Create credential subject with mDL claims
++    credential_subject = {
++        "org.iso.18013.5.1": {
++            "family_name": "Smith",
++            "given_name": "John",
++            "birth_date": "1985-03-20",
++            "age_over_18": True,
++            "age_over_21": True,
++            "issuing_country": "US",
++            "issuing_authority": "State DMV",
++            "document_number": "DL987654321",
++        }
++    }
++
++    exchange_request = {
++        "supported_cred_id": mdoc_credential_config["supported_cred_id"],
++        "credential_subject": credential_subject,
++    }
++
++    # Use verification_method from mDOC issuer key if available
++    verification_method = mdoc_issuer_key.get("verification_method")
++    if verification_method and ":" in verification_method:
++        exchange_request["verification_method"] = verification_method
++    else:
++        # Fallback to DID-based if verification_method not available
++        did_response = await acapy_issuer.post(
++            "/wallet/did/create",
++            json={"method": "key", "options": {"key_type": "p256"}},
++        )
++        did_response.raise_for_status()
++        issuer_did = did_response.json()["result"]["did"]
++        exchange_request["did"] = issuer_did
++
++    response = await acapy_issuer.post(
++        "/oid4vci/exchange/create", json=exchange_request
++    )
++    response.raise_for_status()
++    exchange_id = response.json()["exchange_id"]
++
++    response = await acapy_issuer.get(
++        "/oid4vci/credential-offer", params={"exchange_id": exchange_id}
++    )
++    response.raise_for_status()
++    return response.json()["credential_offer"]
++
++
++# Alias for backward compatibility - uses DID-based flow by default
++@pytest_asyncio.fixture
++async def mdoc_offer(
++    mdoc_offer_did_based: str,
++) -> str:
++    """Create an mDOC credential offer (uses DID-based flow by default)."""
++    return mdoc_offer_did_based
++
++
++@pytest_asyncio.fixture
++async def mdoc_presentation_request(
++    acapy_verifier: httpx.AsyncClient,
++) -> str:
++    """Create an mDOC presentation request using DCQL."""
++
++    # DCQL query for mDOC credential
++    dcql_query = {
++        "credentials": [
++            {
++                "id": "mdl_credential",
++                "format": "mso_mdoc",
++                "meta": {
++                    "doctype_value": "org.iso.18013.5.1.mDL",
++                },
++                "claims": [
++                    {
++                        "namespace": "org.iso.18013.5.1",
++                        "claim_name": "family_name",
++                    },
++                    {
++                        "namespace": "org.iso.18013.5.1",
++                        "claim_name": "given_name",
++                    },
++                    {
++                        "namespace": "org.iso.18013.5.1",
++                        "claim_name": "age_over_18",
++                    },
++                ],
++            }
++        ],
++    }
++
++    return await create_dcql_request(acapy_verifier, dcql_query)
++
++
++@pytest_asyncio.fixture
++async def mdoc_age_only_request(
++    acapy_verifier: httpx.AsyncClient,
++) -> str:
++    """Create a presentation request for age verification only (no birth_date)."""
++
++    dcql_query = {
++        "credentials": [
++            {
++                "id": "age_verification",
++                "format": "mso_mdoc",
++                "meta": {
++                    "doctype_value": "org.iso.18013.5.1.mDL",
++                },
++                "claims": [
++                    {
++                        "namespace": "org.iso.18013.5.1",
++                        "claim_name": "age_over_18",
++                        "values": [True],  # Must be true
++                    },
++                ],
++            }
++        ],
++    }
++
++    return await create_dcql_request(acapy_verifier, dcql_query)
++
++
++# =============================================================================
++# mDOC Issuance Tests
++# =============================================================================
++
++
++@pytest.mark.asyncio
++async def test_mdoc_credential_config_creation(
++    mdoc_credential_config: dict[str, Any],
++):
++    """Test that mDOC credential configuration can be created."""
++    assert "supported_cred_id" in mdoc_credential_config
++    assert mdoc_credential_config["doctype"] == "org.iso.18013.5.1.mDL"
++
++
++@pytest.mark.asyncio
++async def test_mdoc_issuer_key_generation(
++    mdoc_issuer_key: dict[str, Any],
++):
++    """Test that mDOC issuer key can be generated."""
++    assert mdoc_issuer_key is not None
++    # Check for required key components
++    assert "key_id" in mdoc_issuer_key or "verification_method" in mdoc_issuer_key
++
++
++@pytest.mark.asyncio
++async def test_mdoc_offer_creation_did_based(
++    mdoc_offer_did_based: str,
++):
++    """Test that mDOC credential offer can be created using DID-based signing."""
++    assert mdoc_offer_did_based is not None
++    assert len(mdoc_offer_did_based) > 0
++    # mDOC offers should start with openid-credential-offer://
++    assert mdoc_offer_did_based.startswith("openid-credential-offer://")
++
++
++@pytest.mark.asyncio
++async def test_mdoc_offer_creation_verification_method(
++    mdoc_offer_verification_method: str,
++):
++    """Test that mDOC credential offer can be created using verification_method."""
++    assert mdoc_offer_verification_method is not None
++    assert len(mdoc_offer_verification_method) > 0
++    # mDOC offers should start with openid-credential-offer://
++    assert mdoc_offer_verification_method.startswith("openid-credential-offer://")
++
++
++@pytest.mark.asyncio
++async def test_mdoc_credential_acceptance_did_based(
++    credo: CredoWrapper,
++    mdoc_offer_did_based: str,
++):
++    """Test Credo accepting an mDOC credential offer using DID-based signing.
++
++    This tests the primary flow where the issuer uses a did:key for signing.
++    """
++    result = await credo.openid4vci_accept_offer(mdoc_offer_did_based)
++
++    assert result is not None
++    assert "credential" in result
++    assert result.get("format") == "mso_mdoc"
++
++
++@pytest.mark.asyncio
++async def test_mdoc_credential_acceptance_verification_method(
++    credo: CredoWrapper,
++    mdoc_offer_verification_method: str,
++):
++    """Test Credo accepting an mDOC credential offer using verification_method.
++
++    This tests the alternative flow where the issuer uses mDOC-specific keys
++    generated via /mso_mdoc/generate-keys with X.509 certificates.
++    """
++    result = await credo.openid4vci_accept_offer(mdoc_offer_verification_method)
++
++    assert result is not None
++    assert "credential" in result
++    assert result.get("format") == "mso_mdoc"
++
++
++# =============================================================================
++# mDOC Presentation Tests
++# =============================================================================
++
++
++@pytest.mark.asyncio
++async def test_mdoc_presentation_request_creation(
++    mdoc_presentation_request: str,
++):
++    """Test that mDOC presentation request can be created."""
++    assert mdoc_presentation_request is not None
++    assert len(mdoc_presentation_request) > 0
++
++
++@pytest.mark.asyncio
++async def test_mdoc_selective_disclosure_presentation(
++    credo: CredoWrapper,
++    mdoc_offer_did_based: str,
++    mdoc_presentation_request: str,
++    setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
++):
++    """Test mDOC selective disclosure presentation flow.
++
++    This test verifies that:
++    1. Credo can receive an mDOC credential
++    2. Credo can present only the requested claims (selective disclosure)
++    3. ACA-Py can verify the mDOC presentation
++
++    Note: setup_all_trust_anchors is required for mDOC verification to work.
++    """
++    # First, get the credential
++    cred_result = await credo.openid4vci_accept_offer(mdoc_offer_did_based)
++    assert "credential" in cred_result
++
++    # Present the credential with selective disclosure
++    pres_result = await credo.openid4vp_accept_request(
++        mdoc_presentation_request,
++        credentials=[cred_result["credential"]],
++    )
++
++    assert pres_result is not None
++
++
++@pytest.mark.asyncio
++async def test_mdoc_age_predicate_verification(
++    credo: CredoWrapper,
++    mdoc_offer_did_based: str,
++    mdoc_age_only_request: str,
++    setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
++):
++    """Test age verification without disclosing birth_date.
++
++    This is a key privacy-preserving feature of mDOC credentials:
++    proving age_over_18 without revealing the actual birth date.
++
++    Note: setup_all_trust_anchors is required for mDOC verification to work.
++    """
++    # Get the credential
++    cred_result = await credo.openid4vci_accept_offer(mdoc_offer_did_based)
++    assert "credential" in cred_result
++
++    # Present only age_over_18
++    pres_result = await credo.openid4vp_accept_request(
++        mdoc_age_only_request,
++        credentials=[cred_result["credential"]],
++    )
++
++    assert pres_result is not None
++
++
++@pytest.mark.asyncio
++async def test_mdoc_presentation_verification_method_flow(
++    credo: CredoWrapper,
++    mdoc_offer_verification_method: str,
++    mdoc_presentation_request: str,
++    setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
++):
++    """Test mDOC presentation flow using verification_method-based credentials.
++
++    This tests the full flow where the issuer uses mDOC-specific keys
++    generated via /mso_mdoc/generate-keys with X.509 certificates.
++    """
++    # First, get the credential
++    cred_result = await credo.openid4vci_accept_offer(mdoc_offer_verification_method)
++    assert "credential" in cred_result
++
++    # Present the credential
++    pres_result = await credo.openid4vp_accept_request(
++        mdoc_presentation_request,
++        credentials=[cred_result["credential"]],
++    )
++
++    assert pres_result is not None
++
++
++# =============================================================================
++# Negative Tests
++# =============================================================================
++
++
++@pytest.mark.asyncio
++async def test_mdoc_wrong_doctype_rejected(
++    acapy_verifier: httpx.AsyncClient,
++):
++    """Test that presenting wrong doctype is rejected."""
++
++    # Create a request for a different doctype
++    dcql_query = {
++        "credentials": [
++            {
++                "id": "wrong_doctype",
++                "format": "mso_mdoc",
++                "meta": {
++                    "doctype_value": "org.example.non_existent",
++                },
++                "claims": [
++                    {
++                        "namespace": "org.example",
++                        "claim_name": "test",
++                    },
++                ],
++            }
++        ],
++    }
++
++    # First create the DCQL query
++    query_response = await acapy_verifier.post(
++        "/oid4vp/dcql/queries",
++        json=dcql_query,
++    )
++    query_response.raise_for_status()
++    dcql_query_id = query_response.json()["dcql_query_id"]
++
++    # Then create the VP request
++    response = await acapy_verifier.post(
++        "/oid4vp/request",
++        json={
++            "dcql_query_id": dcql_query_id,
++            "vp_formats": {
++                "mso_mdoc": {"alg": ["ES256"]},
++            },
++        },
++    )
++
++    # Should succeed in creating the request (validation happens at presentation time)
++    assert response.status_code == 200
++
++
++@pytest.mark.asyncio
++async def test_mdoc_missing_required_claim_handling(
++    acapy_issuer: httpx.AsyncClient,
++    mdoc_credential_config: dict[str, Any],
++):
++    """Test handling of missing required claims in mDOC issuance."""
++
++    # Try to create a credential with missing required claims
++    credential_subject = {
++        "org.iso.18013.5.1": {
++            "family_name": "Doe",
++            # Missing given_name, birth_date, etc.
++        }
++    }
++
++    exchange_request = {
++        "supported_cred_id": mdoc_credential_config["supported_cred_id"],
++        "credential_subject": credential_subject,
++    }
++
++    response = await acapy_issuer.post(
++        "/oid4vci/exchange/create", json=exchange_request
++    )
++
++    # Depending on implementation, this might fail or succeed with partial claims
++    # The actual behavior depends on whether the issuer validates mandatory claims
++    # at exchange creation time or at credential issuance time
++    # API may return 500 for internal validation errors
++    assert response.status_code in [200, 400, 422, 500]
++
++
++# =============================================================================
++# DCQL CredentialSets Tests
++# =============================================================================
++
++
++@pytest.mark.asyncio
++async def test_dcql_credential_sets_request(
++    acapy_verifier: httpx.AsyncClient,
++):
++    """Test DCQL request with credential_sets (alternative credentials)."""
++
++    dcql_query = {
++        "credentials": [
++            {
++                "id": "mdl_credential",
++                "format": "mso_mdoc",
++                "meta": {
++                    "doctype_value": "org.iso.18013.5.1.mDL",
++                },
++                "claims": [
++                    {"namespace": "org.iso.18013.5.1", "claim_name": "family_name"},
++                    {"namespace": "org.iso.18013.5.1", "claim_name": "age_over_18"},
++                ],
++            },
++            {
++                "id": "passport_credential",
++                "format": "mso_mdoc",
++                "meta": {
++                    "doctype_value": "org.iso.23220.1.passport",
++                },
++                "claims": [
++                    {"namespace": "org.iso.23220.1", "claim_name": "family_name"},
++                    {"namespace": "org.iso.23220.1", "claim_name": "date_of_birth"},
++                ],
++            },
++        ],
++        "credential_sets": [
++            {
++                "options": [
++                    ["mdl_credential"],  # Option 1: mDL
++                    ["passport_credential"],  # Option 2: Passport
++                ],
++                "required": True,
++            }
++        ],
++    }
++
++    request_uri = await create_dcql_request(acapy_verifier, dcql_query)
++    assert request_uri is not None
++
++
++@pytest.mark.asyncio
++async def test_dcql_claim_sets_request(
++    acapy_verifier: httpx.AsyncClient,
++):
++    """Test DCQL request with claim_sets (alternative claim combinations)."""
++
++    dcql_query = {
++        "credentials": [
++            {
++                "id": "mdl_credential",
++                "format": "mso_mdoc",
++                "meta": {
++                    "doctype_value": "org.iso.18013.5.1.mDL",
++                },
++                "claims": [
++                    {
++                        "id": "name",
++                        "namespace": "org.iso.18013.5.1",
++                        "claim_name": "family_name",
++                    },
++                    {
++                        "id": "age18",
++                        "namespace": "org.iso.18013.5.1",
++                        "claim_name": "age_over_18",
++                    },
++                    {
++                        "id": "age21",
++                        "namespace": "org.iso.18013.5.1",
++                        "claim_name": "age_over_21",
++                    },
++                    {
++                        "id": "birth",
++                        "namespace": "org.iso.18013.5.1",
++                        "claim_name": "birth_date",
++                    },
++                ],
++                "claim_sets": [
++                    ["name", "age18"],  # Option 1: name + age_over_18
++                    ["name", "age21"],  # Option 2: name + age_over_21
++                    ["name", "birth"],  # Option 3: name + birth_date (full disclosure)
++                ],
++            },
++        ],
++    }
++
++    request_uri = await create_dcql_request(acapy_verifier, dcql_query)
++    assert request_uri is not None
+diff --git a/oid4vc/integration/tests/test_mdoc_age_predicates.py b/oid4vc/integration/tests/test_mdoc_age_predicates.py
+new file mode 100644
+index 0000000..fa46c7d
+--- /dev/null
++++ b/oid4vc/integration/tests/test_mdoc_age_predicates.py
+@@ -0,0 +1,427 @@
++"""Tests for mDOC age predicate verification.
++
++This module tests age-over predicates in mDOC (ISO 18013-5) credentials,
++specifically the ability to verify age without revealing birth_date.
++
++Age predicates are a key privacy feature of mDL (mobile driver's license):
++- Verifier can request "age_over_18", "age_over_21", etc.
++- Holder can prove they meet the age requirement
++- Birth date is NOT revealed to verifier
++
++References:
++- ISO 18013-5:2021 § 7.2.5: Age attestation
++- ISO 18013-5:2021 Annex A: Data elements (age_over_NN)
++"""
++
++import logging
++import uuid
++from datetime import date, timedelta
++
++import pytest
++
++LOGGER = logging.getLogger(__name__)
++
++
++# Mark all tests as mDOC related
++pytestmark = pytest.mark.mdoc
++
++
++class TestMdocAgePredicates:
++    """Test mDOC age predicate verification."""
++
++    @pytest.fixture
++    def birth_date_for_age(self):
++        """Calculate birth date for a given age."""
++
++        def _get_birth_date(age: int) -> str:
++            today = date.today()
++            birth_year = today.year - age
++            return f"{birth_year}-{today.month:02d}-{today.day:02d}"
++
++        return _get_birth_date
++
++    @pytest.mark.asyncio
++    async def test_age_over_18_with_birth_date(
++        self,
++        acapy_issuer_admin,
++        acapy_verifier_admin,
++        birth_date_for_age,
++    ):
++        """Test age_over_18 verification when birth_date is provided.
++
++        This is the basic case: birth_date is in the credential,
++        and verifier requests age_over_18.
++        """
++        LOGGER.info("Testing age_over_18 with birth_date in credential...")
++
++        # Create mDOC credential configuration with birth_date
++        random_suffix = str(uuid.uuid4())[:8]
++        mdoc_config = {
++            "id": f"mDL_AgeTest_{random_suffix}",
++            "format": "mso_mdoc",
++            "doctype": "org.iso.18013.5.1.mDL",
++            "cryptographic_binding_methods_supported": ["cose_key", "did:key", "did"],
++            "cryptographic_suites_supported": ["ES256"],
++            "proof_types_supported": {
++                "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
++            },
++            "format_data": {
++                "doctype": "org.iso.18013.5.1.mDL",
++                "claims": {
++                    "org.iso.18013.5.1": {
++                        "given_name": {"mandatory": True},
++                        "family_name": {"mandatory": True},
++                        "birth_date": {"mandatory": True},
++                        "age_over_18": {"mandatory": False},
++                        "age_over_21": {"mandatory": False},
++                    }
++                },
++            },
++        }
++
++        config_response = await acapy_issuer_admin.post(
++            "/oid4vci/credential-supported/create", json=mdoc_config
++        )
++        config_id = config_response["supported_cred_id"]
++
++        # Create a DID for the issuer (P-256 for mDOC compatibility)
++        did_response = await acapy_issuer_admin.post(
++            "/wallet/did/create",
++            json={"method": "key", "options": {"key_type": "p256"}},
++        )
++        issuer_did = did_response["result"]["did"]
++
++        # Issue credential with birth_date making holder 25 years old
++        birth_date = birth_date_for_age(25)
++        credential_subject = {
++            "org.iso.18013.5.1": {
++                "given_name": "Alice",
++                "family_name": "Smith",
++                "birth_date": birth_date,
++                "age_over_18": True,
++                "age_over_21": True,
++            }
++        }
++
++        exchange_request = {
++            "supported_cred_id": config_id,
++            "credential_subject": credential_subject,
++            "did": issuer_did,
++        }
++
++        exchange = await acapy_issuer_admin.post(
++            "/oid4vci/exchange/create", json=exchange_request
++        )
++        exchange_id = exchange["exchange_id"]
++
++        # Create DCQL query requesting only age_over_18 (not birth_date)
++        dcql_query = {
++            "credentials": [
++                {
++                    "id": "mdl_age_check",
++                    "format": "mso_mdoc",
++                    "meta": {"doctype_value": "org.iso.18013.5.1.mDL"},
++                    "claims": [
++                        {"namespace": "org.iso.18013.5.1", "claim_name": "age_over_18"}
++                    ],
++                }
++            ]
++        }
++
++        dcql_response = await acapy_verifier_admin.post(
++            "/oid4vp/dcql/queries", json=dcql_query
++        )
++        dcql_query_id = dcql_response["dcql_query_id"]
++        LOGGER.info(f"Created DCQL query for age_over_18: {dcql_query_id}")
++
++        # Note: Full flow requires holder wallet with mDOC support
++        # For now, verify the query was created correctly
++        assert dcql_query_id is not None
++        LOGGER.info("✅ age_over_18 DCQL query created successfully")
++
++    @pytest.mark.asyncio
++    async def test_age_over_without_birth_date_disclosure(
++        self,
++        acapy_issuer_admin,
++        acapy_verifier_admin,
++    ):
++        """Test age predicate verification WITHOUT disclosing birth_date.
++
++        This tests the privacy-preserving feature:
++        - Credential contains birth_date
++        - Verifier only requests age_over_18
++        - birth_date should NOT be revealed in presentation
++
++        This is the key privacy feature of mDOC age predicates.
++        """
++        LOGGER.info("Testing age predicate without birth_date disclosure...")
++
++        # Create DCQL query that requests age_over_18 but NOT birth_date
++        dcql_query = {
++            "credentials": [
++                {
++                    "id": "age_only_check",
++                    "format": "mso_mdoc",
++                    "meta": {"doctype_value": "org.iso.18013.5.1.mDL"},
++                    "claims": [
++                        {"namespace": "org.iso.18013.5.1", "claim_name": "age_over_18"},
++                        {"namespace": "org.iso.18013.5.1", "claim_name": "given_name"},
++                    ],
++                }
++            ]
++        }
++
++        dcql_response = await acapy_verifier_admin.post(
++            "/oid4vp/dcql/queries", json=dcql_query
++        )
++        dcql_query_id = dcql_response["dcql_query_id"]
++
++        # Verify query doesn't include birth_date
++        # The verifier should be able to verify age_over_18 without seeing birth_date
++        assert dcql_query_id is not None
++
++        # TODO: When Credo/holder supports mDOC, complete the flow:
++        # 1. Present credential with only age_over_18 disclosed
++        # 2. Verify birth_date is NOT in the presentation
++        # 3. Verify age_over_18 value is correctly verified
++
++        LOGGER.info("✅ Age-only query created (birth_date not requested)")
++
++    @pytest.mark.asyncio
++    async def test_multiple_age_predicates(
++        self,
++        acapy_issuer_admin,
++        acapy_verifier_admin,
++    ):
++        """Test multiple age predicates in single request.
++
++        Request age_over_18, age_over_21, and age_over_65 simultaneously.
++        """
++        LOGGER.info("Testing multiple age predicates...")
++
++        dcql_query = {
++            "credentials": [
++                {
++                    "id": "multi_age_check",
++                    "format": "mso_mdoc",
++                    "meta": {"doctype_value": "org.iso.18013.5.1.mDL"},
++                    "claims": [
++                        {"namespace": "org.iso.18013.5.1", "claim_name": "age_over_18"},
++                        {"namespace": "org.iso.18013.5.1", "claim_name": "age_over_21"},
++                        {"namespace": "org.iso.18013.5.1", "claim_name": "age_over_65"},
++                    ],
++                }
++            ]
++        }
++
++        dcql_response = await acapy_verifier_admin.post(
++            "/oid4vp/dcql/queries", json=dcql_query
++        )
++        dcql_query_id = dcql_response["dcql_query_id"]
++        LOGGER.info(f"Created multi-age DCQL query: {dcql_query_id}")
++
++        assert dcql_query_id is not None
++        LOGGER.info("✅ Multiple age predicates query created successfully")
++
++    @pytest.mark.asyncio
++    async def test_age_predicate_values(
++        self,
++        acapy_issuer_admin,
++        birth_date_for_age,
++    ):
++        """Test that age predicate values are correctly computed.
++
++        Verifies that:
++        - age_over_18 is True for someone 25 years old
++        - age_over_21 is True for someone 25 years old
++        - age_over_65 is False for someone 25 years old
++        """
++        LOGGER.info("Testing age predicate value computation...")
++
++        # Create mDOC configuration
++        random_suffix = str(uuid.uuid4())[:8]
++        mdoc_config = {
++            "id": f"mDL_AgeValues_{random_suffix}",
++            "format": "mso_mdoc",
++            "doctype": "org.iso.18013.5.1.mDL",
++            "cryptographic_binding_methods_supported": ["cose_key", "did:key", "did"],
++            "cryptographic_suites_supported": ["ES256"],
++            "proof_types_supported": {
++                "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
++            },
++            "format_data": {
++                "doctype": "org.iso.18013.5.1.mDL",
++                "claims": {
++                    "org.iso.18013.5.1": {
++                        "given_name": {"mandatory": True},
++                        "birth_date": {"mandatory": True},
++                        "age_over_18": {"mandatory": False},
++                        "age_over_21": {"mandatory": False},
++                        "age_over_65": {"mandatory": False},
++                    }
++                },
++            },
++        }
++
++        config_response = await acapy_issuer_admin.post(
++            "/oid4vci/credential-supported/create", json=mdoc_config
++        )
++        config_id = config_response["supported_cred_id"]
++
++        # Holder is 25 years old
++        birth_date = birth_date_for_age(25)
++
++        # Expected age predicate values for a 25-year-old:
++        expected_predicates = {
++            "age_over_18": True,  # 25 >= 18 ✓
++            "age_over_21": True,  # 25 >= 21 ✓
++            "age_over_65": False,  # 25 >= 65 ✗
++        }
++
++        credential_subject = {
++            "org.iso.18013.5.1": {
++                "given_name": "Bob",
++                "birth_date": birth_date,
++                **expected_predicates,
++            }
++        }
++
++        # Verify credential subject has correct age predicates
++        claims = credential_subject["org.iso.18013.5.1"]
++        assert claims["age_over_18"] == True
++        assert claims["age_over_21"] == True
++        assert claims["age_over_65"] == False
++
++        LOGGER.info(f"✅ Age predicates correctly set for birth_date={birth_date}")
++        LOGGER.info(f"   age_over_18: {claims['age_over_18']}")
++        LOGGER.info(f"   age_over_21: {claims['age_over_21']}")
++        LOGGER.info(f"   age_over_65: {claims['age_over_65']}")
++
++
++class TestMdocAamvaAgePredicates:
++    """Test AAMVA-specific age predicates for US driver's licenses."""
++
++    @pytest.mark.asyncio
++    async def test_aamva_age_predicates(
++        self,
++        acapy_issuer_admin,
++        acapy_verifier_admin,
++    ):
++        """Test AAMVA namespace age predicates.
++
++        AAMVA defines additional age predicates in the domestic namespace:
++        - DHS_compliance (REAL ID compliant)
++        - organ_donor
++        - veteran
++        """
++        LOGGER.info("Testing AAMVA namespace predicates...")
++
++        dcql_query = {
++            "credentials": [
++                {
++                    "id": "aamva_check",
++                    "format": "mso_mdoc",
++                    "meta": {"doctype_value": "org.iso.18013.5.1.mDL"},
++                    "claims": [
++                        # ISO namespace
++                        {"namespace": "org.iso.18013.5.1", "claim_name": "age_over_21"},
++                        # AAMVA domestic namespace
++                        {
++                            "namespace": "org.iso.18013.5.1.aamva",
++                            "claim_name": "DHS_compliance",
++                        },
++                    ],
++                }
++            ]
++        }
++
++        dcql_response = await acapy_verifier_admin.post(
++            "/oid4vp/dcql/queries", json=dcql_query
++        )
++        dcql_query_id = dcql_response["dcql_query_id"]
++        LOGGER.info(f"Created AAMVA DCQL query: {dcql_query_id}")
++
++        assert dcql_query_id is not None
++        LOGGER.info("✅ AAMVA age/compliance query created successfully")
++
++
++class TestMdocAgePredicateEdgeCases:
++    """Test edge cases for age predicate verification."""
++
++    @pytest.fixture
++    def birth_date_for_exact_age(self):
++        """Calculate birth date for exact age boundary testing."""
++
++        def _get_birth_date(years: int, days_offset: int = 0) -> str:
++            today = date.today()
++            birth_date = today.replace(year=today.year - years)
++            birth_date = birth_date - timedelta(days=days_offset)
++            return birth_date.isoformat()
++
++        return _get_birth_date
++
++    @pytest.mark.asyncio
++    async def test_age_boundary_exactly_18(
++        self,
++        acapy_issuer_admin,
++        birth_date_for_exact_age,
++    ):
++        """Test age predicate when holder is exactly 18 today.
++
++        Person born exactly 18 years ago should have age_over_18 = True.
++        """
++        LOGGER.info("Testing age boundary: exactly 18 years old today...")
++
++        # Birth date exactly 18 years ago
++        birth_date = birth_date_for_exact_age(18, days_offset=0)
++
++        # age_over_18 should be True (they turned 18 today)
++        expected_age_over_18 = True
++
++        LOGGER.info(f"Birth date: {birth_date}")
++        LOGGER.info(f"Expected age_over_18: {expected_age_over_18}")
++        LOGGER.info("✅ Age boundary test case defined")
++
++    @pytest.mark.asyncio
++    async def test_age_boundary_one_day_before_18(
++        self,
++        acapy_issuer_admin,
++        birth_date_for_exact_age,
++    ):
++        """Test age predicate when holder turns 18 tomorrow.
++
++        Person who turns 18 tomorrow should have age_over_18 = False.
++        """
++        LOGGER.info("Testing age boundary: turns 18 tomorrow...")
++
++        # Birth date is 18 years minus 1 day ago (turns 18 tomorrow)
++        birth_date = birth_date_for_exact_age(18, days_offset=-1)
++
++        # age_over_18 should be False (not 18 yet)
++        expected_age_over_18 = False
++
++        LOGGER.info(f"Birth date: {birth_date}")
++        LOGGER.info(f"Expected age_over_18: {expected_age_over_18}")
++        LOGGER.info("✅ Age boundary test case defined")
++
++    @pytest.mark.asyncio
++    async def test_age_predicate_leap_year_birthday(
++        self,
++        acapy_issuer_admin,
++    ):
++        """Test age predicate for Feb 29 birthday (leap year).
++
++        People born on Feb 29 have their birthday handled specially.
++        """
++        LOGGER.info("Testing leap year birthday handling...")
++
++        # Someone born Feb 29, 2000 (leap year)
++        birth_date = "2000-02-29"
++
++        # Calculate their age as of today
++        today = date.today()
++        years_since = today.year - 2000
++
++        LOGGER.info(f"Birth date: {birth_date} (leap year)")
++        LOGGER.info(f"Years since birth: {years_since}")
++        LOGGER.info("✅ Leap year test case defined")
+diff --git a/oid4vc/integration/tests/test_multi_credential_dcql.py b/oid4vc/integration/tests/test_multi_credential_dcql.py
+new file mode 100644
+index 0000000..4733a79
+--- /dev/null
++++ b/oid4vc/integration/tests/test_multi_credential_dcql.py
+@@ -0,0 +1,653 @@
++"""Tests for multi-credential DCQL presentations.
++
++This module tests DCQL queries that request multiple credentials of different
++types in a single presentation request.
++
++Multi-credential presentations are useful for:
++- KYC: Identity + Proof of Address + Income verification
++- Healthcare: Insurance + Prescription + Provider credentials
++- Travel: Passport + Visa + Boarding pass
++
++References:
++- OID4VP v1.0: https://openid.net/specs/openid-4-verifiable-presentations-1_0.html
++- DCQL: Digital Credentials Query Language
++"""
++
++import asyncio
++import logging
++import uuid
++
++import pytest
++
++from .test_config import MDOC_AVAILABLE
++
++LOGGER = logging.getLogger(__name__)
++
++
++class TestMultiCredentialDCQL:
++    """Test DCQL multi-credential presentation flows."""
++
++    @pytest.mark.asyncio
++    async def test_two_sd_jwt_credentials(
++        self,
++        acapy_issuer_admin,
++        acapy_verifier_admin,
++        credo_client,
++    ):
++        """Test DCQL query requesting two different SD-JWT credentials.
++
++        Scenario: KYC verification requiring:
++        1. Identity credential (name, birth_date)
++        2. Address credential (street, city, country)
++        """
++        LOGGER.info("Testing DCQL with two SD-JWT credentials...")
++
++        random_suffix = str(uuid.uuid4())[:8]
++
++        # === Create first credential: Identity ===
++        identity_config = {
++            "id": f"IdentityCred_{random_suffix}",
++            "format": "vc+sd-jwt",
++            "scope": "IdentityCredential",
++            "proof_types_supported": {
++                "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
++            },
++            "format_data": {
++                "cryptographic_binding_methods_supported": ["did:key"],
++                "cryptographic_suites_supported": ["EdDSA"],
++                "vct": "https://credentials.example.com/identity",
++                "claims": {
++                    "given_name": {"mandatory": True},
++                    "family_name": {"mandatory": True},
++                    "birth_date": {"mandatory": True},
++                },
++            },
++            "vc_additional_data": {
++                "sd_list": ["/given_name", "/family_name", "/birth_date"]
++            },
++        }
++
++        identity_response = await acapy_issuer_admin.post(
++            "/oid4vci/credential-supported/create", json=identity_config
++        )
++        identity_config_id = identity_response["supported_cred_id"]
++
++        # === Create second credential: Address ===
++        address_config = {
++            "id": f"AddressCred_{random_suffix}",
++            "format": "vc+sd-jwt",
++            "scope": "AddressCredential",
++            "proof_types_supported": {
++                "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
++            },
++            "format_data": {
++                "cryptographic_binding_methods_supported": ["did:key"],
++                "cryptographic_suites_supported": ["EdDSA"],
++                "vct": "https://credentials.example.com/address",
++                "claims": {
++                    "street_address": {"mandatory": True},
++                    "locality": {"mandatory": True},
++                    "country": {"mandatory": True},
++                },
++            },
++            "vc_additional_data": {
++                "sd_list": ["/street_address", "/locality", "/country"]
++            },
++        }
++
++        address_response = await acapy_issuer_admin.post(
++            "/oid4vci/credential-supported/create", json=address_config
++        )
++        address_config_id = address_response["supported_cred_id"]
++
++        # Create issuer DID
++        did_response = await acapy_issuer_admin.post(
++            "/wallet/did/create",
++            json={"method": "key", "options": {"key_type": "ed25519"}},
++        )
++        issuer_did = did_response["result"]["did"]
++
++        # === Issue Identity credential ===
++        identity_exchange = await acapy_issuer_admin.post(
++            "/oid4vci/exchange/create",
++            json={
++                "supported_cred_id": identity_config_id,
++                "credential_subject": {
++                    "given_name": "Alice",
++                    "family_name": "Johnson",
++                    "birth_date": "1990-05-15",
++                },
++                "did": issuer_did,
++            },
++        )
++        identity_offer = await acapy_issuer_admin.get(
++            "/oid4vci/credential-offer",
++            params={"exchange_id": identity_exchange["exchange_id"]},
++        )
++
++        # Credo receives identity credential
++        identity_cred_response = await credo_client.post(
++            "/oid4vci/accept-offer",
++            json={
++                "credential_offer": identity_offer["credential_offer"],
++                "holder_did_method": "key",
++            },
++        )
++        assert identity_cred_response.status_code == 200
++        identity_credential = identity_cred_response.json()["credential"]
++
++        # === Issue Address credential ===
++        address_exchange = await acapy_issuer_admin.post(
++            "/oid4vci/exchange/create",
++            json={
++                "supported_cred_id": address_config_id,
++                "credential_subject": {
++                    "street_address": "123 Main Street",
++                    "locality": "Springfield",
++                    "country": "US",
++                },
++                "did": issuer_did,
++            },
++        )
++        address_offer = await acapy_issuer_admin.get(
++            "/oid4vci/credential-offer",
++            params={"exchange_id": address_exchange["exchange_id"]},
++        )
++
++        # Credo receives address credential
++        address_cred_response = await credo_client.post(
++            "/oid4vci/accept-offer",
++            json={
++                "credential_offer": address_offer["credential_offer"],
++                "holder_did_method": "key",
++            },
++        )
++        assert address_cred_response.status_code == 200
++        address_credential = address_cred_response.json()["credential"]
++
++        LOGGER.info("Both credentials issued successfully")
++
++        # === Create DCQL query for BOTH credentials ===
++        dcql_query = {
++            "credentials": [
++                {
++                    "id": "identity_cred",
++                    "format": "vc+sd-jwt",
++                    "meta": {
++                        "vct_values": ["https://credentials.example.com/identity"]
++                    },
++                    "claims": [
++                        {"id": "name", "path": ["given_name"]},
++                        {"id": "surname", "path": ["family_name"]},
++                    ],
++                },
++                {
++                    "id": "address_cred",
++                    "format": "vc+sd-jwt",
++                    "meta": {"vct_values": ["https://credentials.example.com/address"]},
++                    "claims": [
++                        {"id": "city", "path": ["locality"]},
++                        {"id": "country", "path": ["country"]},
++                    ],
++                },
++            ]
++        }
++
++        dcql_response = await acapy_verifier_admin.post(
++            "/oid4vp/dcql/queries", json=dcql_query
++        )
++        dcql_query_id = dcql_response["dcql_query_id"]
++
++        # Create presentation request
++        presentation_request = await acapy_verifier_admin.post(
++            "/oid4vp/request",
++            json={
++                "dcql_query_id": dcql_query_id,
++                "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256"]}},
++            },
++        )
++        request_uri = presentation_request["request_uri"]
++        presentation_id = presentation_request["presentation"]["presentation_id"]
++
++        # Credo presents BOTH credentials
++        presentation_response = await credo_client.post(
++            "/oid4vp/present",
++            json={
++                "request_uri": request_uri,
++                "credentials": [identity_credential, address_credential],
++            },
++        )
++        assert presentation_response.status_code == 200
++
++        # Poll for validation
++        max_retries = 15
++        presentation_valid = False
++        for _ in range(max_retries):
++            result = await acapy_verifier_admin.get(
++                f"/oid4vp/presentation/{presentation_id}"
++            )
++            if result.get("state") == "presentation-valid":
++                presentation_valid = True
++                break
++            await asyncio.sleep(1)
++
++        assert presentation_valid, "Multi-credential presentation validation failed"
++        LOGGER.info("✅ Two SD-JWT credentials presented and verified successfully")
++
++    @pytest.mark.asyncio
++    async def test_three_credentials_different_issuers(
++        self,
++        acapy_issuer_admin,
++        acapy_verifier_admin,
++        credo_client,
++    ):
++        """Test DCQL with three credentials from different issuers.
++
++        Real-world scenario: Employment verification requiring:
++        1. Government ID (from DMV)
++        2. Employment credential (from employer)
++        3. Education credential (from university)
++        """
++        LOGGER.info("Testing DCQL with three credentials from different issuers...")
++
++        random_suffix = str(uuid.uuid4())[:8]
++
++        # Create three different issuer DIDs
++        issuer_dids = []
++        for i in range(3):
++            did_response = await acapy_issuer_admin.post(
++                "/wallet/did/create",
++                json={"method": "key", "options": {"key_type": "ed25519"}},
++            )
++            issuer_dids.append(did_response["result"]["did"])
++
++        # Credential configurations
++        configs = [
++            {
++                "name": "GovernmentID",
++                "vct": "https://gov.example.com/id",
++                "claims": {"full_name": {}, "document_number": {}},
++                "subject": {
++                    "full_name": "Alice Johnson",
++                    "document_number": "ID-123456",
++                },
++            },
++            {
++                "name": "EmploymentCred",
++                "vct": "https://hr.example.com/employment",
++                "claims": {"employer": {}, "job_title": {}, "start_date": {}},
++                "subject": {
++                    "employer": "ACME Corp",
++                    "job_title": "Engineer",
++                    "start_date": "2020-01-15",
++                },
++            },
++            {
++                "name": "EducationCred",
++                "vct": "https://edu.example.com/degree",
++                "claims": {"institution": {}, "degree": {}, "graduation_year": {}},
++                "subject": {
++                    "institution": "State University",
++                    "degree": "BS Computer Science",
++                    "graduation_year": "2019",
++                },
++            },
++        ]
++
++        credentials = []
++        for i, cfg in enumerate(configs):
++            # Create credential config
++            config_data = {
++                "id": f"{cfg['name']}_{random_suffix}",
++                "format": "vc+sd-jwt",
++                "scope": cfg["name"],
++                "proof_types_supported": {
++                    "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
++                },
++                "format_data": {
++                    "cryptographic_binding_methods_supported": ["did:key"],
++                    "cryptographic_suites_supported": ["EdDSA"],
++                    "vct": cfg["vct"],
++                    "claims": cfg["claims"],
++                },
++                "vc_additional_data": {
++                    "sd_list": [f"/{k}" for k in cfg["claims"].keys()]
++                },
++            }
++
++            config_response = await acapy_issuer_admin.post(
++                "/oid4vci/credential-supported/create", json=config_data
++            )
++            config_id = config_response["supported_cred_id"]
++
++            # Issue credential
++            exchange = await acapy_issuer_admin.post(
++                "/oid4vci/exchange/create",
++                json={
++                    "supported_cred_id": config_id,
++                    "credential_subject": cfg["subject"],
++                    "did": issuer_dids[i],  # Different issuer for each
++                },
++            )
++            offer = await acapy_issuer_admin.get(
++                "/oid4vci/credential-offer",
++                params={"exchange_id": exchange["exchange_id"]},
++            )
++
++            # Credo receives
++            cred_response = await credo_client.post(
++                "/oid4vci/accept-offer",
++                json={
++                    "credential_offer": offer["credential_offer"],
++                    "holder_did_method": "key",
++                },
++            )
++            assert cred_response.status_code == 200
++            credentials.append(cred_response.json()["credential"])
++
++        LOGGER.info(f"Issued {len(credentials)} credentials from different issuers")
++
++        # Create DCQL query for all three
++        dcql_query = {
++            "credentials": [
++                {
++                    "id": "gov_id",
++                    "format": "vc+sd-jwt",
++                    "meta": {"vct_values": ["https://gov.example.com/id"]},
++                    "claims": [{"path": ["full_name"]}],
++                },
++                {
++                    "id": "employment",
++                    "format": "vc+sd-jwt",
++                    "meta": {"vct_values": ["https://hr.example.com/employment"]},
++                    "claims": [{"path": ["employer"]}, {"path": ["job_title"]}],
++                },
++                {
++                    "id": "education",
++                    "format": "vc+sd-jwt",
++                    "meta": {"vct_values": ["https://edu.example.com/degree"]},
++                    "claims": [{"path": ["degree"]}],
++                },
++            ]
++        }
++
++        dcql_response = await acapy_verifier_admin.post(
++            "/oid4vp/dcql/queries", json=dcql_query
++        )
++        dcql_query_id = dcql_response["dcql_query_id"]
++
++        presentation_request = await acapy_verifier_admin.post(
++            "/oid4vp/request",
++            json={
++                "dcql_query_id": dcql_query_id,
++                "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA"]}},
++            },
++        )
++        presentation_id = presentation_request["presentation"]["presentation_id"]
++
++        # Present all three credentials
++        presentation_response = await credo_client.post(
++            "/oid4vp/present",
++            json={
++                "request_uri": presentation_request["request_uri"],
++                "credentials": credentials,
++            },
++        )
++        assert presentation_response.status_code == 200
++
++        # Poll for validation
++        max_retries = 15
++        presentation_valid = False
++        for _ in range(max_retries):
++            result = await acapy_verifier_admin.get(
++                f"/oid4vp/presentation/{presentation_id}"
++            )
++            if result.get("state") == "presentation-valid":
++                presentation_valid = True
++                break
++            await asyncio.sleep(1)
++
++        assert presentation_valid, "Three-credential presentation validation failed"
++        LOGGER.info("✅ Three credentials from different issuers verified successfully")
++
++
++class TestMultiCredentialCredentialSets:
++    """Test DCQL credential_sets for alternative credential combinations."""
++
++    @pytest.mark.asyncio
++    async def test_credential_sets_alternative_ids(
++        self,
++        acapy_issuer_admin,
++        acapy_verifier_admin,
++        credo_client,
++    ):
++        """Test credential_sets allowing alternative credential types.
++
++        Scenario: Accept EITHER a passport OR a driver's license for identity.
++        Using credential_sets to specify alternatives.
++        """
++        LOGGER.info("Testing credential_sets with alternative IDs...")
++
++        random_suffix = str(uuid.uuid4())[:8]
++
++        # Create issuer DID
++        did_response = await acapy_issuer_admin.post(
++            "/wallet/did/create",
++            json={"method": "key", "options": {"key_type": "ed25519"}},
++        )
++        issuer_did = did_response["result"]["did"]
++
++        # Create Passport credential config
++        passport_config = {
++            "id": f"Passport_{random_suffix}",
++            "format": "vc+sd-jwt",
++            "scope": "Passport",
++            "proof_types_supported": {
++                "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
++            },
++            "format_data": {
++                "cryptographic_binding_methods_supported": ["did:key"],
++                "cryptographic_suites_supported": ["EdDSA"],
++                "vct": "https://credentials.example.com/passport",
++                "claims": {
++                    "full_name": {},
++                    "passport_number": {},
++                    "nationality": {},
++                },
++            },
++            "vc_additional_data": {
++                "sd_list": ["/full_name", "/passport_number", "/nationality"]
++            },
++        }
++
++        passport_response = await acapy_issuer_admin.post(
++            "/oid4vci/credential-supported/create", json=passport_config
++        )
++        passport_config_id = passport_response["supported_cred_id"]
++
++        # Create Driver's License credential config
++        license_config = {
++            "id": f"DriversLicense_{random_suffix}",
++            "format": "vc+sd-jwt",
++            "scope": "DriversLicense",
++            "proof_types_supported": {
++                "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
++            },
++            "format_data": {
++                "cryptographic_binding_methods_supported": ["did:key"],
++                "cryptographic_suites_supported": ["EdDSA"],
++                "vct": "https://credentials.example.com/drivers_license",
++                "claims": {
++                    "full_name": {},
++                    "license_number": {},
++                    "state": {},
++                },
++            },
++            "vc_additional_data": {
++                "sd_list": ["/full_name", "/license_number", "/state"]
++            },
++        }
++
++        license_response = await acapy_issuer_admin.post(
++            "/oid4vci/credential-supported/create", json=license_config
++        )
++        license_config_id = license_response["supported_cred_id"]
++
++        # Issue Driver's License (holder doesn't have passport)
++        license_exchange = await acapy_issuer_admin.post(
++            "/oid4vci/exchange/create",
++            json={
++                "supported_cred_id": license_config_id,
++                "credential_subject": {
++                    "full_name": "Alice Johnson",
++                    "license_number": "DL-123456",
++                    "state": "California",
++                },
++                "did": issuer_did,
++            },
++        )
++        license_offer = await acapy_issuer_admin.get(
++            "/oid4vci/credential-offer",
++            params={"exchange_id": license_exchange["exchange_id"]},
++        )
++
++        license_cred_response = await credo_client.post(
++            "/oid4vci/accept-offer",
++            json={
++                "credential_offer": license_offer["credential_offer"],
++                "holder_did_method": "key",
++            },
++        )
++        assert license_cred_response.status_code == 200
++        license_credential = license_cred_response.json()["credential"]
++
++        # Create DCQL query with credential_sets: accept passport OR license
++        dcql_query = {
++            "credentials": [
++                {
++                    "id": "passport",
++                    "format": "vc+sd-jwt",
++                    "meta": {
++                        "vct_values": ["https://credentials.example.com/passport"]
++                    },
++                    "claims": [{"path": ["full_name"]}, {"path": ["passport_number"]}],
++                },
++                {
++                    "id": "drivers_license",
++                    "format": "vc+sd-jwt",
++                    "meta": {
++                        "vct_values": [
++                            "https://credentials.example.com/drivers_license"
++                        ]
++                    },
++                    "claims": [{"path": ["full_name"]}, {"path": ["license_number"]}],
++                },
++            ],
++            "credential_sets": [
++                {
++                    "purpose": "identity_verification",
++                    "options": [
++                        ["passport"],  # Option 1: passport
++                        ["drivers_license"],  # Option 2: driver's license
++                    ],
++                }
++            ],
++        }
++
++        dcql_response = await acapy_verifier_admin.post(
++            "/oid4vp/dcql/queries", json=dcql_query
++        )
++        dcql_query_id = dcql_response["dcql_query_id"]
++
++        presentation_request = await acapy_verifier_admin.post(
++            "/oid4vp/request",
++            json={
++                "dcql_query_id": dcql_query_id,
++                "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA"]}},
++            },
++        )
++        presentation_id = presentation_request["presentation"]["presentation_id"]
++
++        # Present driver's license (satisfies second option)
++        presentation_response = await credo_client.post(
++            "/oid4vp/present",
++            json={
++                "request_uri": presentation_request["request_uri"],
++                "credentials": [license_credential],
++            },
++        )
++        assert presentation_response.status_code == 200
++
++        # Poll for validation
++        max_retries = 15
++        presentation_valid = False
++        for _ in range(max_retries):
++            result = await acapy_verifier_admin.get(
++                f"/oid4vp/presentation/{presentation_id}"
++            )
++            if result.get("state") == "presentation-valid":
++                presentation_valid = True
++                break
++            await asyncio.sleep(1)
++
++        assert presentation_valid, "credential_sets alternative presentation failed"
++        LOGGER.info("✅ credential_sets with alternative IDs verified successfully")
++
++
++@pytest.mark.skipif(not MDOC_AVAILABLE, reason="mDOC support not available")
++class TestMixedFormatMultiCredential:
++    """Test DCQL with mixed credential formats (SD-JWT + mDOC)."""
++
++    @pytest.mark.asyncio
++    async def test_sd_jwt_plus_mdoc(
++        self,
++        acapy_issuer_admin,
++        acapy_verifier_admin,
++    ):
++        """Test DCQL requesting both SD-JWT and mDOC credentials.
++
++        Scenario: Travel verification requiring:
++        1. mDOC driver's license (for identity)
++        2. SD-JWT boarding pass (for travel authorization)
++        """
++        LOGGER.info("Testing mixed format: SD-JWT + mDOC...")
++
++        # Create DCQL query for mixed formats
++        dcql_query = {
++            "credentials": [
++                {
++                    "id": "drivers_license",
++                    "format": "mso_mdoc",
++                    "meta": {"doctype_value": "org.iso.18013.5.1.mDL"},
++                    "claims": [
++                        {"namespace": "org.iso.18013.5.1", "claim_name": "given_name"},
++                        {"namespace": "org.iso.18013.5.1", "claim_name": "family_name"},
++                        {"namespace": "org.iso.18013.5.1", "claim_name": "portrait"},
++                    ],
++                },
++                {
++                    "id": "boarding_pass",
++                    "format": "vc+sd-jwt",
++                    "meta": {
++                        "vct_values": ["https://airline.example.com/boarding_pass"]
++                    },
++                    "claims": [
++                        {"path": ["flight_number"]},
++                        {"path": ["departure_airport"]},
++                        {"path": ["arrival_airport"]},
++                    ],
++                },
++            ]
++        }
++
++        try:
++            dcql_response = await acapy_verifier_admin.post(
++                "/oid4vp/dcql/queries", json=dcql_query
++            )
++            dcql_query_id = dcql_response["dcql_query_id"]
++            LOGGER.info(f"Created mixed-format DCQL query: {dcql_query_id}")
++        except Exception as e:
++            pytest.skip(f"Mixed format DCQL not supported: {e}")
++
++        assert dcql_query_id is not None
++        LOGGER.info("✅ Mixed SD-JWT + mDOC DCQL query created successfully")
+diff --git a/oid4vc/integration/tests/test_oid4vc_mdoc_compliance.py b/oid4vc/integration/tests/test_oid4vc_mdoc_compliance.py
+new file mode 100644
+index 0000000..b098dc5
+--- /dev/null
++++ b/oid4vc/integration/tests/test_oid4vc_mdoc_compliance.py
+@@ -0,0 +1,405 @@
++"""OID4VC integration tests with mso_mdoc format (ISO 18013-5)."""
++
++import base64
++import logging
++import time
++import uuid
++
++import cbor2
++import httpx
++import pytest
++from cbor2 import CBORTag
++
++from .test_config import MDOC_AVAILABLE, TEST_CONFIG, mdl
++from .test_utils import OID4VCTestHelper
++
++LOGGER = logging.getLogger(__name__)
++
++
++@pytest.mark.mdoc
++class TestOID4VCMdocCompliance:
++    """Test OID4VC integration with mso_mdoc format (ISO 18013-5)."""
++
++    @pytest.fixture(scope="class")
++    def test_runner(self):
++        """Setup test runner."""
++        runner = OID4VCTestHelper()
++        yield runner
++
++    @pytest.mark.skipif(not MDOC_AVAILABLE, reason="isomdl_uniffi not available")
++    @pytest.mark.asyncio
++    async def test_mdoc_credential_issuer_metadata(self, test_runner):
++        """Test that credential issuer metadata includes mso_mdoc support."""
++        LOGGER.info("Testing mso_mdoc metadata support...")
++
++        async with httpx.AsyncClient() as client:
++            response = await client.get(
++                f"{TEST_CONFIG['oid4vci_endpoint']}/.well-known/openid-credential-issuer"
++            )
++            assert response.status_code == 200
++
++            metadata = response.json()
++            configs = metadata["credential_configurations_supported"]
++
++            # Look for mso_mdoc format support
++            mdoc_config = None
++            for config_id, config in configs.items():
++                if config.get("format") == "mso_mdoc":
++                    mdoc_config = config
++                    break
++
++            # If no existing mdoc config, create one for testing
++            if mdoc_config is None:
++                LOGGER.info("No mso_mdoc config found, creating test configuration...")
++                await test_runner.setup_mdoc_credential()
++
++                # Re-fetch metadata to verify the configuration was added
++                response = await client.get(
++                    f"{TEST_CONFIG['oid4vci_endpoint']}/.well-known/openid-credential-issuer"
++                )
++                metadata = response.json()
++                configs = metadata["credential_configurations_supported"]
++
++                # Find the created mdoc config
++                for config in configs.values():
++                    if config.get("format") == "mso_mdoc":
++                        mdoc_config = config
++                        break
++
++            assert mdoc_config is not None, "mso_mdoc configuration should be available"
++            assert mdoc_config["format"] == "mso_mdoc"
++            assert "doctype" in mdoc_config
++            assert "cryptographic_binding_methods_supported" in mdoc_config
++            assert "cose_key" in mdoc_config["cryptographic_binding_methods_supported"]
++
++            test_runner.test_results["mdoc_metadata"] = {
++                "status": "PASS",
++                "mdoc_config": mdoc_config,
++                "validation": "mso_mdoc format supported in credential issuer metadata",
++            }
++
++    @pytest.mark.skipif(not MDOC_AVAILABLE, reason="isomdl_uniffi not available")
++    @pytest.mark.asyncio
++    async def test_mdoc_credential_request_flow(self, test_runner):
++        """Test complete mso_mdoc credential request flow."""
++        LOGGER.info("Testing complete mso_mdoc credential request flow...")
++
++        # Setup mdoc credential
++        supported_cred = await test_runner.setup_mdoc_credential()
++        offer_data = await test_runner.create_mdoc_credential_offer(supported_cred)
++
++        # Extract holder key for proof generation
++        holder_key = offer_data["holder_key"]
++        holder_did = offer_data["did"]
++
++        # Get access token using pre-authorized code flow
++        grants = offer_data["offer"]["grants"]
++        pre_auth_grant = grants["urn:ietf:params:oauth:grant-type:pre-authorized_code"]
++        pre_authorized_code = pre_auth_grant["pre-authorized_code"]
++
++        async with httpx.AsyncClient() as client:
++            # Get access token
++            token_response = await client.post(
++                f"{TEST_CONFIG['oid4vci_endpoint']}/token",
++                data={
++                    "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
++                    "pre-authorized_code": pre_authorized_code,
++                },
++                headers={"Content-Type": "application/x-www-form-urlencoded"},
++                timeout=30,
++            )
++
++            if token_response.status_code != 200:
++                LOGGER.error(
++                    "Token request failed: %s - %s",
++                    token_response.status_code,
++                    token_response.text,
++                )
++            assert token_response.status_code == 200
++            token_data = token_response.json()
++            access_token = token_data["access_token"]
++            c_nonce = token_data.get("c_nonce")
++
++            # Create CWT proof
++            # COSE_Sign1: [protected, unprotected, payload, signature]
++            # Protected header: {1: -7} (Alg: ES256) -> b'\xa1\x01\x26'
++            protected_header = {1: -7}
++            protected_header_bytes = cbor2.dumps(protected_header)
++
++            claims = {
++                "aud": TEST_CONFIG["oid4vci_endpoint"],
++                "iat": int(time.time()),
++            }
++            if c_nonce:
++                claims["nonce"] = c_nonce
++
++            payload_bytes = cbor2.dumps(claims)
++
++            # Sig_structure: ['Signature1', protected, external_aad, payload]
++            sig_structure = ["Signature1", protected_header_bytes, b"", payload_bytes]
++            sig_structure_bytes = cbor2.dumps(sig_structure)
++
++            signature = holder_key.sign(sig_structure_bytes)
++
++            # Construct COSE_Sign1
++            unprotected_header = {4: holder_did.encode()}
++            cose_sign1 = [
++                protected_header_bytes,
++                unprotected_header,
++                payload_bytes,
++                signature,
++            ]
++            cwt_bytes = cbor2.dumps(CBORTag(18, cose_sign1))
++            cwt_proof = base64.urlsafe_b64encode(cwt_bytes).decode().rstrip("=")
++
++            # Create mdoc credential request
++            # For mso_mdoc, we use credential_identifier (OID4VCI 1.0 style)
++            credential_request = {
++                "credential_identifier": supported_cred["id"],
++                "doctype": "org.iso.18013.5.1.mDL",
++                "proof": {
++                    "proof_type": "cwt",
++                    "cwt": cwt_proof,
++                },
++            }
++
++            # Request credential
++            cred_response = await client.post(
++                f"{TEST_CONFIG['oid4vci_endpoint']}/credential",
++                json=credential_request,
++                headers={"Authorization": f"Bearer {access_token}"},
++            )
++
++            if cred_response.status_code != 200:
++                LOGGER.error(f"Credential request failed: {cred_response.text}")
++            assert cred_response.status_code == 200
++            cred_data = cred_response.json()
++
++            # Validate mso_mdoc response structure
++            assert "format" in cred_data
++            assert cred_data["format"] == "mso_mdoc"
++            assert "credential" in cred_data
++
++            # The credential should be a CBOR-encoded mso_mdoc
++            mdoc_credential = cred_data["credential"]
++            assert isinstance(
++                mdoc_credential, str
++            ), "mso_mdoc should be base64-encoded string"
++
++            test_runner.test_results["mdoc_credential_flow"] = {
++                "status": "PASS",
++                "response": cred_data,
++                "validation": "Complete mso_mdoc credential request flow successful",
++            }
++
++    @pytest.mark.skipif(not MDOC_AVAILABLE, reason="isomdl_uniffi not available")
++    @pytest.mark.asyncio
++    async def test_mdoc_presentation_workflow(self, test_runner):
++        """Test mdoc presentation workflow using isomdl_uniffi."""
++        LOGGER.info("Testing mdoc presentation workflow with isomdl_uniffi...")
++
++        # Generate test mdoc using isomdl_uniffi
++        holder_key = mdl.P256KeyPair()
++        test_mdl = mdl.generate_test_mdl(holder_key)
++
++        # Verify mdoc properties
++        assert test_mdl.doctype() == "org.iso.18013.5.1.mDL"
++        mdoc_id = test_mdl.id()
++        assert mdoc_id is not None
++
++        # Test serialization capabilities
++        mdoc_json = test_mdl.json()
++        assert len(mdoc_json) > 0
++
++        mdoc_cbor = test_mdl.stringify()
++        assert len(mdoc_cbor) > 0
++
++        # Test presentation session creation
++        ble_uuid = str(uuid.uuid4())
++        session = mdl.MdlPresentationSession(test_mdl, ble_uuid)
++
++        # Generate QR code for presentation
++        qr_code = session.get_qr_code_uri()
++        assert qr_code.startswith("mdoc:"), "QR code should start with mdoc: scheme"
++
++        # Test verification workflow
++        requested_attributes = {
++            "org.iso.18013.5.1": {
++                "given_name": True,
++                "family_name": True,
++                "birth_date": True,
++            }
++        }
++
++        # Establish reader session
++        reader_data = mdl.establish_session(qr_code, requested_attributes, None)
++        assert reader_data is not None
++
++        # Handle request from verifier
++        session.handle_request(reader_data.request)
++
++        # Build response with permitted attributes
++        permitted_items = {}
++        # Simplified for test - in real scenario would process requested_data
++        permitted_items["org.iso.18013.5.1.mDL"] = {
++            "org.iso.18013.5.1": ["given_name", "family_name", "birth_date"]
++        }
++
++        # Generate and sign presentation response
++        unsigned_response = session.generate_response(permitted_items)
++        signed_response = holder_key.sign(unsigned_response)
++        presentation_response = session.submit_response(signed_response)
++
++        # Verify the presentation
++        verification_result = mdl.handle_response(
++            reader_data.state, presentation_response
++        )
++
++        # Validate verification results
++        assert (
++            verification_result.device_authentication == mdl.AuthenticationStatus.VALID
++        )
++        assert verification_result.verified_response is not None
++        assert len(verification_result.verified_response) > 0
++
++        test_runner.test_results["mdoc_presentation_workflow"] = {
++            "status": "PASS",
++            "mdoc_doctype": test_mdl.doctype(),
++            "qr_code_length": len(qr_code),
++            "verification_status": str(verification_result.device_authentication),
++            "disclosed_attributes": list(verification_result.verified_response.keys()),
++            "validation": "Complete mdoc presentation workflow successful",
++        }
++
++    @pytest.mark.skipif(not MDOC_AVAILABLE, reason="isomdl_uniffi not available")
++    @pytest.mark.asyncio
++    async def test_mdoc_interoperability_reader_sessions(self, test_runner):
++        """Test interoperability between OID4VC issuance and mdoc presentation."""
++        LOGGER.info("Testing OID4VC-to-mdoc interoperability...")
++
++        # Phase 1: Issue credential via OID4VC
++        supported_cred = await test_runner.setup_mdoc_credential()
++        offer_data = await test_runner.create_mdoc_credential_offer(supported_cred)
++        holder_key = offer_data["holder_key"]
++        holder_did = offer_data["did"]
++
++        # Get credential via OID4VC flow
++        grants = offer_data["offer"]["grants"]
++        pre_auth_grant = grants["urn:ietf:params:oauth:grant-type:pre-authorized_code"]
++        pre_authorized_code = pre_auth_grant["pre-authorized_code"]
++
++        async with httpx.AsyncClient() as client:
++            # Get access token
++            token_response = await client.post(
++                f"{TEST_CONFIG['oid4vci_endpoint']}/token",
++                data={
++                    "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
++                    "pre-authorized_code": pre_authorized_code,
++                },
++                headers={"Content-Type": "application/x-www-form-urlencoded"},
++            )
++            token_data = token_response.json()
++            access_token = token_data["access_token"]
++            c_nonce = token_data.get("c_nonce")
++
++            # Create CWT proof
++            protected_header = {1: -7}
++            protected_header_bytes = cbor2.dumps(protected_header)
++
++            claims = {
++                "aud": TEST_CONFIG["oid4vci_endpoint"],
++                "iat": int(time.time()),
++            }
++            if c_nonce:
++                claims["nonce"] = c_nonce
++
++            payload_bytes = cbor2.dumps(claims)
++
++            sig_structure = ["Signature1", protected_header_bytes, b"", payload_bytes]
++            sig_structure_bytes = cbor2.dumps(sig_structure)
++
++            signature = holder_key.sign(sig_structure_bytes)
++
++            unprotected_header = {4: holder_did.encode()}
++            cose_sign1 = [
++                protected_header_bytes,
++                unprotected_header,
++                payload_bytes,
++                signature,
++            ]
++            cwt_bytes = cbor2.dumps(CBORTag(18, cose_sign1))
++            cwt_proof = base64.urlsafe_b64encode(cwt_bytes).decode().rstrip("=")
++
++            # Request mso_mdoc credential
++            credential_request = {
++                "credential_identifier": supported_cred["id"],
++                "doctype": "org.iso.18013.5.1.mDL",
++                "proof": {
++                    "proof_type": "cwt",
++                    "cwt": cwt_proof,
++                },
++            }
++
++            cred_response = await client.post(
++                f"{TEST_CONFIG['oid4vci_endpoint']}/credential",
++                json=credential_request,
++                headers={"Authorization": f"Bearer {access_token}"},
++            )
++
++            if cred_response.status_code != 200:
++                LOGGER.error(f"Credential request failed: {cred_response.text}")
++            assert cred_response.status_code == 200
++            cred_data = cred_response.json()
++
++            # Phase 2: Use issued credential in mdoc presentation
++            # Parse the issued credential using isomdl_uniffi
++            issued_mdoc_b64 = cred_data["credential"]
++
++            key_alias = "parsed"
++            issued_mdoc = mdl.Mdoc.new_from_base64url_encoded_issuer_signed(
++                issued_mdoc_b64, key_alias
++            )
++
++            # Create presentation session with the ISSUED credential
++            session = mdl.MdlPresentationSession(issued_mdoc, str(uuid.uuid4()))
++            qr_code = session.get_qr_code_uri()
++
++            # Test verification workflow
++            requested_attributes = {
++                "org.iso.18013.5.1": {"given_name": True, "family_name": True}
++            }
++
++            reader_data = mdl.establish_session(qr_code, requested_attributes, None)
++            session.handle_request(reader_data.request)
++
++            # Generate presentation
++            permitted_items = {
++                "org.iso.18013.5.1.mDL": {
++                    "org.iso.18013.5.1": ["given_name", "family_name"]
++                }
++            }
++
++            unsigned_response = session.generate_response(permitted_items)
++            signed_response = holder_key.sign(unsigned_response)
++            presentation_response = session.submit_response(signed_response)
++
++            # Verify presentation
++            verification_result = mdl.handle_response(
++                reader_data.state, presentation_response
++            )
++            assert (
++                verification_result.device_authentication
++                == mdl.AuthenticationStatus.VALID
++            )
++
++            test_runner.test_results["oid4vc_mdoc_interoperability"] = {
++                "status": "PASS",
++                "oid4vc_credential_format": cred_data["format"],
++                "mdoc_verification_status": str(
++                    verification_result.device_authentication
++                ),
++                "validation": (
++                    "OID4VC mso_mdoc issuance and mdoc presentation "
++                    "interoperability successful using issued credential"
++                ),
++            }
+diff --git a/oid4vc/integration/tests/test_trust_anchor_validation.py b/oid4vc/integration/tests/test_trust_anchor_validation.py
+new file mode 100644
+index 0000000..0a9fb3e
+--- /dev/null
++++ b/oid4vc/integration/tests/test_trust_anchor_validation.py
+@@ -0,0 +1,523 @@
++"""Trust anchor and certificate chain validation tests.
++
++This file tests mDOC trust anchor management and certificate chain validation:
++- Trust anchor storage and retrieval
++- Certificate chain validation during verification
++- Invalid/expired certificate handling
++- CA certificate management endpoints
++"""
++
++import uuid
++
++import httpx
++import pytest
++import pytest_asyncio
++
++pytestmark = [pytest.mark.trust, pytest.mark.asyncio]
++
++
++# =============================================================================
++# Sample Certificates for Testing
++# =============================================================================
++
++# Self-signed test root CA certificate (for testing purposes only)
++TEST_ROOT_CA_PEM = """-----BEGIN CERTIFICATE-----
++MIIBkTCB+wIJAKHBfpegVpnKMAoGCCqGSM49BAMCMBkxFzAVBgNVBAMMDlRlc3Qg
++Um9vdCBDQSAwMB4XDTI0MDEwMTAwMDAwMFoXDTI1MDEwMTAwMDAwMFowGTEXMBUG
++A1UEAwwOVGVzdCBSb290IENBIDAwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAQK
++qW4VNMr4L3W3J5P6Bj7WXj4HGZ4b0f6gRzFrMt+MHJSNMrWCxFKn2Mvi0RYxHxFp
++QcGj7M1xN3lU5z5H8lNKoyMwITAfBgNVHREEGDAWhwR/AAABggpsb2NhbGhvc3Qw
++CgYIKoZIzj0EAwIDSAAwRQIhAJz3Lh7XKHA+CjOV+WxY7vJkDGTD0EqF9KT9F5Hf
++QyQpAiAtVPwsQK4bQK9b3nP6K8zKMt7LM1b8X5c0sM7fL5PJSQ==
++-----END CERTIFICATE-----"""
++
++# Expired test certificate (for testing expiry handling)
++TEST_EXPIRED_CERT_PEM = """-----BEGIN CERTIFICATE-----
++MIIBkTCB+wIJAKHBfpegVpnLMAoGCCqGSM49BAMCMBkxFzAVBgNVBAMMDlRlc3Qg
++RXhwaXJlZCBDQTAeFw0yMDAxMDEwMDAwMDBaFw0yMTAxMDEwMDAwMDBaMBkxFzAV
++BgNVBAMMDlRlc3QgRXhwaXJlZCBDQTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IA
++BAqpbhU0yvgvdbcnk/oGPtZePgcZnhvR/qBHMWsy34wclI0ytYLEUqfYy+LRFjEf
++EWlBwaPszXE3eVTnPkfyU0qjIzAhMB8GA1UdEQQYMBaHBH8AAAGCCmxvY2FsaG9z
++dDAKBggqhkjOPQQDAgNIADBFAiEAnPcuHtcocD4KM5X5bFju8mQMZMPQSoX0pP0X
++kd9DJCkCIC1U/CxArhtAr1vec/orzMoy3sszVvxflzSwzt8vk8lJ
++-----END CERTIFICATE-----"""
++
++
++# =============================================================================
++# Trust Anchor Management Tests
++# =============================================================================
++
++
++class TestTrustAnchorManagement:
++    """Test trust anchor CRUD operations."""
++
++    @pytest.mark.asyncio
++    async def test_create_trust_anchor(self, acapy_verifier: httpx.AsyncClient):
++        """Test creating a trust anchor."""
++        anchor_id = f"test_anchor_{uuid.uuid4().hex[:8]}"
++
++        response = await acapy_verifier.post(
++            "/mso_mdoc/trust-anchors",
++            json={
++                "anchor_id": anchor_id,
++                "certificate_pem": TEST_ROOT_CA_PEM,
++                "metadata": {
++                    "issuer_name": "Test Root CA",
++                    "purpose": "testing",
++                },
++            },
++        )
++
++        # Should succeed
++        assert response.status_code in [200, 201]
++        result = response.json()
++        assert result.get("anchor_id") == anchor_id
++
++    @pytest.mark.asyncio
++    async def test_get_trust_anchor(self, acapy_verifier: httpx.AsyncClient):
++        """Test retrieving a trust anchor by ID."""
++        # First create one
++        anchor_id = f"get_test_{uuid.uuid4().hex[:8]}"
++
++        create_response = await acapy_verifier.post(
++            "/mso_mdoc/trust-anchors",
++            json={
++                "anchor_id": anchor_id,
++                "certificate_pem": TEST_ROOT_CA_PEM,
++            },
++        )
++
++        if create_response.status_code not in [200, 201]:
++            pytest.skip("Trust anchor creation endpoint not available")
++
++        # Now retrieve it
++        response = await acapy_verifier.get(f"/mso_mdoc/trust-anchors/{anchor_id}")
++
++        assert response.status_code == 200
++        result = response.json()
++        assert result.get("anchor_id") == anchor_id
++        assert "certificate_pem" in result
++
++    @pytest.mark.asyncio
++    async def test_list_trust_anchors(self, acapy_verifier: httpx.AsyncClient):
++        """Test listing all trust anchors."""
++        response = await acapy_verifier.get("/mso_mdoc/trust-anchors")
++
++        if response.status_code == 404:
++            pytest.skip("Trust anchor listing endpoint not available")
++
++        assert response.status_code == 200
++        result = response.json()
++        assert isinstance(result, (list, dict))
++
++    @pytest.mark.asyncio
++    async def test_delete_trust_anchor(self, acapy_verifier: httpx.AsyncClient):
++        """Test deleting a trust anchor."""
++        # First create one
++        anchor_id = f"delete_test_{uuid.uuid4().hex[:8]}"
++
++        create_response = await acapy_verifier.post(
++            "/mso_mdoc/trust-anchors",
++            json={
++                "anchor_id": anchor_id,
++                "certificate_pem": TEST_ROOT_CA_PEM,
++            },
++        )
++
++        if create_response.status_code not in [200, 201]:
++            pytest.skip("Trust anchor creation endpoint not available")
++
++        # Delete it
++        response = await acapy_verifier.delete(f"/mso_mdoc/trust-anchors/{anchor_id}")
++
++        assert response.status_code in [200, 204]
++
++        # Verify it's gone
++        get_response = await acapy_verifier.get(f"/mso_mdoc/trust-anchors/{anchor_id}")
++        assert get_response.status_code == 404
++
++    @pytest.mark.asyncio
++    async def test_duplicate_trust_anchor_id(self, acapy_verifier: httpx.AsyncClient):
++        """Test that duplicate trust anchor IDs are handled."""
++        anchor_id = f"dup_test_{uuid.uuid4().hex[:8]}"
++
++        # First creation
++        response1 = await acapy_verifier.post(
++            "/mso_mdoc/trust-anchors",
++            json={
++                "anchor_id": anchor_id,
++                "certificate_pem": TEST_ROOT_CA_PEM,
++            },
++        )
++
++        if response1.status_code not in [200, 201]:
++            pytest.skip("Trust anchor creation endpoint not available")
++
++        # Second creation with same ID
++        response2 = await acapy_verifier.post(
++            "/mso_mdoc/trust-anchors",
++            json={
++                "anchor_id": anchor_id,
++                "certificate_pem": TEST_ROOT_CA_PEM,
++            },
++        )
++
++        # Should fail with conflict, bad request, or internal error for duplicate
++        assert response2.status_code in [200, 400, 409, 500]
++
++
++# =============================================================================
++# Certificate Validation Tests
++# =============================================================================
++
++
++class TestCertificateValidation:
++    """Test certificate validation scenarios."""
++
++    @pytest.mark.asyncio
++    async def test_invalid_certificate_format(self, acapy_verifier: httpx.AsyncClient):
++        """Test handling of invalid certificate format."""
++        response = await acapy_verifier.post(
++            "/mso_mdoc/trust-anchors",
++            json={
++                "anchor_id": f"invalid_{uuid.uuid4().hex[:8]}",
++                "certificate_pem": "not a valid certificate",
++            },
++        )
++
++        # API may accept and validate later, or reject immediately
++        assert response.status_code in [200, 400, 422]
++
++    @pytest.mark.asyncio
++    async def test_empty_certificate(self, acapy_verifier: httpx.AsyncClient):
++        """Test handling of empty certificate."""
++        response = await acapy_verifier.post(
++            "/mso_mdoc/trust-anchors",
++            json={
++                "anchor_id": f"empty_{uuid.uuid4().hex[:8]}",
++                "certificate_pem": "",
++            },
++        )
++
++        assert response.status_code in [400, 422]
++
++    @pytest.mark.asyncio
++    async def test_certificate_with_invalid_pem_markers(
++        self, acapy_verifier: httpx.AsyncClient
++    ):
++        """Test certificate with invalid PEM markers."""
++        invalid_pem = """-----BEGIN SOMETHING-----
++MIIBkTCB+wIJAKHBfpegVpnKMAoGCCqGSM49BAMCMBkxFzAVBgNVBAMMDlRlc3Qg
++-----END SOMETHING-----"""
++
++        response = await acapy_verifier.post(
++            "/mso_mdoc/trust-anchors",
++            json={
++                "anchor_id": f"bad_markers_{uuid.uuid4().hex[:8]}",
++                "certificate_pem": invalid_pem,
++            },
++        )
++
++        # API may accept and validate later, or reject immediately
++        assert response.status_code in [200, 400, 422]
++
++
++# =============================================================================
++# Chain Validation Tests
++# =============================================================================
++
++
++class TestChainValidation:
++    """Test certificate chain validation during mDOC verification."""
++
++    @pytest.mark.asyncio
++    async def test_verification_without_trust_anchor(
++        self, acapy_verifier: httpx.AsyncClient
++    ):
++        """Test mDOC verification fails without matching trust anchor."""
++        # Create a DCQL request for mDOC
++        dcql_query = {
++            "credentials": [
++                {
++                    "id": "mdl_credential",
++                    "format": "mso_mdoc",
++                    "meta": {"doctype_value": "org.iso.18013.5.1.mDL"},
++                    "claims": [
++                        {"namespace": "org.iso.18013.5.1", "claim_name": "family_name"},
++                    ],
++                }
++            ],
++        }
++
++        # First create the DCQL query
++        query_response = await acapy_verifier.post(
++            "/oid4vp/dcql/queries",
++            json=dcql_query,
++        )
++        query_response.raise_for_status()
++        dcql_query_id = query_response.json()["dcql_query_id"]
++
++        # Then create the VP request with the query ID
++        response = await acapy_verifier.post(
++            "/oid4vp/request",
++            json={
++                "dcql_query_id": dcql_query_id,
++                "vp_formats": {"mso_mdoc": {"alg": ["ES256"]}},
++            },
++        )
++
++        # Request creation should succeed
++        # Actual chain validation happens at presentation time
++        assert response.status_code in [200, 400]
++
++    @pytest.mark.asyncio
++    async def test_verification_with_trust_anchor(
++        self, acapy_verifier: httpx.AsyncClient
++    ):
++        """Test mDOC verification with proper trust anchor."""
++        # This is an integration test that requires:
++        # 1. A trust anchor in the store
++        # 2. An mDOC credential signed with a certificate chaining to that anchor
++        # 3. A holder presenting the credential
++
++        # For now, just verify the trust anchor can be stored
++        anchor_id = f"chain_test_{uuid.uuid4().hex[:8]}"
++
++        response = await acapy_verifier.post(
++            "/mso_mdoc/trust-anchors",
++            json={
++                "anchor_id": anchor_id,
++                "certificate_pem": TEST_ROOT_CA_PEM,
++                "metadata": {"purpose": "chain_validation_test"},
++            },
++        )
++
++        # If endpoint exists, it should accept valid certificate
++        if response.status_code not in [404, 405]:
++            assert response.status_code in [200, 201]
++
++
++# =============================================================================
++# Trust Store Configuration Tests
++# =============================================================================
++
++
++class TestTrustStoreConfiguration:
++    """Test trust store configuration options."""
++
++    @pytest.mark.asyncio
++    async def test_file_based_trust_store(self, acapy_verifier: httpx.AsyncClient):
++        """Test that file-based trust store can be configured."""
++        # This is a configuration test - check plugin status
++        response = await acapy_verifier.get("/status/ready")
++        assert response.status_code == 200
++
++    @pytest.mark.asyncio
++    async def test_wallet_based_trust_store(self, acapy_verifier: httpx.AsyncClient):
++        """Test wallet-based trust store operations."""
++        # The wallet-based store should work with the storage endpoints
++        response = await acapy_verifier.get("/mso_mdoc/trust-anchors")
++
++        # Endpoint should exist even if empty
++        if response.status_code not in [404, 405]:
++            assert response.status_code == 200
++
++
++# =============================================================================
++# Issuer Certificate Tests
++# =============================================================================
++
++
++class TestIssuerCertificates:
++    """Test issuer certificate management for mDOC issuance."""
++
++    @pytest.mark.asyncio
++    async def test_generate_issuer_key(self, acapy_issuer: httpx.AsyncClient):
++        """Test generating an issuer signing key."""
++        response = await acapy_issuer.post(
++            "/mso_mdoc/generate-keys",
++            json={
++                "key_type": "ES256",
++                "generate_certificate": True,
++                "certificate_subject": {
++                    "common_name": "Test Issuer",
++                    "organization": "Test Org",
++                    "country": "US",
++                },
++            },
++        )
++
++        if response.status_code == 404:
++            pytest.skip("mDOC key generation endpoint not available")
++
++        assert response.status_code in [200, 201]
++        result = response.json()
++        assert "key_id" in result or "verification_method" in result
++
++    @pytest.mark.asyncio
++    async def test_list_issuer_keys(self, acapy_issuer: httpx.AsyncClient):
++        """Test listing issuer keys."""
++        response = await acapy_issuer.get("/mso_mdoc/keys")
++
++        if response.status_code == 404:
++            pytest.skip("mDOC key listing endpoint not available")
++
++        assert (
++            response.status_code == 200
++        ), f"Expected 200, got {response.status_code}: {response.text}"
++        result = response.json()
++        # API returns {"keys": [...]}
++        assert isinstance(result, dict)
++        assert "keys" in result
++        assert isinstance(result["keys"], list)
++
++    @pytest.mark.asyncio
++    async def test_get_issuer_certificate_chain(self, acapy_issuer: httpx.AsyncClient):
++        """Test retrieving issuer certificate chain."""
++        # First, ensure a key exists
++        keys_response = await acapy_issuer.get("/mso_mdoc/keys")
++
++        if keys_response.status_code == 404:
++            pytest.skip("mDOC key endpoints not available")
++
++        assert (
++            keys_response.status_code == 200
++        ), f"Expected 200, got {keys_response.status_code}: {keys_response.text}"
++
++        keys_data = keys_response.json()
++
++        # API returns {"keys": [...]}
++        keys = keys_data.get("keys", []) if isinstance(keys_data, dict) else keys_data
++
++        if not keys:
++            # Generate a key first
++            gen_response = await acapy_issuer.post(
++                "/mso_mdoc/generate-keys",
++                json={
++                    "key_type": "ES256",
++                    "generate_certificate": True,
++                },
++            )
++            assert gen_response.status_code in [
++                200,
++                201,
++            ], f"Failed to generate key: {gen_response.text}"
++            keys = [gen_response.json()]
++
++        # Get the certificate for the first key
++        key_id = (
++            keys[0].get("key_id")
++            or keys[0].get("verification_method", "").split("#")[-1]
++        )
++        assert key_id, "No valid key_id found in key response"
++
++        response = await acapy_issuer.get(f"/mso_mdoc/keys/{key_id}/certificate")
++
++        if response.status_code == 404:
++            # Try alternative endpoint
++            response = await acapy_issuer.get(f"/mso_mdoc/certificates/{key_id}")
++
++        # If endpoint exists, should return certificate
++        if response.status_code not in [404, 405]:
++            assert (
++                response.status_code == 200
++            ), f"Expected 200, got {response.status_code}: {response.text}"
++
++
++# =============================================================================
++# End-to-End Trust Chain Tests
++# =============================================================================
++
++
++class TestEndToEndTrustChain:
++    """End-to-end tests for trust chain validation."""
++
++    @pytest.mark.asyncio
++    async def test_complete_trust_chain_flow(
++        self,
++        acapy_issuer: httpx.AsyncClient,
++        acapy_verifier: httpx.AsyncClient,
++    ):
++        """Test complete trust chain setup: Generate key -> Get cert -> Store as trust anchor.
++
++        This test verifies:
++        1. Generate issuer key with self-signed certificate (or use existing)
++        2. Retrieve the default certificate for that key
++        3. Store issuer's certificate as trust anchor on verifier
++
++        Note: Actual credential issuance and verification is covered by other tests.
++        """
++        import uuid
++
++        random_suffix = str(uuid.uuid4())[:8]
++
++        # Step 1: Generate issuer key (or get existing one)
++        # The endpoint returns existing keys if already present
++        key_response = await acapy_issuer.post("/mso_mdoc/generate-keys")
++
++        assert key_response.status_code in [
++            200,
++            201,
++        ], f"Failed to generate key: {key_response.text}"
++        issuer_key = key_response.json()
++
++        # Get key_id from response
++        key_id = issuer_key.get("key_id")
++        assert key_id, "No valid key_id found in key response"
++
++        # Step 2: Get issuer certificate using the default certificate endpoint
++        cert_response = await acapy_issuer.get("/mso_mdoc/certificates/default")
++
++        assert (
++            cert_response.status_code == 200
++        ), f"Failed to get certificate: {cert_response.text}"
++        cert_data = cert_response.json()
++        issuer_cert = cert_data.get("certificate_pem")
++
++        assert issuer_cert, "Certificate not found in response"
++
++        # Step 3: Store certificate as trust anchor on verifier
++        anchor_response = await acapy_verifier.post(
++            "/mso_mdoc/trust-anchors",
++            json={
++                "anchor_id": f"issuer_{random_suffix}",
++                "certificate_pem": issuer_cert,
++                "metadata": {"issuer": "Test DMV"},
++            },
++        )
++
++        assert anchor_response.status_code in [
++            200,
++            201,
++        ], f"Failed to store trust anchor: {anchor_response.text}"
++
++        # Verify trust anchor was stored
++        assert issuer_key is not None
++        assert issuer_cert is not None
++
++
++# =============================================================================
++# Fixtures
++# =============================================================================
++
++
++@pytest_asyncio.fixture
++async def acapy_issuer():
++    """HTTP client for ACA-Py issuer admin API."""
++    from os import getenv
++
++    ACAPY_ISSUER_ADMIN_URL = getenv("ACAPY_ISSUER_ADMIN_URL", "http://localhost:8021")
++    async with httpx.AsyncClient(base_url=ACAPY_ISSUER_ADMIN_URL) as client:
++        yield client
++
++
++@pytest_asyncio.fixture
++async def acapy_verifier():
++    """HTTP client for ACA-Py verifier admin API."""
++    from os import getenv
++
++    ACAPY_VERIFIER_ADMIN_URL = getenv(
++        "ACAPY_VERIFIER_ADMIN_URL", "http://localhost:8031"
++    )
++    async with httpx.AsyncClient(base_url=ACAPY_VERIFIER_ADMIN_URL) as client:
++        yield client

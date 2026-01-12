@@ -1,0 +1,835 @@
+diff --git a/oid4vc/oid4vc/app_resources.py b/oid4vc/oid4vc/app_resources.py
+index dce6c96..f3b11cb 100644
+--- a/oid4vc/oid4vc/app_resources.py
++++ b/oid4vc/oid4vc/app_resources.py
+@@ -1,8 +1,9 @@
+ """App resources."""
+ 
++import asyncio
+ import logging
++
+ import aiohttp
+-import asyncio
+ 
+ from .config import Config
+ 
+diff --git a/oid4vc/oid4vc/config.py b/oid4vc/oid4vc/config.py
+index 58a8a0f..7f9e46c 100644
+--- a/oid4vc/oid4vc/config.py
++++ b/oid4vc/oid4vc/config.py
+@@ -32,11 +32,16 @@ class Config:
+     @classmethod
+     def from_settings(cls, settings: BaseSettings) -> "Config":
+         """Retrieve configuration from context."""
++        import re
++
+         assert isinstance(settings, Settings)
+         plugin_settings = settings.for_plugin("oid4vci")
+         host = plugin_settings.get("host") or getenv("OID4VCI_HOST")
+         port = int(plugin_settings.get("port") or getenv("OID4VCI_PORT", "0"))
+-        endpoint = plugin_settings.get("endpoint") or getenv("OID4VCI_ENDPOINT")
++        # Prefer environment variable for endpoint to allow tests and deployments
++        # to override any static plugin configuration. This ensures the
++        # credential_issuer matches the intended OID4VCI base URL.
++        endpoint = getenv("OID4VCI_ENDPOINT") or plugin_settings.get("endpoint")
+         status_handler = plugin_settings.get("status_handler") or getenv(
+             "OID4VCI_STATUS_HANDLER"
+         )
+@@ -53,6 +58,21 @@ class Config:
+         if not endpoint:
+             raise ConfigError("endpoint", "OID4VCI_ENDPOINT")
+ 
++        # Expand environment variables in endpoint if needed
++        # Handle ${VAR:-default} format
++        def expand_vars(text):
++            def replacer(match):
++                var_expr = match.group(1)
++                if ":-" in var_expr:
++                    var_name, default_value = var_expr.split(":-", 1)
++                    return getenv(var_name.strip(), default_value.strip())
++                else:
++                    return getenv(var_expr.strip(), match.group(0))
++
++            return re.sub(r"\$\{([^}]+)\}", replacer, text)
++
++        endpoint = expand_vars(endpoint)
++
+         return cls(
+             host, port, endpoint, status_handler, auth_server_url, auth_server_client
+         )
+diff --git a/oid4vc/oid4vc/dcql.py b/oid4vc/oid4vc/dcql.py
+index f015eb6..94b0626 100644
+--- a/oid4vc/oid4vc/dcql.py
++++ b/oid4vc/oid4vc/dcql.py
+@@ -1,14 +1,16 @@
+ """Digital Credentials Query Language evaluator."""
+ 
++import logging
+ from dataclasses import dataclass, field
+-from typing import Any, Dict, List, Optional
++from typing import Any, Dict, List, Optional, Set, Tuple
+ 
+-from oid4vc.cred_processor import CredProcessors
+-from oid4vc.models.dcql_query import DCQLQuery
+ from acapy_agent.core.profile import Profile
+ 
++from oid4vc.cred_processor import CredProcessors
++from oid4vc.models.dcql_query import ClaimsQuery, CredentialQuery, DCQLQuery
+ from oid4vc.models.presentation import OID4VPPresentation
+ 
++LOGGER = logging.getLogger(__name__)
+ 
+ ClaimsPath = List[str | int | None]
+ Absent = object()
+@@ -111,6 +113,9 @@ class DCQLVerifyResult:
+     verified: bool = False
+     cred_query_id_to_claims: Dict[str, dict] = field(default_factory=dict)
+     details: Optional[str] = None
++    satisfied_credential_sets: Optional[
++        List[int]
++    ] = None  # Indices of satisfied credential sets
+ 
+ 
+ class DCQLQueryEvaluator:
+@@ -128,80 +133,308 @@ class DCQLQueryEvaluator:
+ 
+         return cls(query)
+ 
+-    async def verify(
++    async def _verify_single_credential(
+         self,
+         profile: Profile,
++        cred: CredentialQuery,
+         vp_token: Dict[str, Any],
+         presentation_record: OID4VPPresentation,
+-    ):
+-        """Verify a submission against the query."""
+-        # TODO: we're ignoring CredentialSets for now, and assuming that all Credentials
+-        # in the CredentialList are required, to simplify the initial implementation
+-        # We're also ignoring ClaimSets for now ~ mepeltier
++        processors: CredProcessors,
++    ) -> Tuple[bool, Optional[str], Optional[dict]]:
++        """Verify a single credential from the vp_token.
++
++        Returns:
++            Tuple of (success, error_message, verified_payload)
++        """
++        pres_list = vp_token.get(cred.credential_query_id)
++        if not pres_list:
++            return (False, f"Missing presentation for {cred.credential_query_id}", None)
++
++        # DCQL vp_token format: {credential_query_id: [presentations...]}
++        if isinstance(pres_list, list):
++            if len(pres_list) == 0:
++                return (
++                    False,
++                    f"Empty presentation array for {cred.credential_query_id}",
++                    None,
++                )
++            pres = pres_list[0]
++        else:
++            pres = pres_list
++
++        pres_verifier = processors.pres_verifier_for_format(cred.format)
++
++        vp_result = await pres_verifier.verify_presentation(
++            profile=profile,
++            presentation=pres,
++            presentation_record=presentation_record,
++        )
++        if not vp_result.verified:
++            return (
++                False,
++                f"Presentation for {cred.credential_query_id} failed verification",
++                None,
++            )
+ 
+-        processors = profile.inject(CredProcessors)
+-        id_to_claim = {}
++        cred_verifier = processors.cred_verifier_for_format(cred.format)
++
++        vc_result = await cred_verifier.verify_credential(
++            profile=profile,
++            credential=vp_result.payload,
++        )
++        if not vc_result.verified:
++            return (
++                False,
++                f"Credential for {cred.credential_query_id} failed verification",
++                None,
++            )
+ 
+-        for cred in self.query.credentials:
+-            pres = vp_token.get(cred.credential_query_id)
+-            if not pres:
+-                return DCQLVerifyResult(
+-                    details=f"Missing presentation for {cred.credential_query_id}"
+-                )
++        # Doctype validation for mDOC credentials
++        if cred.meta:
++            expected_doctypes = []
++            if cred.meta.doctype_value:
++                expected_doctypes = [cred.meta.doctype_value]
++            elif cred.meta.doctype_values:
++                expected_doctypes = cred.meta.doctype_values
++
++            if expected_doctypes:
++                presented_doctype = vc_result.payload.get("docType")
++                if presented_doctype is None:
++                    return (
++                        False,
++                        f"Credential for {cred.credential_query_id} is missing doctype",
++                        None,
++                    )
++                if presented_doctype not in expected_doctypes:
++                    return (
++                        False,
++                        f"Presented doctype '{presented_doctype}' does not "
++                        f"match requested doctype(s): {expected_doctypes}",
++                        None,
++                    )
+ 
+-            pres_verifier = processors.pres_verifier_for_format(cred.format)
++        if cred.meta and cred.meta.vct_values:
++            presented_vct = vc_result.payload.get("vct")
++            if presented_vct not in cred.meta.vct_values:
++                return (False, "Presented vct does not match requested vct(s).", None)
+ 
+-            vp_result = await pres_verifier.verify_presentation(
+-                profile=profile,
+-                presentation=pres,
+-                presentation_record=presentation_record,
++        # Handle ClaimSets - if defined, at least one claim set must be satisfied
++        claims_result = await self._verify_claims(cred, vc_result.payload)
++        if not claims_result[0]:
++            return claims_result
++
++        return (True, None, vc_result.payload)
++
++    async def _verify_claims(
++        self,
++        cred: CredentialQuery,
++        payload: dict,
++    ) -> Tuple[bool, Optional[str], Optional[dict]]:
++        """Verify claims for a credential, handling ClaimSets if present.
++
++        Returns:
++            Tuple of (success, error_message, payload)
++        """
++        if not cred.claims:
++            return (True, None, payload)
++
++        # Build a map of claim_id -> claim for ClaimSets evaluation
++        claim_id_map: Dict[str, ClaimsQuery] = {}
++        for claim in cred.claims:
++            if claim.id:
++                claim_id_map[claim.id] = claim
++
++        # If claim_sets is defined, use it to determine which claims to verify
++        if cred.claim_sets:
++            # Try each claim set - at least one must be fully satisfied
++            for claim_set_idx, claim_set in enumerate(cred.claim_sets):
++                all_claims_satisfied = True
++                for claim_id in claim_set:
++                    claim = claim_id_map.get(claim_id)
++                    if not claim:
++                        LOGGER.warning(
++                            f"ClaimSet references unknown claim id: {claim_id}"
++                        )
++                        all_claims_satisfied = False
++                        break
++
++                    success, _ = self._verify_single_claim(claim, payload)
++                    if not success:
++                        all_claims_satisfied = False
++                        break
++
++                if all_claims_satisfied:
++                    LOGGER.debug(f"ClaimSet {claim_set_idx} satisfied")
++                    return (True, None, payload)
++
++            return (
++                False,
++                f"No claim set could be satisfied for {cred.credential_query_id}",
++                None,
+             )
+-            if not vp_result.verified:
+-                return DCQLVerifyResult(
+-                    details=f"Presentation for {cred.credential_query_id} "
+-                    "failed verification"
++
++        # No claim_sets defined - verify all claims individually
++        for claim in cred.claims:
++            success, error_msg = self._verify_single_claim(claim, payload)
++            if not success:
++                return (False, error_msg, None)
++
++        return (True, None, payload)
++
++    def _verify_single_claim(
++        self,
++        claim: ClaimsQuery,
++        payload: dict,
++    ) -> Tuple[bool, Optional[str]]:
++        """Verify a single claim against the payload.
++
++        Returns:
++            Tuple of (success, error_message)
++        """
++        if claim.path is not None:
++            # JSON-based claims structure (SD-JWT, etc.) - use path pointer
++            pointer = ClaimsPathPointer(claim.path)
++            try:
++                values = pointer.resolve(payload)
++                if not values:
++                    return (False, f"Path {claim.path} does not exist")
++                if claim.values:
++                    # Check if any resolved value matches the required values
++                    if not any(v in claim.values for v in values):
++                        return (
++                            False,
++                            "Credential presented did not match the values required by the query",
++                        )
++            except ValueError:
++                return (False, f"Path {claim.path} does not exist")
++
++        elif claim.namespace is not None and claim.claim_name is not None:
++            # mDOC format - use namespace/claim_name syntax
++            namespace_data = payload.get(claim.namespace)
++            if namespace_data is None:
++                return (
++                    False,
++                    f"Namespace {claim.namespace} does not exist in credential",
++                )
++            if claim.claim_name not in namespace_data:
++                return (
++                    False,
++                    f"Claim {claim.claim_name} does not exist in namespace {claim.namespace}",
++                )
++            value = namespace_data[claim.claim_name]
++            if claim.values and value not in claim.values:
++                return (
++                    False,
++                    "Credential presented did not match the values required by the query",
+                 )
+ 
+-            cred_verifier = processors.cred_verifier_for_format(cred.format)
++        return (True, None)
+ 
+-            vc_result = await cred_verifier.verify_credential(
+-                profile=profile,
+-                credential=vp_result.payload,
+-            )
+-            if not vc_result.verified:
+-                return DCQLVerifyResult(
+-                    details=f"Credential for {cred.credential_query_id} "
+-                    "failed verification"
++    async def _evaluate_credential_sets(
++        self,
++        verified_cred_ids: Set[str],
++    ) -> Tuple[bool, List[int], Optional[str]]:
++        """Evaluate credential sets to determine if query is satisfied.
++
++        Returns:
++            Tuple of (success, satisfied_set_indices, error_message)
++        """
++        if not self.query.credential_set:
++            # No credential sets defined - all credentials are required
++            cred_ids_in_query = {c.credential_query_id for c in self.query.credentials}
++            if cred_ids_in_query <= verified_cred_ids:
++                return (True, [], None)
++            missing = cred_ids_in_query - verified_cred_ids
++            return (False, [], f"Missing required credentials: {missing}")
++
++        satisfied_sets = []
++
++        for set_idx, cred_set in enumerate(self.query.credential_set):
++            # Each credential_set has 'options' - each option is a list of credential IDs
++            # At least one option must be fully satisfied
++            is_required = cred_set.required if cred_set.required is not None else True
++
++            option_satisfied = False
++            for option in cred_set.options:
++                if all(cred_id in verified_cred_ids for cred_id in option):
++                    option_satisfied = True
++                    break
++
++            if option_satisfied:
++                satisfied_sets.append(set_idx)
++            elif is_required:
++                return (
++                    False,
++                    satisfied_sets,
++                    f"Required credential set {set_idx} not satisfied. "
++                    f"Options: {cred_set.options}, Verified: {verified_cred_ids}",
+                 )
+ 
+-            # TODO: Add doctype checks
++        return (True, satisfied_sets, None)
+ 
+-            if cred.meta and cred.meta.vct_values:
+-                presented_vct = vc_result.payload.get("vct")
+-                vct = cred.meta.vct_values
++    async def verify(
++        self,
++        profile: Profile,
++        vp_token: Dict[str, Any],
++        presentation_record: OID4VPPresentation,
++    ):
++        """Verify a submission against the query.
+ 
+-                if presented_vct not in vct:
+-                    return DCQLVerifyResult(
+-                        details="Presented vct does not match requested vct(s)."
+-                    )
++        This method now supports:
++        - CredentialSets: Allows specifying alternative combinations of credentials
++        - ClaimSets: Allows specifying alternative combinations of claims within a credential
+ 
+-            # TODO: we're assuming that the credential format type is JSON
+-            for claim in cred.claims or []:
+-                assert claim.path is not None
+-                path = claim.path
+-
+-                pointer = ClaimsPathPointer(path)
+-                try:
+-                    value = pointer.resolve(vc_result.payload)
+-                    if claim.values and value not in claim.values:
+-                        return DCQLVerifyResult(
+-                            details="Credential presented did not "
+-                            "match the values required by the query"
+-                        )
++        The verification process:
++        1. Verify each credential in the vp_token against the query
++        2. If credential_sets are defined, evaluate which sets are satisfied
++        3. Return success if all required credential sets are satisfied
++        """
++        processors = profile.inject(CredProcessors)
++        id_to_claim: Dict[str, dict] = {}
++        verified_cred_ids: Set[str] = set()
+ 
+-                except ValueError:
+-                    return DCQLVerifyResult(details=f"Path {path} does not exist")
++        # First, verify all credentials that are present in the vp_token
++        for cred in self.query.credentials:
++            # Check if this credential is present in the submission
++            if cred.credential_query_id not in vp_token:
++                LOGGER.debug(
++                    f"Credential {cred.credential_query_id} not in submission, "
++                    "checking if required by credential_sets"
++                )
++                continue
+ 
+-            id_to_claim[cred.credential_query_id] = vc_result.payload
++            success, error_msg, payload = await self._verify_single_credential(
++                profile=profile,
++                cred=cred,
++                vp_token=vp_token,
++                presentation_record=presentation_record,
++                processors=processors,
++            )
+ 
+-        return DCQLVerifyResult(verified=True, cred_query_id_to_claims=id_to_claim)
++            if not success:
++                # If credential_sets are defined, this might be optional
++                if self.query.credential_set:
++                    LOGGER.debug(
++                        f"Credential {cred.credential_query_id} failed: {error_msg}, "
++                        "but credential_sets defined - continuing"
++                    )
++                    continue
++                # No credential_sets - all credentials are required
++                return DCQLVerifyResult(details=error_msg)
++
++            verified_cred_ids.add(cred.credential_query_id)
++            id_to_claim[cred.credential_query_id] = payload
++
++        # Evaluate credential sets to determine if query is satisfied
++        sets_success, satisfied_sets, sets_error = await self._evaluate_credential_sets(
++            verified_cred_ids
++        )
++
++        if not sets_success:
++            return DCQLVerifyResult(details=sets_error)
++
++        return DCQLVerifyResult(
++            verified=True,
++            cred_query_id_to_claims=id_to_claim,
++            satisfied_credential_sets=satisfied_sets if satisfied_sets else None,
++        )
+diff --git a/oid4vc/oid4vc/models/dcql_query.py b/oid4vc/oid4vc/models/dcql_query.py
+index bf4b6eb..4b9109e 100644
+--- a/oid4vc/oid4vc/models/dcql_query.py
++++ b/oid4vc/oid4vc/models/dcql_query.py
+@@ -1,10 +1,10 @@
+ """Models for DCQL queries."""
+ 
+-from marshmallow import ValidationError, fields, validates_schema
+ from typing import Any, List, Mapping, Optional, Union
+-from acapy_agent.messaging.models.base_record import BaseRecord, BaseRecordSchema
+-from acapy_agent.messaging.models.base import BaseModel, BaseModelSchema
+ 
++from acapy_agent.messaging.models.base import BaseModel, BaseModelSchema
++from acapy_agent.messaging.models.base_record import BaseRecord, BaseRecordSchema
++from marshmallow import ValidationError, fields, validates_schema
+ 
+ ClaimsPath = List[str | int | None]
+ 
+@@ -98,8 +98,12 @@ class ClaimsQuerySchema(BaseModelSchema):
+         values = data.get("values")
+         if values:
+             for v in values:
+-                if not (isinstance(v, str) or isinstance(v, int) or isinstance(v, bool)):
+-                    raise ValidationError("Values elements must be string, int, or bool.")
++                if not (
++                    isinstance(v, str) or isinstance(v, int) or isinstance(v, bool)
++                ):
++                    raise ValidationError(
++                        "Values elements must be string, int, or bool."
++                    )
+ 
+ 
+ ClaimQueryID = str
+@@ -116,6 +120,7 @@ class CredentialMeta(BaseModel):
+     def __init__(
+         self,
+         query_type: Optional[str] = None,
++        doctype_value: Optional[str] = None,
+         doctype_values: Optional[List[str]] = None,
+         vct_values: Optional[List[str]] = None,
+     ):
+@@ -123,6 +128,7 @@ class CredentialMeta(BaseModel):
+         super().__init__()
+ 
+         self.query_type = query_type
++        self.doctype_value = doctype_value
+         self.doctype_values = doctype_values
+         self.vct_values = vct_values
+ 
+@@ -135,26 +141,48 @@ class CredentialMetaSchema(BaseModelSchema):
+ 
+         model_class = "CredentialMeta"
+ 
++    doctype_value = fields.Str(
++        required=False,
++        metadata={
++            "description": "OID4VP v1.0 spec-compliant: string specifying the doctype "
++            "of the requested mDOC credential."
++        },
++    )
++
+     doctype_values = fields.List(
+         fields.Str,
+         required=False,
++        metadata={
++            "description": "Array of doctype strings for mDOC credentials "
++            "(backward compatibility)."
++        },
+     )
+ 
+     vct_values = fields.List(
+         fields.Str,
+         required=False,
++        metadata={
++            "description": "Array of Verifiable Credential Type values for SD-JWT VC."
++        },
+     )
+ 
+     @validates_schema
+     def validate_fields(self, data, **kwargs):
+         """Validate CredentialMeta object."""
+ 
++        doctype_value = data.get("doctype_value")
+         doctype_values = data.get("doctype_values")
+         vct_values = data.get("vct_values")
+ 
+-        if vct_values and doctype_values:
++        if doctype_value and doctype_values:
+             raise ValidationError(
+-                "Credential Metadata cannot have both vct_values and doctype_values."
++                "Cannot have both doctype_value and doctype_values. "
++                "Use doctype_value (singular) for OID4VP v1.0 spec compliance."
++            )
++
++        if vct_values and (doctype_values or doctype_value):
++            raise ValidationError(
++                "Credential Metadata cannot have both vct_values and doctype value(s)."
+             )
+ 
+ 
+@@ -309,20 +337,24 @@ class DCQLQuery(BaseRecord):
+ 
+     RECORD_ID_NAME = "dcql_query_id"
+     RECORD_TOPIC = "oid4vp"
+-    RECORD_TYPE = "oid4vp"
++    RECORD_TYPE = "oid4vp_dcql_query"
+ 
+     def __init__(
+         self,
+         *,
+         dcql_query_id: Optional[str] = None,
+-        credentials: Union[List[Mapping], List[CredentialQuery]],
+-        credential_sets: Optional[Union[List[Mapping], List[CredentialSetQuery]]] = None,
++        credentials: Optional[Union[List[Mapping], List[CredentialQuery]]] = None,
++        credential_sets: Optional[
++            Union[List[Mapping], List[CredentialSetQuery]]
++        ] = None,
+         **kwargs,
+     ):
+         """Initialize a new DCQL Credential Query Record."""
+         super().__init__(dcql_query_id, **kwargs)
+ 
+-        self._credentials = [CredentialQuery.serde(cred) for cred in credentials]
++        self._credentials = (
++            [CredentialQuery.serde(cred) for cred in credentials] if credentials else []
++        )
+         self._credential_set = (
+             [CredentialSetQuery.serde(cred) for cred in credential_sets]
+             if credential_sets
+diff --git a/oid4vc/oid4vc/routes/vp_dcql.py b/oid4vc/oid4vc/routes/vp_dcql.py
+new file mode 100644
+index 0000000..deb9335
+--- /dev/null
++++ b/oid4vc/oid4vc/routes/vp_dcql.py
+@@ -0,0 +1,212 @@
++"""DCQL query routes for OID4VP admin API."""
++
++from acapy_agent.admin.request_context import AdminRequestContext
++from acapy_agent.messaging.models.base import BaseModelError
++from acapy_agent.messaging.models.openapi import OpenAPISchema
++from acapy_agent.storage.error import StorageError, StorageNotFoundError
++from aiohttp import web
++from aiohttp_apispec import (
++    docs,
++    match_info_schema,
++    querystring_schema,
++    request_schema,
++    response_schema,
++)
++from marshmallow import fields
++
++from ..models.dcql_query import (
++    CredentialQuery,
++    CredentialQuerySchema,
++    CredentialSetQuerySchema,
++    DCQLQuery,
++    DCQLQuerySchema,
++)
++
++
++class CreateDCQLQueryRequestSchema(OpenAPISchema):
++    """Request schema for creating a DCQL Query."""
++
++    credentials = fields.List(
++        fields.Nested(CredentialQuerySchema),
++        required=True,
++        metadata={"description": "A list of Credential Queries."},
++    )
++
++    credential_sets = fields.List(
++        fields.Nested(CredentialSetQuerySchema),
++        required=False,
++        metadata={"description": "A list of Credential Set Queries."},
++    )
++
++
++class CreateDCQLQueryResponseSchema(OpenAPISchema):
++    """Response schema from creating a DCQL Query."""
++
++    dcql_query = fields.Dict(
++        required=True,
++        metadata={
++            "description": "The DCQL query.",
++        },
++    )
++
++
++@docs(
++    tags=["oid4vp"],
++    summary="Create a DCQL Query record.",
++)
++@request_schema(CreateDCQLQueryRequestSchema())
++@response_schema(CreateDCQLQueryResponseSchema())
++async def create_dcql_query(request: web.Request):
++    """Create a DCQL Query Record."""
++
++    body = await request.json()
++    context: AdminRequestContext = request["context"]
++
++    credentials = body["credentials"]
++    credential_sets = body.get("credential_sets")
++
++    async with context.session() as session:
++        cred_queries = []
++        for cred in credentials:
++            cred_queries.append(CredentialQuery.deserialize(cred))
++
++        dcql_query = DCQLQuery(
++            credentials=cred_queries, credential_sets=credential_sets
++        )
++        await dcql_query.save(session=session)
++
++    return web.json_response(
++        {
++            "dcql_query": dcql_query.serialize(),
++            "dcql_query_id": dcql_query.dcql_query_id,
++        }
++    )
++
++
++class DCQLQueriesQuerySchema(OpenAPISchema):
++    """Parameters and validators for DCQL Query List query."""
++
++    dcql_query_id = fields.Str(
++        required=False,
++        metadata={"description": "Filter by presentation identifier."},
++    )
++
++
++class DCQLQueryListSchema(OpenAPISchema):
++    """Result schema for an DCQL Query List query."""
++
++    results = fields.Nested(
++        DCQLQuerySchema(),
++        many=True,
++        metadata={"description": "Presentations"},
++    )
++
++
++@docs(
++    tags=["oid4vp"],
++    summary="List all DCQL Query records.",
++)
++@querystring_schema(DCQLQueriesQuerySchema())
++@response_schema(DCQLQueryListSchema())
++async def list_dcql_queries(request: web.Request):
++    """List all DCQL Query Records."""
++
++    context: AdminRequestContext = request["context"]
++
++    try:
++        async with context.profile.session() as session:
++            if dcql_query_id := request.query.get("dcql_query_id"):
++                record = await DCQLQuery.retrieve_by_id(session, dcql_query_id)
++                results = [record.serialize()]
++            else:
++                records = await DCQLQuery.query(session=session)
++                results = [record.serialize() for record in records]
++    except (StorageError, BaseModelError, StorageNotFoundError) as err:
++        raise web.HTTPBadRequest(reason=err.roll_up) from err
++    return web.json_response({"results": results})
++
++
++class DCQLQueryIDMatchSchema(OpenAPISchema):
++    """Path parameters and validators for request taking presentation id."""
++
++    dcql_query_id = fields.Str(
++        required=True,
++        metadata={
++            "description": "Presentation identifier",
++        },
++    )
++
++
++class GetDCQLQueryResponseSchema(OpenAPISchema):
++    """Request handler for returning a single DCQL Query."""
++
++    dcql_query_id = fields.Str(
++        required=True,
++        metadata={
++            "description": "Query identifier",
++        },
++    )
++
++    credentials = fields.List(
++        fields.Nested(CredentialQuerySchema),
++        required=True,
++        metadata={
++            "description": "A list of credential query objects",
++        },
++    )
++
++    credential_sets = fields.List(
++        fields.Nested(CredentialSetQuerySchema),
++        required=False,
++        metadata={
++            "description": "A list of credential set query objects",
++        },
++    )
++
++
++@docs(
++    tags=["oid4vp"],
++    summary="Fetch DCQL query.",
++)
++@match_info_schema(DCQLQueryIDMatchSchema())
++@response_schema(GetDCQLQueryResponseSchema())
++async def get_dcql_query_by_id(request: web.Request):
++    """Request handler for retrieving a DCQL query."""
++
++    context: AdminRequestContext = request["context"]
++    dcql_query_id = request.match_info["dcql_query_id"]
++
++    try:
++        async with context.session() as session:
++            record = await DCQLQuery.retrieve_by_id(session, dcql_query_id)
++
++    except StorageNotFoundError as err:
++        raise web.HTTPNotFound(reason=err.roll_up) from err
++    except (StorageError, BaseModelError) as err:
++        raise web.HTTPBadRequest(reason=err.roll_up) from err
++
++    return web.json_response(record.serialize())
++
++
++@docs(
++    tags=["oid4vp"],
++    summary="Delete DCQL Query.",
++)
++@match_info_schema(DCQLQueryIDMatchSchema())
++@response_schema(DCQLQuerySchema())
++async def dcql_query_remove(request: web.Request):
++    """Request handler for removing a DCQL Query."""
++
++    context: AdminRequestContext = request["context"]
++    dcql_query_id = request.match_info["dcql_query_id"]
++
++    try:
++        async with context.session() as session:
++            record = await DCQLQuery.retrieve_by_id(session, dcql_query_id)
++            await record.delete_record(session)
++    except StorageNotFoundError as err:
++        raise web.HTTPNotFound(reason=err.roll_up) from err
++    except (StorageError, BaseModelError) as err:
++        raise web.HTTPBadRequest(reason=err.roll_up) from err
++
++    return web.json_response(record.serialize())
+diff --git a/oid4vc/oid4vc/tests/test_dcql.py b/oid4vc/oid4vc/tests/test_dcql.py
+index 77faaec..12c36e2 100644
+--- a/oid4vc/oid4vc/tests/test_dcql.py
++++ b/oid4vc/oid4vc/tests/test_dcql.py
+@@ -1,4 +1,5 @@
+ from unittest import mock
++
+ import pytest
+ from acapy_agent.core.profile import Profile
+ from acapy_agent.tests.mock import CoroutineMock
+@@ -7,7 +8,6 @@ from oid4vc.cred_processor import CredProcessors, VerifyResult
+ from oid4vc.dcql import DCQLQueryEvaluator
+ from oid4vc.models.dcql_query import CredentialQuery, DCQLQuery
+ 
+-
+ raw_query = {
+     "credentials": [
+         {
+@@ -40,7 +40,9 @@ async def test_dcql_query_saving(profile: Profile):
+     async with profile.session() as session:
+         await des_query.save(session=session)
+ 
+-        retrieved_query = await DCQLQuery.retrieve_by_id(session, des_query.dcql_query_id)
++        retrieved_query = await DCQLQuery.retrieve_by_id(
++            session, des_query.dcql_query_id
++        )
+ 
+     assert len(retrieved_query.credentials) == 1
+     assert isinstance(retrieved_query.credentials[0], CredentialQuery)
