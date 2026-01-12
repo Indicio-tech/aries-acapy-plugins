@@ -2,8 +2,9 @@
 # Stage 1: Build stage with native dependencies
 # Note: Using slim-bookworm instead of alpine because @openwallet-foundation/askar-nodejs
 # requires glibc (not musl libc). Alpine causes "__isnan: symbol not found" errors.
+# Note: Node 20+ required for @credo-ts/node@0.6.x dependencies (@noble/curves, @sd-jwt, etc)
 # =============================================================================
-FROM node:18-slim AS build
+FROM node:20-slim AS build
 
 WORKDIR /app
 
@@ -33,7 +34,7 @@ RUN npm prune --production
 # =============================================================================
 # Stage 2: Production runtime
 # =============================================================================
-FROM node:18-slim
+FROM node:20-slim
 
 WORKDIR /app
 

@@ -1,17 +1,14 @@
 import express from 'express';
 import * as util from 'util';
-import { getAgent, initializeAgent } from './agent.js';
+import { getAgent } from './agent.js';
 import { ClaimFormat, MdocRecord } from '@credo-ts/core';
 
 const router: express.Router = express.Router();
 
 // Present credential to ACA-Py verifier
 router.post('/present', async (req: any, res: any) => {
-  let agent = getAgent();
+  const agent = getAgent();
   try {
-    if (!agent) {
-      agent = await initializeAgent(3020);
-    }
 
     const { request_uri } = req.body;
 

@@ -18,7 +18,7 @@ import verificationRouter from './verification.js';
 import { initializeAgent, addTrustedCertificate, setTrustedCertificates, getTrustedCertificates } from './agent.js';
 
 const app = express();
-const PORT = 3020;
+const PORT = parseInt(process.env.PORT || '3020', 10);
 
 // Middleware
 app.use(express.json());

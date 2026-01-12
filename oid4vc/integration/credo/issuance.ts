@@ -1,15 +1,12 @@
 import express from 'express';
-import { getAgent, initializeAgent } from './agent.js';
+import { getAgent } from './agent.js';
 
 const router: express.Router = express.Router();
 
 // Accept credential offer from ACA-Py issuer
 router.post('/accept-offer', async (req: any, res: any) => {
-  let agent = getAgent();
+  const agent = getAgent();
   try {
-    if (!agent) {
-      agent = await initializeAgent(3020);
-    }
 
     const { credential_offer } = req.body;
 
