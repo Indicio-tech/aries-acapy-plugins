@@ -1,8 +1,17 @@
+import base64
+import gzip
+import logging
 import uuid
 
+import httpx
+import jwt
 import pytest
+from bitarray import bitarray
 
+from .conftest import wait_for_presentation_valid
 from .test_config import MDOC_AVAILABLE
+
+LOGGER = logging.getLogger(__name__)
 
 
 @pytest.mark.asyncio
@@ -308,119 +317,7 @@ async def test_sphereon_present_mdoc_credential(
     assert present_response.status_code == 200
 
     # 4. Verify status on ACA-Py side
-    import asyncio
-
-    for _ in range(10):
-        record = await acapy_verifier_admin.get(
-            f"/oid4vp/presentation/{presentation_id}"
-        )
-        if record["state"] == "presentation-valid":
-            break
-        await asyncio.sleep(1)
-    else:
-        pytest.fail(f"Presentation not verified. Final state: {record['state']}")
-    """Test Sphereon presenting a credential to ACA-Py."""
-
-    # 1. Issue a credential first
-    cred_id = f"UniversityDegreeCredential-{uuid.uuid4()}"
-    supported = await acapy_issuer_admin.post(
-        "/oid4vci/credential-supported/create/jwt",
-        json={
-            "cryptographic_binding_methods_supported": ["did"],
-            "cryptographic_suites_supported": ["ES256"],
-            "format": "jwt_vc_json",
-            "id": cred_id,
-            "@context": [
-                "https://www.w3.org/2018/credentials/v1",
-                "https://www.w3.org/2018/credentials/examples/v1",
-            ],
-            "type": ["VerifiableCredential", "UniversityDegreeCredential"],
-        },
-    )
-    supported_cred_id = supported["supported_cred_id"]
-    did_result = await acapy_issuer_admin.post(
-        "/did/jwk/create", json={"key_type": "p256"}
-    )
-    issuer_did = did_result["did"]
-    exchange = await acapy_issuer_admin.post(
-        "/oid4vci/exchange/create",
-        json={
-            "supported_cred_id": supported_cred_id,
-            "credential_subject": {"name": "alice"},
-            "verification_method": issuer_did + "#0",
-        },
-    )
-    offer_response = await acapy_issuer_admin.get(
-        "/oid4vci/credential-offer", params={"exchange_id": exchange["exchange_id"]}
-    )
-    credential_offer = offer_response["credential_offer"]
-
-    issue_response = await sphereon_client.post(
-        "/oid4vci/accept-offer", json={"offer": credential_offer}
-    )
-    assert issue_response.status_code == 200
-    credential_jwt = issue_response.json()["credential"]
-
-    # 2. Create Presentation Request (ACA-Py Verifier)
-    # Create verifier DID
-    verifier_did_result = await acapy_verifier_admin.post(
-        "/did/jwk/create", json={"key_type": "p256"}
-    )
-    verifier_did = verifier_did_result["did"]
-
-    # Create presentation definition
-    pres_def_id = str(uuid.uuid4())
-    presentation_definition = {
-        "id": pres_def_id,
-        "input_descriptors": [
-            {
-                "id": "university_degree",
-                "name": "University Degree",
-                "schema": [{"uri": "https://www.w3.org/2018/credentials/examples/v1"}],
-            }
-        ],
-    }
-
-    pres_def_response = await acapy_verifier_admin.post(
-        "/oid4vp/presentation-definition", json={"pres_def": presentation_definition}
-    )
-    pres_def_id = pres_def_response["pres_def_id"]
-
-    # Create request
-    request_response = await acapy_verifier_admin.post(
-        "/oid4vp/request",
-        json={
-            "pres_def_id": pres_def_id,
-            "vp_formats": {"jwt_vp_json": {"alg": ["ES256"]}},
-        },
-    )
-    request_uri = request_response["request_uri"]
-    presentation_id = request_response["presentation"]["presentation_id"]
-
-    # 3. Sphereon presents credential
-    present_response = await sphereon_client.post(
-        "/oid4vp/present-credential",
-        json={
-            "authorization_request_uri": request_uri,
-            "verifiable_credentials": [credential_jwt],
-        },
-    )
-
-    assert present_response.status_code == 200
-
-    # 4. Verify status on ACA-Py side
-    # Poll for status
-    import asyncio
-
-    for _ in range(10):
-        record = await acapy_verifier_admin.get(
-            f"/oid4vp/presentation/{presentation_id}"
-        )
-        if record["state"] == "presentation-valid":
-            break
-        await asyncio.sleep(1)
-    else:
-        pytest.fail(f"Presentation not verified. Final state: {record['state']}")
+    await wait_for_presentation_valid(acapy_verifier_admin, presentation_id)
 
 
 @pytest.mark.asyncio
@@ -479,3 +376,151 @@ async def test_sphereon_accept_credential_offer_by_ref(
     assert response.status_code == 200
     result = response.json()
     assert "credential" in result
+
+
+# =============================================================================
+# Revocation Tests
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_sphereon_revocation_flow(
+    acapy_issuer_admin,
+    sphereon_client,
+):
+    """Test revocation flow with Sphereon agent.
+
+    1. Setup Issuer with Status List.
+    2. Issue credential to Sphereon.
+    3. Revoke credential.
+    4. Verify status list is updated.
+    """
+    LOGGER.info("Starting Sphereon revocation flow test...")
+
+    # 1. Setup Issuer
+    cred_id = f"RevocableCredSphereon-{uuid.uuid4()}"
+    supported = await acapy_issuer_admin.post(
+        "/oid4vci/credential-supported/create",
+        json={
+            "cryptographic_binding_methods_supported": ["did:key"],
+            "cryptographic_suites_supported": ["ES256"],
+            "format": "jwt_vc_json",
+            "id": cred_id,
+            "type": ["VerifiableCredential", "UniversityDegreeCredential"],
+            "@context": [
+                "https://www.w3.org/2018/credentials/v1",
+                "https://www.w3.org/2018/credentials/examples/v1",
+            ],
+            "display": [
+                {
+                    "name": "Revocable Credential Sphereon",
+                    "locale": "en-US",
+                }
+            ],
+        },
+    )
+    supported_cred_id = supported["supported_cred_id"]
+
+    # Create issuer DID
+    did_result = await acapy_issuer_admin.post(
+        "/wallet/did/create",
+        json={"method": "key", "options": {"key_type": "ed25519"}},
+    )
+    issuer_did = did_result["result"]["did"]
+
+    # Create Status List Definition
+    status_def = await acapy_issuer_admin.post(
+        "/status-list/defs",
+        json={
+            "supported_cred_id": supported_cred_id,
+            "status_purpose": "revocation",
+            "list_size": 1024,
+            "list_type": "w3c",
+            "issuer_did": issuer_did,
+        },
+    )
+    definition_id = status_def["id"]
+
+    # 2. Issue Credential to Sphereon
+    exchange = await acapy_issuer_admin.post(
+        "/oid4vci/exchange/create",
+        json={
+            "supported_cred_id": supported_cred_id,
+            "credential_subject": {"name": "Bob"},
+            "did": issuer_did,
+        },
+    )
+    exchange_id = exchange["exchange_id"]
+
+    offer_response = await acapy_issuer_admin.get(
+        "/oid4vci/credential-offer",
+        params={"exchange_id": exchange_id},
+    )
+    credential_offer = offer_response["credential_offer"]
+
+    # Sphereon accepts offer
+    response = await sphereon_client.post(
+        "/oid4vci/accept-offer",
+        json={"offer": credential_offer},
+    )
+    assert response.status_code == 200
+    result = response.json()
+    assert "credential" in result
+    credential_jwt = result["credential"]
+
+    # Verify credential has status list
+    payload = jwt.decode(credential_jwt, options={"verify_signature": False})
+    vc = payload.get("vc", payload)
+    assert "credentialStatus" in vc
+
+    # Check for bitstring format
+    credential_status = vc["credentialStatus"]
+    assert credential_status["type"] == "BitstringStatusListEntry"
+    assert "id" in credential_status
+
+    # Extract index from id (format: url#index)
+    status_list_index = int(credential_status["id"].split("#")[1])
+    status_list_url = credential_status["id"].split("#")[0]
+
+    # Fix hostname for docker network if needed
+    if "acapy-issuer.local" in status_list_url:
+        status_list_url = status_list_url.replace("acapy-issuer.local", "acapy-issuer")
+    elif "localhost" in status_list_url:
+        status_list_url = status_list_url.replace("localhost", "acapy-issuer")
+
+    LOGGER.info(f"Credential issued with status list index: {status_list_index}")
+
+    # 3. Revoke Credential
+    LOGGER.info(f"Revoking credential with ID: {exchange_id}")
+
+    await acapy_issuer_admin.patch(
+        f"/status-list/defs/{definition_id}/creds/{exchange_id}", json={"status": "1"}
+    )
+
+    # Publish update
+    await acapy_issuer_admin.put(f"/status-list/defs/{definition_id}/publish")
+
+    # 4. Verify Status List Updated
+    async with httpx.AsyncClient() as client:
+        response = await client.get(status_list_url)
+        assert response.status_code == 200
+        status_list_jwt = response.text
+
+        sl_payload = jwt.decode(status_list_jwt, options={"verify_signature": False})
+
+        # W3C format
+        encoded_list = sl_payload["vc"]["credentialSubject"]["encodedList"]
+
+        # Decode bitstring
+        missing_padding = len(encoded_list) % 4
+        if missing_padding:
+            encoded_list += "=" * (4 - missing_padding)
+
+        compressed_bytes = base64.urlsafe_b64decode(encoded_list)
+        bit_bytes = gzip.decompress(compressed_bytes)
+
+        ba = bitarray()
+        ba.frombytes(bit_bytes)
+
+        assert ba[status_list_index] == 1, "Bit should be set to 1 (revoked)"
+        LOGGER.info("Revocation verified successfully for Sphereon flow")

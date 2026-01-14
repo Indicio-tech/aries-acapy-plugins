@@ -8,189 +8,11 @@ This test covers the complete OID4VC flow:
 5. ACA-Py (Verifier) validates the presentation
 """
 
-import asyncio
 import uuid
 
 import pytest
 
-
-@pytest.mark.asyncio
-async def test_acapy_issuer_health(acapy_issuer_admin):
-    """Test that ACA-Py issuer is healthy and ready."""
-    status = await acapy_issuer_admin.get("/status/ready")
-    assert status.get("ready") is True
-
-
-@pytest.mark.asyncio
-async def test_acapy_verifier_health(acapy_verifier_admin):
-    """Test that ACA-Py verifier is healthy and ready."""
-    status = await acapy_verifier_admin.get("/status/ready")
-    assert status.get("ready") is True
-
-
-@pytest.mark.asyncio
-async def test_acapy_oid4vci_credential_issuance_to_credo(
-    acapy_issuer_admin,
-    credo_client,
-):
-    """Test ACA-Py issuing credentials to Credo via OID4VCI."""
-
-    # Step 1: Create a supported credential on ACA-Py issuer
-    random_suffix = str(uuid.uuid4())[:8]
-    credential_supported = {
-        "id": f"IdentityCredential_{random_suffix}",
-        "format": "vc+sd-jwt",
-        "scope": "IdentityCredential",
-        "proof_types_supported": {
-            "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
-        },
-        "format_data": {
-            "cryptographic_binding_methods_supported": ["did:key"],
-            "cryptographic_suites_supported": ["EdDSA"],
-            "vct": "IdentityCredential",
-            "claims": {
-                "given_name": {"mandatory": True},
-                "family_name": {"mandatory": True},
-                "email": {"mandatory": False},
-                "birth_date": {"mandatory": False},
-            },
-            "display": [
-                {
-                    "name": "Identity Credential",
-                    "locale": "en-US",
-                    "description": "A basic identity credential",
-                }
-            ],
-        },
-        "vc_additional_data": {
-            "sd_list": ["/given_name", "/family_name", "/email", "/birth_date"]
-        },
-    }
-
-    # Register the credential type with ACA-Py issuer
-    credential_config_response = await acapy_issuer_admin.post(
-        "/oid4vci/credential-supported/create", json=credential_supported
-    )
-    assert "supported_cred_id" in credential_config_response
-    config_id = credential_config_response["supported_cred_id"]
-
-    # Create a DID for the issuer
-    did_response = await acapy_issuer_admin.post(
-        "/wallet/did/create", json={"method": "key", "options": {"key_type": "ed25519"}}
-    )
-    issuer_did = did_response["result"]["did"]
-
-    # Step 2: Create credential offer
-    exchange_request = {
-        "supported_cred_id": config_id,
-        "credential_subject": {
-            "given_name": "John",
-            "family_name": "Doe",
-            "email": "john.doe@example.com",
-            "birth_date": "1990-01-01",
-        },
-        "did": issuer_did,
-    }
-
-    exchange_response = await acapy_issuer_admin.post(
-        "/oid4vci/exchange/create", json=exchange_request
-    )
-    exchange_id = exchange_response["exchange_id"]
-
-    offer_response = await acapy_issuer_admin.get(
-        "/oid4vci/credential-offer", params={"exchange_id": exchange_id}
-    )
-    assert "credential_offer" in offer_response
-    credential_offer_uri = offer_response["credential_offer"]
-
-    # Step 3: Credo accepts the credential offer
-    accept_offer_request = {
-        "credential_offer": credential_offer_uri,
-        "holder_did_method": "key",
-    }
-
-    response = await credo_client.post(
-        "/oid4vci/accept-offer", json=accept_offer_request
-    )
-    if response.status_code != 200:
-        print(f"Credo accept-offer failed: {response.text}")
-    assert response.status_code == 200
-    credential_result = response.json()
-
-    assert "credential" in credential_result
-    assert "format" in credential_result
-    assert credential_result["format"] == "vc+sd-jwt"
-
-    # Store credential reference for presentation test
-    return credential_result["credential"]
-
-
-@pytest.mark.asyncio
-async def test_acapy_oid4vp_presentation_verification_from_credo(
-    acapy_verifier_admin,
-):
-    """Test ACA-Py verifying presentations from Credo via OID4VP."""
-
-    # First issue a credential to have something to present
-    # (In a real test suite, this would use the credential from the previous test)
-
-    # Step 1: Create presentation definition for SD-JWT credential
-    presentation_definition = {
-        "id": str(uuid.uuid4()),
-        "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256"]}},
-        "input_descriptors": [
-            {
-                "id": "identity-descriptor",
-                "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256"]}},
-                "constraints": {
-                    "fields": [
-                        {
-                            "path": ["$.type"],
-                            "filter": {
-                                "type": "array",
-                                "contains": {"const": "IdentityCredential"},
-                            },
-                        },
-                        {
-                            "path": ["$.credentialSubject.given_name"],
-                            "intent_to_retain": False,
-                        },
-                        {
-                            "path": ["$.credentialSubject.family_name"],
-                            "intent_to_retain": False,
-                        },
-                    ]
-                },
-            }
-        ],
-    }
-
-    # Step 2: Create presentation definition first
-    pres_def_data = {"pres_def": presentation_definition}
-
-    pres_def_response = await acapy_verifier_admin.post(
-        "/oid4vp/presentation-definition", json=pres_def_data
-    )
-    assert "pres_def_id" in pres_def_response
-    pres_def_id = pres_def_response["pres_def_id"]
-
-    # Step 3: ACA-Py creates presentation request
-    presentation_request_data = {
-        "pres_def_id": pres_def_id,
-        "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256"]}},
-    }
-
-    presentation_request = await acapy_verifier_admin.post(
-        "/oid4vp/request", json=presentation_request_data
-    )
-
-    assert "request_uri" in presentation_request
-    request_uri = presentation_request["request_uri"]
-
-    return {
-        "request_uri": request_uri,
-        "presentation_definition": presentation_definition,
-    }
+from conftest import wait_for_presentation_valid
 
 
 @pytest.mark.asyncio
@@ -198,6 +20,7 @@ async def test_full_acapy_credo_oid4vc_flow(
     acapy_issuer_admin,
     acapy_verifier_admin,
     credo_client,
+    issuer_ed25519_did,
 ):
     """Test complete OID4VC flow: ACA-Py issues → Credo receives → Credo presents → ACA-Py verifies."""
 
@@ -245,13 +68,7 @@ async def test_full_acapy_credo_oid4vc_flow(
     )
     config_id = credential_config_response["supported_cred_id"]
 
-    # Create a DID for the issuer
-    did_response = await acapy_issuer_admin.post(
-        "/wallet/did/create", json={"method": "key", "options": {"key_type": "ed25519"}}
-    )
-    issuer_did = did_response["result"]["did"]
-
-    # Step 2: Create pre-authorized credential offer
+    # Step 2: Create pre-authorized credential offer (using session-scoped DID)
     exchange_request = {
         "supported_cred_id": config_id,
         "credential_subject": {
@@ -261,7 +78,7 @@ async def test_full_acapy_credo_oid4vc_flow(
             "university": "Example University",
             "graduation_date": "2023-05-15",
         },
-        "did": issuer_did,
+        "did": issuer_ed25519_did,
     }
 
     exchange_response = await acapy_issuer_admin.post(
@@ -368,28 +185,9 @@ async def test_full_acapy_credo_oid4vc_flow(
     )
 
     # Step 7: Check that ACA-Py received and validated the presentation
-    # Poll for presentation status
-    max_retries = 10
-    retry_interval = 1.0
-
-    presentation_valid = False
-    latest_presentation = None
-
-    for _ in range(max_retries):
-        # Get specific presentation record from ACA-Py verifier
-        latest_presentation = await acapy_verifier_admin.get(
-            f"/oid4vp/presentation/{presentation_id}"
-        )
-
-        if latest_presentation.get("state") == "presentation-valid":
-            presentation_valid = True
-            break
-
-        await asyncio.sleep(retry_interval)
-
-    assert (
-        presentation_valid
-    ), f"Presentation validation failed. Final state: {latest_presentation.get('state') if latest_presentation else 'None'}"
+    latest_presentation = await wait_for_presentation_valid(
+        acapy_verifier_admin, presentation_id
+    )
 
     print("✅ Full OID4VC flow completed successfully!")
     print(f"   - ACA-Py issued credential: {config_id}")
@@ -432,7 +230,9 @@ async def test_acapy_credo_mdoc_flow(
     acapy_issuer_admin,
     acapy_verifier_admin,
     credo_client,
-    setup_all_trust_anchors,
+    setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
+    issuer_p256_did,
+    mdoc_credential_config,
 ):
     """Test complete OID4VC flow for mso_mdoc: ACA-Py issues → Credo receives → Credo presents → ACA-Py verifies.
 
@@ -442,47 +242,35 @@ async def test_acapy_credo_mdoc_flow(
     """
 
     # Step 1: Setup mdoc credential configuration on ACA-Py issuer
-    random_suffix = str(uuid.uuid4())[:8]
-    credential_supported = {
-        "id": f"MdocCredential_{random_suffix}",
-        "format": "mso_mdoc",
-        "scope": "MobileDriversLicense",
-        "cryptographic_binding_methods_supported": ["cose_key", "did:key", "did"],
-        "cryptographic_suites_supported": ["ES256"],
-        "proof_types_supported": {
-            "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
+    credential_supported = mdoc_credential_config(
+        doctype="org.iso.18013.5.1.mDL",
+        namespace_claims={
+            "org.iso.18013.5.1": {
+                "given_name": {"mandatory": True},
+                "family_name": {"mandatory": True},
+                "birth_date": {"mandatory": True},
+            }
         },
-        "format_data": {
-            "doctype": "org.iso.18013.5.1.mDL",
-            "claims": {
-                "org.iso.18013.5.1": {
-                    "given_name": {"mandatory": True},
-                    "family_name": {"mandatory": True},
-                    "birth_date": {"mandatory": True},
-                }
-            },
-            "display": [
-                {
-                    "name": "Mobile Driver's License",
-                    "locale": "en-US",
-                    "description": "A mobile driver's license credential",
-                }
-            ],
-        },
+    )
+    # Add required OID4VCI fields
+    credential_supported["scope"] = "MobileDriversLicense"
+    credential_supported["proof_types_supported"] = {
+        "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
     }
+    credential_supported["format_data"]["display"] = [
+        {
+            "name": "Mobile Driver's License",
+            "locale": "en-US",
+            "description": "A mobile driver's license credential",
+        }
+    ]
 
     credential_config_response = await acapy_issuer_admin.post(
         "/oid4vci/credential-supported/create", json=credential_supported
     )
     config_id = credential_config_response["supported_cred_id"]
 
-    # Create a DID for the issuer
-    did_response = await acapy_issuer_admin.post(
-        "/wallet/did/create", json={"method": "key", "options": {"key_type": "p256"}}
-    )
-    issuer_did = did_response["result"]["did"]
-
-    # Step 2: Create pre-authorized credential offer
+    # Step 2: Create pre-authorized credential offer (using session-scoped P-256 DID)
     exchange_request = {
         "supported_cred_id": config_id,
         "credential_subject": {
@@ -492,7 +280,7 @@ async def test_acapy_credo_mdoc_flow(
                 "birth_date": "1990-01-01",
             }
         },
-        "did": issuer_did,
+        "did": issuer_p256_did,
     }
 
     exchange_response = await acapy_issuer_admin.post(
@@ -589,28 +377,9 @@ async def test_acapy_credo_mdoc_flow(
     )
 
     # Step 7: Check that ACA-Py received and validated the presentation
-    # Poll for presentation status
-    max_retries = 10
-    retry_interval = 1.0
-
-    presentation_valid = False
-    latest_presentation = None
-
-    for _ in range(max_retries):
-        # Get specific presentation record from ACA-Py verifier
-        latest_presentation = await acapy_verifier_admin.get(
-            f"/oid4vp/presentation/{presentation_id}"
-        )
-
-        if latest_presentation.get("state") == "presentation-valid":
-            presentation_valid = True
-            break
-
-        await asyncio.sleep(retry_interval)
-
-    assert (
-        presentation_valid
-    ), f"Presentation validation failed. Final state: {latest_presentation.get('state') if latest_presentation else 'None'}"
+    latest_presentation = await wait_for_presentation_valid(
+        acapy_verifier_admin, presentation_id
+    )
 
     print("✅ Full OID4VC mdoc flow completed successfully!")
     print(f"   - ACA-Py issued credential: {config_id}")
@@ -623,41 +392,28 @@ async def test_acapy_credo_sd_jwt_selective_disclosure(
     acapy_issuer_admin,
     acapy_verifier_admin,
     credo_client,
+    issuer_ed25519_did,
+    sd_jwt_credential_config,
 ):
     """Test SD-JWT selective disclosure: Request subset of claims and verify only those are disclosed."""
 
     # Step 1: Issue credential with multiple claims
-    random_suffix = str(uuid.uuid4())[:8]
-    credential_supported = {
-        "id": f"SelectiveDisclosureCred_{random_suffix}",
-        "format": "vc+sd-jwt",
-        "scope": "PersonalProfile",
-        "proof_types_supported": {
-            "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
+    credential_supported = sd_jwt_credential_config(
+        vct="PersonalProfile",
+        claims={
+            "name": {"mandatory": True},
+            "email": {"mandatory": True},
+            "phone": {"mandatory": True},
+            "address": {"mandatory": True},
         },
-        "format_data": {
-            "cryptographic_binding_methods_supported": ["did:key"],
-            "cryptographic_suites_supported": ["EdDSA"],
-            "vct": "PersonalProfile",
-            "claims": {
-                "name": {"mandatory": True},
-                "email": {"mandatory": True},
-                "phone": {"mandatory": True},
-                "address": {"mandatory": True},
-            },
-        },
-        "vc_additional_data": {"sd_list": ["/name", "/email", "/phone", "/address"]},
-    }
+        sd_list=["/name", "/email", "/phone", "/address"],
+        scope="PersonalProfile",
+    )
 
     credential_config_response = await acapy_issuer_admin.post(
         "/oid4vci/credential-supported/create", json=credential_supported
     )
     config_id = credential_config_response["supported_cred_id"]
-
-    did_response = await acapy_issuer_admin.post(
-        "/wallet/did/create", json={"method": "key", "options": {"key_type": "ed25519"}}
-    )
-    issuer_did = did_response["result"]["did"]
 
     exchange_request = {
         "supported_cred_id": config_id,
@@ -667,7 +423,7 @@ async def test_acapy_credo_sd_jwt_selective_disclosure(
             "phone": "555-0123",
             "address": "123 Construction Lane",
         },
-        "did": issuer_did,
+        "did": issuer_ed25519_did,
     }
 
     exchange_response = await acapy_issuer_admin.post(
@@ -746,22 +502,9 @@ async def test_acapy_credo_sd_jwt_selective_disclosure(
     assert presentation_response.status_code == 200
 
     # Step 4: Verify presentation and check disclosed claims
-    max_retries = 10
-    presentation_valid = False
-    latest_presentation = None
-
-    for _ in range(max_retries):
-        latest_presentation = await acapy_verifier_admin.get(
-            f"/oid4vp/presentation/{presentation_id}"
-        )
-        if latest_presentation.get("state") == "presentation-valid":
-            presentation_valid = True
-            break
-        await asyncio.sleep(1.0)
-
-    assert (
-        presentation_valid
-    ), f"Presentation failed: {latest_presentation.get('error_msg')}"
+    latest_presentation = await wait_for_presentation_valid(
+        acapy_verifier_admin, presentation_id
+    )
 
     # Verify disclosed claims in the presentation record
     # Note: The exact structure of the verified claims depends on ACA-Py's response format
@@ -769,7 +512,7 @@ async def test_acapy_credo_sd_jwt_selective_disclosure(
 
     # This assumes ACA-Py stores the verified claims in the presentation record
     # Adjust based on actual ACA-Py API response structure for verified claims
-    verified_claims = latest_presentation.get("verified_claims", {})
+    verified_claims = latest_presentation.get("verified_claims", {})  # noqa: F841
     # If verified_claims is nested or structured differently, we might need to dig deeper
     # For now, let's assume we can inspect the presentation itself if available,
     # or rely on the fact that 'limit_disclosure': 'required' was respected if validation passed.
@@ -784,7 +527,9 @@ async def test_acapy_credo_mdoc_selective_disclosure(
     acapy_issuer_admin,
     acapy_verifier_admin,
     credo_client,
-    setup_all_trust_anchors,
+    setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
+    issuer_p256_did,
+    mdoc_credential_config,
 ):
     """Test mdoc selective disclosure: Request subset of namespaces/elements.
 
@@ -793,38 +538,29 @@ async def test_acapy_credo_mdoc_selective_disclosure(
     """
 
     # Step 1: Issue mdoc credential
-    random_suffix = str(uuid.uuid4())[:8]
-    credential_supported = {
-        "id": f"MdocSelective_{random_suffix}",
-        "format": "mso_mdoc",
-        "scope": "MdocProfile",
-        "proof_types_supported": {
-            "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
+    credential_supported = mdoc_credential_config(
+        doctype="org.iso.18013.5.1.mDL",
+        namespace_claims={
+            "org.iso.18013.5.1": {
+                "given_name": {"mandatory": True},
+                "family_name": {"mandatory": True},
+                "birth_date": {"mandatory": True},
+                "issue_date": {"mandatory": True},
+            }
         },
-        "format_data": {
-            "cryptographic_binding_methods_supported": ["cose_key"],
-            "cryptographic_suites_supported": ["ES256"],
-            "doctype": "org.iso.18013.5.1.mDL",
-            "claims": {
-                "org.iso.18013.5.1": {
-                    "given_name": {"mandatory": True},
-                    "family_name": {"mandatory": True},
-                    "birth_date": {"mandatory": True},
-                    "issue_date": {"mandatory": True},
-                }
-            },
-        },
+    )
+    # Add required OID4VCI fields
+    credential_supported["scope"] = "MdocProfile"
+    credential_supported["proof_types_supported"] = {
+        "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
     }
+    credential_supported["format_data"]["cryptographic_binding_methods_supported"] = ["cose_key"]
+    credential_supported["format_data"]["cryptographic_suites_supported"] = ["ES256"]
 
     credential_config_response = await acapy_issuer_admin.post(
         "/oid4vci/credential-supported/create", json=credential_supported
     )
     config_id = credential_config_response["supported_cred_id"]
-
-    did_response = await acapy_issuer_admin.post(
-        "/wallet/did/create", json={"method": "key", "options": {"key_type": "p256"}}
-    )
-    issuer_did = did_response["result"]["did"]
 
     exchange_request = {
         "supported_cred_id": config_id,
@@ -836,7 +572,7 @@ async def test_acapy_credo_mdoc_selective_disclosure(
                 "issue_date": "2023-01-01",
             }
         },
-        "did": issuer_did,
+        "did": issuer_p256_did,
     }
 
     exchange_response = await acapy_issuer_admin.post(
@@ -912,20 +648,5 @@ async def test_acapy_credo_mdoc_selective_disclosure(
     assert presentation_response.status_code == 200
 
     # Step 4: Verify
-    max_retries = 10
-    presentation_valid = False
-    latest_presentation = None
-
-    for _ in range(max_retries):
-        latest_presentation = await acapy_verifier_admin.get(
-            f"/oid4vp/presentation/{presentation_id}"
-        )
-        if latest_presentation.get("state") == "presentation-valid":
-            presentation_valid = True
-            break
-        await asyncio.sleep(1.0)
-
-    assert (
-        presentation_valid
-    ), f"Presentation failed: {latest_presentation.get('error_msg')}"
+    await wait_for_presentation_valid(acapy_verifier_admin, presentation_id)
     print("✅ mdoc Selective Disclosure verified!")

@@ -13,12 +13,12 @@ References:
 - DCQL: Digital Credentials Query Language
 """
 
-import asyncio
 import logging
 import uuid
 
 import pytest
 
+from .conftest import wait_for_presentation_valid
 from .test_config import MDOC_AVAILABLE
 
 LOGGER = logging.getLogger(__name__)
@@ -220,18 +220,9 @@ class TestMultiCredentialDCQL:
         assert presentation_response.status_code == 200
 
         # Poll for validation
-        max_retries = 15
-        presentation_valid = False
-        for _ in range(max_retries):
-            result = await acapy_verifier_admin.get(
-                f"/oid4vp/presentation/{presentation_id}"
-            )
-            if result.get("state") == "presentation-valid":
-                presentation_valid = True
-                break
-            await asyncio.sleep(1)
-
-        assert presentation_valid, "Multi-credential presentation validation failed"
+        result = await wait_for_presentation_valid(  # noqa: F841
+            acapy_verifier_admin, presentation_id
+        )
         LOGGER.info("✅ Two SD-JWT credentials presented and verified successfully")
 
     @pytest.mark.asyncio
@@ -396,18 +387,9 @@ class TestMultiCredentialDCQL:
         assert presentation_response.status_code == 200
 
         # Poll for validation
-        max_retries = 15
-        presentation_valid = False
-        for _ in range(max_retries):
-            result = await acapy_verifier_admin.get(
-                f"/oid4vp/presentation/{presentation_id}"
-            )
-            if result.get("state") == "presentation-valid":
-                presentation_valid = True
-                break
-            await asyncio.sleep(1)
-
-        assert presentation_valid, "Three-credential presentation validation failed"
+        result = await wait_for_presentation_valid(  # noqa: F841
+            acapy_verifier_admin, presentation_id
+        )
         LOGGER.info("✅ Three credentials from different issuers verified successfully")
 
 
@@ -579,18 +561,9 @@ class TestMultiCredentialCredentialSets:
         assert presentation_response.status_code == 200
 
         # Poll for validation
-        max_retries = 15
-        presentation_valid = False
-        for _ in range(max_retries):
-            result = await acapy_verifier_admin.get(
-                f"/oid4vp/presentation/{presentation_id}"
-            )
-            if result.get("state") == "presentation-valid":
-                presentation_valid = True
-                break
-            await asyncio.sleep(1)
-
-        assert presentation_valid, "credential_sets alternative presentation failed"
+        result = await wait_for_presentation_valid(  # noqa: F841
+            acapy_verifier_admin, presentation_id
+        )
         LOGGER.info("✅ credential_sets with alternative IDs verified successfully")
 
 

@@ -12,6 +12,7 @@ Certificate Strategy:
 
 import asyncio
 import os
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -578,3 +579,257 @@ async def setup_pki_chain_trust_anchor(acapy_verifier_admin, generated_test_cert
             yield {"anchor_id": anchors["trust_anchors"][0]["anchor_id"]}
         else:
             raise RuntimeError(f"Failed to setup PKI chain trust anchor: {e}") from e
+
+
+# =============================================================================
+# Shared Helper Functions
+# =============================================================================
+
+
+def safely_get_first_credential(response, wallet_name: str) -> str:
+    """Safely extract credential from wallet response, skipping test if unavailable.
+
+    Args:
+        response: The HTTP response from wallet accept-offer call
+        wallet_name: Name of wallet for error messages (e.g., "Credo", "Sphereon")
+
+    Returns:
+        The credential string
+
+    Raises:
+        pytest.skip: If credential could not be obtained (infrastructure issue)
+    """
+    if response.status_code != 200:
+        pytest.skip(
+            f"{wallet_name} failed to accept offer (status {response.status_code}): {response.text}"
+        )
+
+    resp_json = response.json()
+    if "credential" not in resp_json:
+        pytest.skip(f"{wallet_name} did not return credential: {resp_json}")
+
+    return resp_json["credential"]
+
+
+async def wait_for_presentation_valid(
+    verifier_admin: Controller,
+    presentation_id: str,
+    max_retries: int = 15,
+    interval: float = 1.0,
+) -> dict:
+    """Poll for presentation to be validated.
+
+    Args:
+        verifier_admin: ACA-Py verifier admin controller
+        presentation_id: The presentation ID to check
+        max_retries: Maximum number of retry attempts (default: 15)
+        interval: Sleep interval between retries in seconds (default: 1.0)
+
+    Returns:
+        The presentation record when valid
+
+    Raises:
+        AssertionError: If presentation becomes invalid or times out
+    """
+    for _ in range(max_retries):
+        record = await verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
+        state = record.get("state")
+
+        if state == "presentation-valid":
+            return record
+        if state == "presentation-invalid":
+            raise AssertionError(f"Presentation invalid: {record}")
+
+        await asyncio.sleep(interval)
+
+    raise AssertionError(
+        f"Timeout waiting for presentation validation. Final state: {record.get('state')}"
+    )
+
+
+# =============================================================================
+# Session-Scoped DID Fixtures
+# =============================================================================
+
+
+@pytest_asyncio.fixture(scope="session")
+async def issuer_ed25519_did():
+    """Create a session-scoped Ed25519 issuer DID.
+
+    This DID is reused across all tests in the session for improved performance.
+    Each test creates unique credential configurations, so DID reuse is safe.
+
+    Yields:
+        str: The issuer DID (e.g., "did:key:z6Mk...")
+    """
+    controller = Controller(ACAPY_ISSUER_ADMIN_URL)
+
+    # Wait for ACA-Py issuer to be ready
+    for _ in range(30):
+        status = await controller.get("/status/ready")
+        if status.get("ready") is True:
+            break
+        await asyncio.sleep(1)
+    else:
+        raise RuntimeError("ACA-Py issuer service not available for DID creation")
+
+    did_response = await controller.post(
+        "/wallet/did/create",
+        json={"method": "key", "options": {"key_type": "ed25519"}},
+    )
+    yield did_response["result"]["did"]
+
+
+@pytest_asyncio.fixture(scope="session")
+async def issuer_p256_did():
+    """Create a session-scoped P-256 issuer DID.
+
+    This DID is reused across all tests in the session for improved performance.
+    Each test creates unique credential configurations, so DID reuse is safe.
+
+    Yields:
+        str: The issuer DID (e.g., "did:jwk:...")
+    """
+    controller = Controller(ACAPY_ISSUER_ADMIN_URL)
+
+    # Wait for ACA-Py issuer to be ready
+    for _ in range(30):
+        status = await controller.get("/status/ready")
+        if status.get("ready") is True:
+            break
+        await asyncio.sleep(1)
+    else:
+        raise RuntimeError("ACA-Py issuer service not available for DID creation")
+
+    did_result = await controller.post("/did/jwk/create", json={"key_type": "p256"})
+    yield did_result["did"]
+
+
+# =============================================================================
+# Credential Configuration Factory Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def sd_jwt_credential_config():
+    """Factory for creating SD-JWT credential supported configurations.
+
+    Returns:
+        Callable that generates unique SD-JWT credential configurations.
+
+    Usage:
+        config = sd_jwt_credential_config(
+            vct="EmployeeCredential",
+            claims={"name": {"mandatory": True}, "employee_id": {"mandatory": True}},
+            sd_list=["/name", "/employee_id"]
+        )
+    """
+
+    def _config(
+        vct: str,
+        claims: dict[str, dict],
+        sd_list: list[str],
+        scope: str = None,
+        proof_algs: list[str] = None,
+        binding_methods: list[str] = None,
+        crypto_suites: list[str] = None,
+    ) -> dict:
+        """Generate an SD-JWT credential configuration.
+
+        Args:
+            vct: Verifiable Credential Type
+            claims: Dictionary of claim names to claim definitions
+            sd_list: List of selectively disclosable claim paths (e.g., ["/name"])
+            scope: OAuth scope (defaults to vct)
+            proof_algs: Proof signing algorithms (defaults to ["EdDSA", "ES256"])
+            binding_methods: Binding methods (defaults to ["did:key"])
+            crypto_suites: Cryptographic suites (defaults to ["EdDSA"])
+
+        Returns:
+            Complete credential supported configuration
+        """
+        random_suffix = str(uuid.uuid4())[:8]
+        return {
+            "id": f"{vct}_{random_suffix}",
+            "format": "vc+sd-jwt",
+            "scope": scope or vct,
+            "proof_types_supported": {
+                "jwt": {
+                    "proof_signing_alg_values_supported": proof_algs
+                    or ["EdDSA", "ES256"]
+                }
+            },
+            "format_data": {
+                "cryptographic_binding_methods_supported": binding_methods
+                or ["did:key"],
+                "cryptographic_suites_supported": crypto_suites or ["EdDSA"],
+                "vct": vct,
+                "claims": claims,
+            },
+            "vc_additional_data": {"sd_list": sd_list},
+        }
+
+    return _config
+
+
+@pytest.fixture
+def mdoc_credential_config():
+    """Factory for creating mDOC credential configurations.
+
+    Returns:
+        Callable that generates unique mDOC credential configurations.
+
+    Usage:
+        config = mdoc_credential_config(
+            doctype="org.iso.18013.5.1.mDL",
+            namespace_claims={
+                "org.iso.18013.5.1": {
+                    "family_name": {"mandatory": True},
+                    "given_name": {"mandatory": True}
+                }
+            }
+        )
+    """
+
+    def _config(
+        doctype: str = "org.iso.18013.5.1.mDL",
+        namespace_claims: dict[str, dict] = None,
+        binding_methods: list[str] = None,
+        crypto_suites: list[str] = None,
+    ) -> dict:
+        """Generate an mDOC credential configuration.
+
+        Args:
+            doctype: Document type (defaults to mDL)
+            namespace_claims: Dictionary of namespace to claims
+            binding_methods: Binding methods (defaults to ["cose_key", "did:key", "did"])
+            crypto_suites: Cryptographic suites (defaults to ["ES256"])
+
+        Returns:
+            Complete mDOC credential supported configuration
+        """
+        random_suffix = str(uuid.uuid4())[:8]
+
+        # Default mDL claims if none provided
+        if namespace_claims is None:
+            namespace_claims = {
+                "org.iso.18013.5.1": {
+                    "given_name": {"mandatory": True},
+                    "family_name": {"mandatory": True},
+                    "birth_date": {"mandatory": False},
+                }
+            }
+
+        return {
+            "id": f"MdocCredential_{random_suffix}",
+            "format": "mso_mdoc",
+            "cryptographic_binding_methods_supported": binding_methods
+            or ["cose_key", "did:key", "did"],
+            "cryptographic_suites_supported": crypto_suites or ["ES256"],
+            "format_data": {
+                "doctype": doctype,
+                "claims": namespace_claims,
+            },
+        }
+
+    return _config

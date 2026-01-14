@@ -15,11 +15,11 @@ References:
 - DCQL: https://openid.github.io/oid4vc-haip-sd-jwt-vc/openid4vc-high-assurance-interoperability-profile-sd-jwt-vc-wg-draft.html
 """
 
-import asyncio
 import uuid
 
 import pytest
 
+from .conftest import wait_for_presentation_valid
 from .test_utils import assert_selective_disclosure
 
 
@@ -197,25 +197,8 @@ class TestDCQLSdJwtFlow:
         )
 
         # Step 7: Poll for presentation validation on ACA-Py verifier
-        max_retries = 15
-        retry_interval = 1.0
-        presentation_valid = False
-        latest_presentation = None
-
-        for _ in range(max_retries):
-            latest_presentation = await acapy_verifier_admin.get(
-                f"/oid4vp/presentation/{presentation_id}"
-            )
-
-            if latest_presentation.get("state") == "presentation-valid":
-                presentation_valid = True
-                break
-
-            await asyncio.sleep(retry_interval)
-
-        assert presentation_valid, (
-            f"DCQL presentation validation failed. "
-            f"Final state: {latest_presentation.get('state') if latest_presentation else 'None'}"
+        latest_presentation = await wait_for_presentation_valid(  # noqa: F841
+            acapy_verifier_admin, presentation_id
         )
 
         print("✅ DCQL SD-JWT basic flow completed successfully!")
@@ -358,15 +341,9 @@ class TestDCQLSdJwtFlow:
         assert presentation_response.json().get("success") is True
 
         # Verify presentation
-        for _ in range(15):
-            latest_presentation = await acapy_verifier_admin.get(
-                f"/oid4vp/presentation/{presentation_id}"
-            )
-            if latest_presentation.get("state") == "presentation-valid":
-                break
-            await asyncio.sleep(1.0)
-
-        assert latest_presentation.get("state") == "presentation-valid"
+        latest_presentation = await wait_for_presentation_valid(
+            acapy_verifier_admin, presentation_id
+        )
         print("✅ DCQL SD-JWT nested claims flow completed successfully!")
 
 
@@ -523,21 +500,8 @@ class TestDCQLMdocFlow:
         assert presentation_response.json().get("success") is True
 
         # Step 7: Verify presentation
-        presentation_valid = False
-        latest_presentation = None
-
-        for _ in range(15):
-            latest_presentation = await acapy_verifier_admin.get(
-                f"/oid4vp/presentation/{presentation_id}"
-            )
-            if latest_presentation.get("state") == "presentation-valid":
-                presentation_valid = True
-                break
-            await asyncio.sleep(1.0)
-
-        assert presentation_valid, (
-            f"mDOC DCQL presentation validation failed. "
-            f"Final state: {latest_presentation.get('state') if latest_presentation else 'None'}"
+        latest_presentation = await wait_for_presentation_valid(  # noqa: F841
+            acapy_verifier_admin, presentation_id
         )
 
         print("✅ DCQL mDOC basic flow completed successfully!")
@@ -661,15 +625,9 @@ class TestDCQLMdocFlow:
 
         # Verify
         presentation_id = presentation_request["presentation"]["presentation_id"]
-        for _ in range(15):
-            result = await acapy_verifier_admin.get(
-                f"/oid4vp/presentation/{presentation_id}"
-            )
-            if result.get("state") == "presentation-valid":
-                break
-            await asyncio.sleep(1.0)
-
-        assert result.get("state") == "presentation-valid"
+        result = await wait_for_presentation_valid(  # noqa: F841
+            acapy_verifier_admin, presentation_id
+        )
         print("✅ DCQL mDOC path syntax flow completed successfully!")
 
 
@@ -814,13 +772,9 @@ class TestDCQLSelectiveDisclosure:
 
         # Verify presentation succeeded
         presentation_id = presentation_request["presentation"]["presentation_id"]
-        for _ in range(15):
-            result = await acapy_verifier_admin.get(
-                f"/oid4vp/presentation/{presentation_id}"
-            )
-            if result.get("state") == "presentation-valid":
-                break
-            await asyncio.sleep(1.0)
+        result = await wait_for_presentation_valid(
+            acapy_verifier_admin, presentation_id
+        )
 
         assert result.get("state") == "presentation-valid"
 
@@ -956,13 +910,9 @@ class TestDCQLSelectiveDisclosure:
         assert presentation_response.status_code == 200
 
         presentation_id = presentation_request["presentation"]["presentation_id"]
-        for _ in range(15):
-            result = await acapy_verifier_admin.get(
-                f"/oid4vp/presentation/{presentation_id}"
-            )
-            if result.get("state") == "presentation-valid":
-                break
-            await asyncio.sleep(1.0)
+        result = await wait_for_presentation_valid(
+            acapy_verifier_admin, presentation_id
+        )
 
         assert result.get("state") == "presentation-valid"
         print("✅ DCQL mDOC selective disclosure flow completed successfully!")
@@ -1165,13 +1115,9 @@ class TestDCQLCredentialSets:
         assert presentation_response.status_code == 200
 
         # Verify presentation
-        for _ in range(15):
-            result = await acapy_verifier_admin.get(
-                f"/oid4vp/presentation/{presentation_id}"
-            )
-            if result.get("state") == "presentation-valid":
-                break
-            await asyncio.sleep(1.0)
+        result = await wait_for_presentation_valid(
+            acapy_verifier_admin, presentation_id
+        )
 
         assert result.get("state") == "presentation-valid"
         print("✅ DCQL credential_sets multi-credential flow completed successfully!")
@@ -1286,13 +1232,9 @@ class TestDCQLSpecCompliance:
         assert presentation_response.status_code == 200
 
         presentation_id = presentation_request["presentation"]["presentation_id"]
-        for _ in range(15):
-            result = await acapy_verifier_admin.get(
-                f"/oid4vp/presentation/{presentation_id}"
-            )
-            if result.get("state") == "presentation-valid":
-                break
-            await asyncio.sleep(1.0)
+        result = await wait_for_presentation_valid(
+            acapy_verifier_admin, presentation_id
+        )
 
         assert result.get("state") == "presentation-valid"
         print("✅ DCQL dc+sd-jwt format identifier test completed successfully!")
