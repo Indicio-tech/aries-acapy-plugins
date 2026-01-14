@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-from acapy_controller.controller import Controller
+from acapy_controller import Controller
 from aiohttp import ClientSession
 
 from oid4vci_client.client import OpenID4VCIClient

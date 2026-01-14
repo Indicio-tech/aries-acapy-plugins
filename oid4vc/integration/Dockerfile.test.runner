@@ -74,6 +74,8 @@ RUN uv pip install -e /usr/acapy --python .venv
 # Copy integration test components
 COPY tests/ tests/
 COPY credo_wrapper/ credo_wrapper/
+COPY sphereon_wrapper/ sphereon_wrapper/
+COPY oid4vci_client/ oid4vci_client/
 COPY acapy_controller.py ./
 
 # Create test results directory

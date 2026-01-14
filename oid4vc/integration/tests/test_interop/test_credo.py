@@ -1,7 +1,7 @@
 from typing import Any
 
 import pytest
-from acapy_controller.controller import Controller
+from acapy_controller import Controller
 
 from credo_wrapper import CredoWrapper
 
