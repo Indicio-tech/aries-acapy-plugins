@@ -33,7 +33,12 @@ COPY oid4vc/jwt_vc_json/ jwt_vc_json/
 COPY oid4vc/mso_mdoc/ mso_mdoc/
 COPY oid4vc/sd_jwt_vc/ sd_jwt_vc/
 COPY oid4vc/oid4vc/ oid4vc/
-COPY oid4vc/docker/*.yml ./
+COPY status_list/ status_list/
+RUN pip install -e ./status_list
+RUN mkdir -p /usr/src/app/docker
+COPY oid4vc/docker/dev.yml /usr/src/app/docker/dev.yml
+COPY oid4vc/docker/dev-verifier.yml /usr/src/app/docker/dev-verifier.yml
+COPY oid4vc/docker/default.yml /usr/src/app/default.yml
 
 ENTRYPOINT ["/bin/bash", "-c", "aca-py \"$@\"", "--"]
 CMD ["start", "--arg-file", "default.yml"]

@@ -80,7 +80,7 @@ services:
       default:
         aliases:
           - acapy-issuer.local
-    command: aca-py start --arg-file /usr/src/app/docker/dev.yml --wallet-storage-type ${WALLET_STORAGE_TYPE:-sqlite} --log-level DEBUG
+    command: start --arg-file /usr/src/app/docker/dev.yml --wallet-storage-type ${WALLET_STORAGE_TYPE:-sqlite} --log-level DEBUG
     restart: unless-stopped
 
   # ACA-Py Verifier - Receives presentations from Credo
@@ -124,7 +124,7 @@ services:
       default:
         aliases:
           - acapy-verifier.local
-    command: aca-py start --arg-file /usr/src/app/docker/dev-verifier.yml --wallet-storage-type ${WALLET_STORAGE_TYPE:-sqlite} --log-level DEBUG
+    command: start --arg-file /usr/src/app/docker/dev-verifier.yml --wallet-storage-type ${WALLET_STORAGE_TYPE:-sqlite} --log-level DEBUG
     restart: unless-stopped
 
   # Integration Test Runner
