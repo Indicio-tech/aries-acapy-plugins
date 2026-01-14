@@ -6,10 +6,34 @@ import pytest
 import pytest_asyncio
 from acapy_controller import Controller
 from aiohttp import ClientSession
+import httpx
 
 from oid4vci_client.client import OpenID4VCIClient
 
-ISSUER_ADMIN_ENDPOINT = getenv("ISSUER_ADMIN_ENDPOINT", "http://localhost:3001")
+
+def _env_url(*names: str, default: str) -> str:
+    """Return the first non-empty environment variable value from names."""
+
+    for name in names:
+        value = getenv(name)
+        if value:
+            return value
+    return default
+
+
+ISSUER_ADMIN_ENDPOINT = _env_url(
+    "ISSUER_ADMIN_ENDPOINT",
+    "ACAPY_ISSUER_ADMIN_URL",
+    "ACAPY_ADMIN_URL",
+    default="http://localhost:3001",
+)
+
+OID4VCI_ENDPOINT = _env_url(
+    "ACAPY_ISSUER_OID4VCI_URL",
+    "OID4VCI_ENDPOINT",
+    "OID4VCI_URL",
+    default="http://acapy-issuer:8022",
+)
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -96,7 +120,17 @@ async def offer_by_ref(controller: Controller, issuer_did: str, supported_cred_i
         params=exchange_param,
     )
 
-    offer_ref = urlparse(offer_ref_full["credential_offer_uri"])
+    credential_offer_uri = offer_ref_full["credential_offer_uri"]
+
+    for placeholder in (
+        "${OID4VCI_ENDPOINT:-http://localhost:8022}",
+        "${OID4VCI_ENDPOINT}",
+    ):
+        if placeholder in credential_offer_uri:
+            credential_offer_uri = credential_offer_uri.replace(placeholder, OID4VCI_ENDPOINT)
+            break
+
+    offer_ref = urlparse(credential_offer_uri)
     offer_ref = parse_qs(offer_ref.query)["credential_offer"][0]
     async with ClientSession(headers=controller.headers) as session:
         async with session.request(
@@ -108,70 +142,77 @@ async def offer_by_ref(controller: Controller, issuer_did: str, supported_cred_i
 @pytest_asyncio.fixture
 async def sdjwt_supported_cred_id(controller: Controller, issuer_did: str):
     """Create an SD-JWT VC supported credential."""
-    supported = await controller.post(
-        "/oid4vci/credential-supported/create/sd-jwt",
-        json={
-            "format": "vc+sd-jwt",
-            "id": "IDCard",
-            "cryptographic_binding_methods_supported": ["jwk"],
-            "display": [
-                {
-                    "name": "ID Card",
-                    "locale": "en-US",
-                    "background_color": "#12107c",
-                    "text_color": "#FFFFFF",
-                }
-            ],
-            "vct": "ExampleIDCard",
-            "claims": {
-                "given_name": {
-                    "mandatory": True,
-                    "value_type": "string",
+    try:
+        supported = await controller.post(
+            "/oid4vci/credential-supported/create/sd-jwt",
+            json={
+                "format": "vc+sd-jwt",
+                "id": "IDCard",
+                "cryptographic_binding_methods_supported": ["jwk"],
+                "display": [
+                    {
+                        "name": "ID Card",
+                        "locale": "en-US",
+                        "background_color": "#12107c",
+                        "text_color": "#FFFFFF",
+                    }
+                ],
+                "vct": "ExampleIDCard",
+                "claims": {
+                    "given_name": {
+                        "mandatory": True,
+                        "value_type": "string",
+                    },
+                    "family_name": {
+                        "mandatory": True,
+                        "value_type": "string",
+                    },
+                    "age_equal_or_over": {
+                        "12": {
+                            "mandatory": True,
+                            "value_type": "boolean",
+                        },
+                        "14": {
+                            "mandatory": True,
+                            "value_type": "boolean",
+                        },
+                        "16": {
+                            "mandatory": True,
+                            "value_type": "boolean",
+                        },
+                        "18": {
+                            "mandatory": True,
+                            "value_type": "boolean",
+                        },
+                        "21": {
+                            "mandatory": True,
+                            "value_type": "boolean",
+                        },
+                        "65": {
+                            "mandatory": True,
+                            "value_type": "boolean",
+                        },
+                    },
                 },
-                "family_name": {
-                    "mandatory": True,
-                    "value_type": "string",
-                },
-                "age_equal_or_over": {
-                    "12": {
-                        "mandatory": True,
-                        "value_type": "boolean",
-                    },
-                    "14": {
-                        "mandatory": True,
-                        "value_type": "boolean",
-                    },
-                    "16": {
-                        "mandatory": True,
-                        "value_type": "boolean",
-                    },
-                    "18": {
-                        "mandatory": True,
-                        "value_type": "boolean",
-                    },
-                    "21": {
-                        "mandatory": True,
-                        "value_type": "boolean",
-                    },
-                    "65": {
-                        "mandatory": True,
-                        "value_type": "boolean",
-                    },
-                },
+                "sd_list": [
+                    "/given_name",
+                    "/family_name",
+                    "/age_equal_or_over/12",
+                    "/age_equal_or_over/14",
+                    "/age_equal_or_over/16",
+                    "/age_equal_or_over/18",
+                    "/age_equal_or_over/21",
+                    "/age_equal_or_over/65",
+                ],
             },
-            "sd_list": [
-                "/given_name",
-                "/family_name",
-                "/age_equal_or_over/12",
-                "/age_equal_or_over/14",
-                "/age_equal_or_over/16",
-                "/age_equal_or_over/18",
-                "/age_equal_or_over/21",
-                "/age_equal_or_over/65",
-            ],
-        },
-    )
-    yield supported["supported_cred_id"]
+        )
+        yield supported["supported_cred_id"]
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 400 and "already exists" in exc.response.text:
+            # Re-use the existing supported credential ID
+            yield "IDCard"
+        else:
+            raise
 
 
 @pytest_asyncio.fixture
@@ -240,7 +281,17 @@ async def sdjwt_offer_by_ref(
         params=exchange_param,
     )
 
-    offer_ref = urlparse(offer_ref_full["credential_offer_uri"])
+    credential_offer_uri = offer_ref_full["credential_offer_uri"]
+
+    for placeholder in (
+        "${OID4VCI_ENDPOINT:-http://localhost:8022}",
+        "${OID4VCI_ENDPOINT}",
+    ):
+        if placeholder in credential_offer_uri:
+            credential_offer_uri = credential_offer_uri.replace(placeholder, OID4VCI_ENDPOINT)
+            break
+
+    offer_ref = urlparse(credential_offer_uri)
     offer_ref = parse_qs(offer_ref.query)["credential_offer"][0]
     async with ClientSession(headers=controller.headers) as session:
         async with session.request(

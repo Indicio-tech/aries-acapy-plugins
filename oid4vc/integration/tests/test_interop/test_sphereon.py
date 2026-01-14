@@ -12,8 +12,8 @@ async def test_api(sphereon: SphereaonWrapper):
 
     result = await sphereon.test()
     assert result
-    assert "test" in result
-    assert result["test"] == "success"
+    # Sphereon health endpoint returns {'status': 'ok'}
+    assert result.get("status") == "ok"
 
 
 @pytest.mark.interop
