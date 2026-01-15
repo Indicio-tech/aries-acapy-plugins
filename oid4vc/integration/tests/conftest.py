@@ -846,15 +846,6 @@ def mdoc_credential_config():
 # =============================================================================
 
 
-@pytest_asyncio.fixture
-async def issuer_ed25519_did(acapy_issuer_admin):
-    """Create an Ed25519 DID for the issuer."""
-    result = await acapy_issuer_admin.post(
-        "/did/jwk/create", json={"key_type": "ed25519"}
-    )
-    yield result["did"]
-
-
 @pytest.fixture
 def test_client():
     """OpenID4VCI test client for pre-auth code flow tests."""
