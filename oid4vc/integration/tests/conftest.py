@@ -1178,4 +1178,3 @@ async def sdjwt_request_uri(acapy_verifier_admin, issuer_p256_did):
         },
     )
     yield request["request_uri"]
-
