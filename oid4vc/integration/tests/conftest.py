@@ -12,19 +12,25 @@ Certificate Strategy:
 
 import asyncio
 import os
+import urllib.parse
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
 import pytest_asyncio
+from aiohttp import ClientSession
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
 from acapy_controller import Controller
+from credo_wrapper import CredoWrapper
+from oid4vci_client.client import OpenID4VCIClient
+from sphereon_wrapper import SphereaonWrapper
 
 # Environment configuration
 CREDO_AGENT_URL = os.getenv("CREDO_AGENT_URL", "http://localhost:3020")
@@ -861,16 +867,12 @@ async def issuer_ed25519_did(acapy_issuer_admin):
 @pytest.fixture
 def test_client():
     """OpenID4VCI test client for pre-auth code flow tests."""
-    from oid4vci_client.client import OpenID4VCIClient
-
     return OpenID4VCIClient()
 
 
 @pytest_asyncio.fixture
 async def credo(credo_client):
     """Credo wrapper for backward compatibility with old tests."""
-    from credo_wrapper import CredoWrapper
-
     wrapper = CredoWrapper(CREDO_AGENT_URL)
     async with wrapper:
         yield wrapper
@@ -879,8 +881,6 @@ async def credo(credo_client):
 @pytest_asyncio.fixture
 async def sphereon(sphereon_client):
     """Sphereon wrapper for backward compatibility with old tests."""
-    from sphereon_wrapper import SphereaonWrapper
-
     wrapper = SphereaonWrapper(SPHEREON_WRAPPER_URL)
     async with wrapper:
         yield wrapper
@@ -960,7 +960,6 @@ async def offer_by_ref(acapy_issuer_admin, issuer_p256_did):
 
     credential_offer_uri = offer_ref_full["credential_offer_uri"]
     # Replace placeholder with actual endpoint (handle URL encoding)
-    import urllib.parse
     for placeholder in (
         "${OID4VCI_ENDPOINT:-http://localhost:8022}",
         "${OID4VCI_ENDPOINT}",
@@ -974,10 +973,6 @@ async def offer_by_ref(acapy_issuer_admin, issuer_p256_did):
             break
 
     # Dereference the offer
-    from urllib.parse import parse_qs, urlparse
-
-    from aiohttp import ClientSession
-
     offer_ref = urlparse(credential_offer_uri)
     offer_ref_url = parse_qs(offer_ref.query)["credential_offer"][0]
 
@@ -1087,7 +1082,6 @@ async def sdjwt_offer_by_ref(acapy_issuer_admin, issuer_p256_did):
 
     credential_offer_uri = offer_ref_full["credential_offer_uri"]
     # Replace placeholder (handle URL encoding)
-    import urllib.parse
     for placeholder in (
         "${OID4VCI_ENDPOINT:-http://localhost:8022}",
         "${OID4VCI_ENDPOINT}",
@@ -1101,10 +1095,6 @@ async def sdjwt_offer_by_ref(acapy_issuer_admin, issuer_p256_did):
             break
 
     # Dereference the offer
-    from urllib.parse import parse_qs, urlparse
-
-    from aiohttp import ClientSession
-
     offer_ref = urlparse(credential_offer_uri)
     offer_ref_url = parse_qs(offer_ref.query)["credential_offer"][0]
 
