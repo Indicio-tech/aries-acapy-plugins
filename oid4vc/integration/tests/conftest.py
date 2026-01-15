@@ -847,15 +847,6 @@ def mdoc_credential_config():
 
 
 @pytest_asyncio.fixture
-async def issuer_p256_did(acapy_issuer_admin):
-    """Create a P-256 DID for the issuer."""
-    result = await acapy_issuer_admin.post(
-        "/did/jwk/create", json={"key_type": "p256"}
-    )
-    yield result["did"]
-
-
-@pytest_asyncio.fixture
 async def issuer_ed25519_did(acapy_issuer_admin):
     """Create an Ed25519 DID for the issuer."""
     result = await acapy_issuer_admin.post(
@@ -1196,10 +1187,4 @@ async def sdjwt_request_uri(acapy_verifier_admin, issuer_p256_did):
         },
     )
     yield request["request_uri"]
-
-
-@pytest_asyncio.fixture
-async def controller(acapy_verifier_admin):
-    """Alias for acapy_verifier_admin for backward compatibility."""
-    yield acapy_verifier_admin
 
