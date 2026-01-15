@@ -17,6 +17,7 @@ import { agentDependencies } from '@credo-ts/node';
 import { AskarModule } from '@credo-ts/askar';
 import { OpenId4VcModule } from '@credo-ts/openid4vc';
 import { v4 as uuidv4 } from 'uuid';
+import { logger } from './logger.js';
 
 let agent: Agent | null = null;
 
@@ -36,7 +37,7 @@ export const getAgent = () => {
 export const addTrustedCertificate = (certificate: string) => {
   const agentInstance = getAgent();
   agentInstance.x509.config.addTrustedCertificate(certificate);
-  console.log('Added trusted certificate to X509 module');
+  logger.debug('Added trusted certificate to X509 module');
 };
 
 /**
@@ -47,7 +48,7 @@ export const addTrustedCertificate = (certificate: string) => {
 export const setTrustedCertificates = (certificates: string[]) => {
   const agentInstance = getAgent();
   agentInstance.x509.config.setTrustedCertificates(certificates);
-  console.log(`Set ${certificates.length} trusted certificates in X509 module`);
+  logger.debug(`Set ${certificates.length} trusted certificates in X509 module`);
 };
 
 /**
@@ -62,7 +63,7 @@ export const getTrustedCertificates = (): string[] => {
 
 export const initializeAgent = async (port: number) => {
   if (agent) {
-    console.log('Agent already initialized');
+    logger.debug('Agent already initialized');
     return agent;
   }
 
@@ -100,15 +101,15 @@ export const initializeAgent = async (port: number) => {
     dids: new DidsModule(),
   };
 
-  console.log('Modules passed:', Object.keys(modules));
+  logger.debug('Modules passed:', Object.keys(modules));
   agent = new Agent({
     config,
     dependencies: agentDependencies,
     modules,
   });
-  console.log('Agent modules:', Object.keys(agent.modules));
+  logger.debug('Agent modules:', Object.keys(agent.modules));
 
   await agent.initialize();
-  console.log('🚀 Credo agent initialized');
+  logger.info('🚀 Credo agent initialized');
   return agent;
 };

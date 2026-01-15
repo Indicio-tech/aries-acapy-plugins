@@ -2,6 +2,7 @@ import express from 'express';
 import * as util from 'util';
 import { getAgent } from './agent.js';
 import { ClaimFormat, MdocRecord } from '@credo-ts/core';
+import { logger } from './logger.js';
 
 const router: express.Router = express.Router();
 

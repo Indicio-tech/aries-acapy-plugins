@@ -16,6 +16,7 @@ import express from 'express';
 import issuanceRouter from './issuance.js';
 import verificationRouter from './verification.js';
 import { initializeAgent, addTrustedCertificate, setTrustedCertificates, getTrustedCertificates } from './agent.js';
+import { logger } from './logger.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3020', 10);
@@ -35,7 +36,7 @@ app.use((req: any, res: any, next: any) => {
 
 // Health check endpoint
 app.get('/health', (req: any, res: any) => {
-  res.json({
+  res.status(200).json({
     status: 'healthy',
     service: 'credo-oid4vc-agent',
     version: '1.0.0',
@@ -73,7 +74,7 @@ app.post('/x509/trust-anchors', (req: any, res: any) => {
       message: 'Trust anchor added successfully'
     });
   } catch (error: any) {
-    console.error('Error adding trust anchor:', error);
+    logger.error('Error adding trust anchor:', error);
     res.status(500).json({ 
       error: 'Failed to add trust anchor',
       details: error.message 
@@ -108,7 +109,7 @@ app.put('/x509/trust-anchors', (req: any, res: any) => {
       count: certificates.length
     });
   } catch (error: any) {
-    console.error('Error setting trust anchors:', error);
+    logger.error('Error setting trust anchors:', error);
     res.status(500).json({ 
       error: 'Failed to set trust anchors',
       details: error.message 
@@ -130,7 +131,7 @@ app.get('/x509/trust-anchors', (req: any, res: any) => {
       certificates
     });
   } catch (error: any) {
-    console.error('Error getting trust anchors:', error);
+    logger.error('Error getting trust anchors:', error);
     res.status(500).json({ 
       error: 'Failed to get trust anchors',
       details: error.message 
@@ -148,15 +149,15 @@ const startServer = async () => {
     await initializeAgent(PORT);
     
     app.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 Credo OID4VC Agent running on port ${PORT}`);
-      console.log(`📋 Health check: http://localhost:${PORT}/health`);
-      console.log(`🎫 Accept credentials: POST http://localhost:${PORT}/oid4vci/accept-offer`);
-      console.log(`📤 Present credentials: POST http://localhost:${PORT}/oid4vp/present`);
+      logger.info(`🚀 Credo OID4VC Agent running on port ${PORT}`);
+      logger.info(`📋 Health check: http://localhost:${PORT}/health`);
+      logger.info(`🎫 Accept credentials: POST http://localhost:${PORT}/oid4vci/accept-offer`);
+      logger.info(`📤 Present credentials: POST http://localhost:${PORT}/oid4vp/present`);
     });
   } catch (error) {
-    console.error('Failed to start server:', error);
+    logger.error('Failed to start server:', error);
     process.exit(1);
   }
 };
 
-startServer().catch(console.error);
+startServer().catch(logger.error);

@@ -1,6 +1,6 @@
-# Use node:18-slim (Debian) instead of Alpine for consistency with Credo
+# Use node:20-slim (Debian) instead of Alpine for consistency with Credo
 # and to avoid potential glibc compatibility issues with native modules
-FROM node:18-slim
+FROM node:20-slim
 
 WORKDIR /usr/src/app
 

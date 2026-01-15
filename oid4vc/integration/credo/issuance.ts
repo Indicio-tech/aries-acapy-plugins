@@ -1,5 +1,6 @@
 import express from 'express';
 import { getAgent } from './agent.js';
+import { logger } from './logger.js';
 
 const router: express.Router = express.Router();
 
