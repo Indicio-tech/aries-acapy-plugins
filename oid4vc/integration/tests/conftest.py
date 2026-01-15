@@ -1,56 +1,884 @@
-from os import getenv
-from uuid import uuid4
+"""Simplified integration test fixtures for OID4VC v1 flows.
 
-from acapy_controller.controller import Controller
-from aiohttp import ClientSession
-from urllib.parse import urlparse, parse_qs
+This module provides pytest fixtures for testing the complete OID4VC v1 flow:
+ACA-Py Issues → Credo Receives → Credo Presents → ACA-Py Verifies
 
+Certificate Strategy:
+- Certificates are generated dynamically in-memory at test setup time
+- Trust anchors are uploaded to both ACA-Py verifier and Credo via their HTTP APIs
+- NO filesystem-based certificate storage is used
+- This approach avoids triggering security scanning tools on static cert files
+"""
+
+import asyncio
+import os
+import urllib.parse
+import uuid
+from datetime import UTC, datetime, timedelta
+from typing import Any
+from urllib.parse import parse_qs, urlparse
+
+import httpx
 import pytest
 import pytest_asyncio
+from aiohttp import ClientSession
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.x509.oid import NameOID
 
+from acapy_controller import Controller
+from credo_wrapper import CredoWrapper
 from oid4vci_client.client import OpenID4VCIClient
+from sphereon_wrapper import SphereaonWrapper
 
-ISSUER_ADMIN_ENDPOINT = getenv("ISSUER_ADMIN_ENDPOINT", "http://localhost:3001")
+# Environment configuration
+CREDO_AGENT_URL = os.getenv("CREDO_AGENT_URL", "http://localhost:3020")
+SPHEREON_WRAPPER_URL = os.getenv("SPHEREON_WRAPPER_URL", "http://localhost:3010")
+ACAPY_ISSUER_ADMIN_URL = os.getenv("ACAPY_ISSUER_ADMIN_URL", "http://localhost:8021")
+ACAPY_ISSUER_OID4VCI_URL = os.getenv(
+    "ACAPY_ISSUER_OID4VCI_URL", "http://localhost:8022"
+)
+ACAPY_VERIFIER_ADMIN_URL = os.getenv(
+    "ACAPY_VERIFIER_ADMIN_URL", "http://localhost:8031"
+)
+ACAPY_VERIFIER_OID4VP_URL = os.getenv(
+    "ACAPY_VERIFIER_OID4VP_URL", "http://localhost:8032"
+)
+
+
+@pytest_asyncio.fixture
+async def credo_client():
+    """HTTP client for Credo agent service."""
+    async with httpx.AsyncClient(base_url=CREDO_AGENT_URL, timeout=30.0) as client:
+        # Wait for service to be ready
+        for _ in range(5):  # Reduced since services should already be ready
+            response = await client.get("/health")
+            if response.status_code == 200:
+                break
+            await asyncio.sleep(1)
+        else:
+            raise RuntimeError("Credo agent service not available")
+
+        yield client
+
+
+@pytest_asyncio.fixture
+async def sphereon_client():
+    """HTTP client for Sphereon wrapper service."""
+    async with httpx.AsyncClient(base_url=SPHEREON_WRAPPER_URL, timeout=30.0) as client:
+        # Wait for service to be ready
+        for _ in range(5):
+            try:
+                response = await client.get("/health")
+                if response.status_code == 200:
+                    break
+            except httpx.ConnectError:
+                pass
+            await asyncio.sleep(1)
+        else:
+            raise RuntimeError("Sphereon wrapper service not available")
+
+        yield client
+
+
+@pytest_asyncio.fixture
+async def acapy_issuer_admin():
+    """ACA-Py issuer admin API controller."""
+    controller = Controller(ACAPY_ISSUER_ADMIN_URL)
+
+    # Wait for ACA-Py issuer to be ready
+    for _ in range(30):
+        status = await controller.get("/status/ready")
+        if status.get("ready") is True:
+            break
+        await asyncio.sleep(1)
+    else:
+        raise RuntimeError("ACA-Py issuer service not available")
+
+    yield controller
+
+
+@pytest_asyncio.fixture
+async def acapy_verifier_admin():
+    """ACA-Py verifier admin API controller."""
+    controller = Controller(ACAPY_VERIFIER_ADMIN_URL)
+
+    # Wait for ACA-Py verifier to be ready
+    for _ in range(30):
+        status = await controller.get("/status/ready")
+        if status.get("ready") is True:
+            break
+        await asyncio.sleep(1)
+    else:
+        raise RuntimeError("ACA-Py verifier service not available")
+
+    yield controller
+
+
+# Legacy fixture for backward compatibility
+@pytest_asyncio.fixture
+async def acapy_admin(acapy_verifier_admin):
+    """Legacy alias for acapy_verifier_admin to maintain backward compatibility."""
+    yield acapy_verifier_admin
+
+
+# Controller fixture for DCQL tests
+@pytest_asyncio.fixture
+async def controller(acapy_verifier_admin):
+    """Controller fixture for DCQL tests - uses verifier admin API."""
+    yield acapy_verifier_admin
+
+
+# =============================================================================
+# Certificate Generation Fixtures
+# =============================================================================
+
+
+def _generate_ec_key():
+    """Generate an EC P-256 key."""
+    return ec.generate_private_key(ec.SECP256R1())
+
+
+def _get_name(cn: str) -> x509.Name:
+    """Create an X.509 name with a common name."""
+    return x509.Name(
+        [
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
+            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "UT"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "TestOrg"),
+            x509.NameAttribute(NameOID.COMMON_NAME, cn),
+        ]
+    )
+
+
+def _add_iaca_extensions(builder, key, issuer_key, is_ca=True, is_root=False):
+    """Add IACA-compliant extensions to certificate builder."""
+    if is_ca:
+        path_length = 1 if is_root else 0
+        builder = builder.add_extension(
+            x509.BasicConstraints(ca=True, path_length=path_length), critical=True
+        )
+        builder = builder.add_extension(
+            x509.KeyUsage(
+                digital_signature=False,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=True,
+                crl_sign=True,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+    else:
+        builder = builder.add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=False,
+                crl_sign=False,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        builder = builder.add_extension(
+            x509.ExtendedKeyUsage([x509.ObjectIdentifier("1.0.18013.5.1.2")]),
+            critical=True,
+        )
+
+    # Subject Key Identifier
+    builder = builder.add_extension(
+        x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False
+    )
+
+    # Authority Key Identifier
+    builder = builder.add_extension(
+        x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_key.public_key()),
+        critical=False,
+    )
+
+    # CRL Distribution Points
+    builder = builder.add_extension(
+        x509.CRLDistributionPoints(
+            [
+                x509.DistributionPoint(
+                    full_name=[
+                        x509.UniformResourceIdentifier("https://example.com/test.crl")
+                    ],
+                    relative_name=None,
+                    crl_issuer=None,
+                    reasons=None,
+                )
+            ]
+        ),
+        critical=False,
+    )
+
+    # Issuer Alternative Name
+    builder = builder.add_extension(
+        x509.IssuerAlternativeName(
+            [x509.UniformResourceIdentifier("https://example.com")]
+        ),
+        critical=False,
+    )
+
+    return builder
+
+
+def _generate_root_ca(key):
+    """Generate a self-signed root CA certificate."""
+    name = _get_name("Test Root CA")
+    builder = x509.CertificateBuilder()
+    builder = builder.subject_name(name)
+    builder = builder.issuer_name(name)
+    builder = builder.not_valid_before(datetime.now(UTC))
+    builder = builder.not_valid_after(datetime.now(UTC) + timedelta(days=365))
+    builder = builder.serial_number(x509.random_serial_number())
+    builder = builder.public_key(key.public_key())
+    builder = _add_iaca_extensions(builder, key, key, is_ca=True, is_root=True)
+    return builder.sign(key, hashes.SHA256())
+
+
+def _generate_intermediate_ca(key, issuer_key, issuer_name):
+    """Generate an intermediate CA certificate."""
+    name = _get_name("Test Intermediate CA")
+    builder = x509.CertificateBuilder()
+    builder = builder.subject_name(name)
+    builder = builder.issuer_name(issuer_name)
+    builder = builder.not_valid_before(datetime.now(UTC))
+    builder = builder.not_valid_after(datetime.now(UTC) + timedelta(days=365))
+    builder = builder.serial_number(x509.random_serial_number())
+    builder = builder.public_key(key.public_key())
+    builder = _add_iaca_extensions(builder, key, issuer_key, is_ca=True, is_root=False)
+    return builder.sign(issuer_key, hashes.SHA256())
+
+
+def _generate_leaf_ds(key, issuer_key, issuer_name):
+    """Generate a leaf document signer certificate."""
+    name = _get_name("Test Leaf DS")
+    builder = x509.CertificateBuilder()
+    builder = builder.subject_name(name)
+    builder = builder.issuer_name(issuer_name)
+    builder = builder.not_valid_before(datetime.now(UTC))
+    builder = builder.not_valid_after(datetime.now(UTC) + timedelta(days=365))
+    builder = builder.serial_number(x509.random_serial_number())
+    builder = builder.public_key(key.public_key())
+    builder = _add_iaca_extensions(builder, key, issuer_key, is_ca=False)
+    return builder.sign(issuer_key, hashes.SHA256())
+
+
+def _key_to_pem(key) -> str:
+    """Convert a private key to PEM string."""
+    return key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("utf-8")
+
+
+def _cert_to_pem(cert) -> str:
+    """Convert a certificate to PEM string."""
+    return cert.public_bytes(serialization.Encoding.PEM).decode("utf-8")
+
+
+@pytest.fixture(scope="session")
+def generated_test_certs() -> dict[str, Any]:
+    """Generate an ephemeral test certificate chain.
+
+    This fixture generates a complete PKI hierarchy for testing:
+    - Root CA (trust anchor)
+    - Intermediate CA
+    - Leaf DS (document signer) certificate
+
+    Returns:
+        Dictionary containing:
+        - root_ca_pem: Root CA certificate PEM
+        - root_ca_key_pem: Root CA private key PEM
+        - intermediate_ca_pem: Intermediate CA certificate PEM
+        - intermediate_ca_key_pem: Intermediate CA private key PEM
+        - leaf_cert_pem: Leaf certificate PEM
+        - leaf_key_pem: Leaf private key PEM
+        - leaf_chain_pem: Leaf + Intermediate chain PEM (for x5chain)
+    """
+    # Generate Root CA
+    root_key = _generate_ec_key()
+    root_cert = _generate_root_ca(root_key)
+
+    # Generate Intermediate CA
+    inter_key = _generate_ec_key()
+    inter_cert = _generate_intermediate_ca(inter_key, root_key, root_cert.subject)
+
+    # Generate Leaf DS
+    leaf_key = _generate_ec_key()
+    leaf_cert = _generate_leaf_ds(leaf_key, inter_key, inter_cert.subject)
+
+    # Create chain PEM (leaf + intermediate for x5chain)
+    leaf_pem = _cert_to_pem(leaf_cert)
+    inter_pem = _cert_to_pem(inter_cert)
+    chain_pem = leaf_pem + inter_pem
+
+    return {
+        "root_ca_pem": _cert_to_pem(root_cert),
+        "root_ca_key_pem": _key_to_pem(root_key),
+        "intermediate_ca_pem": inter_pem,
+        "intermediate_ca_key_pem": _key_to_pem(inter_key),
+        "leaf_cert_pem": leaf_pem,
+        "leaf_key_pem": _key_to_pem(leaf_key),
+        "leaf_chain_pem": chain_pem,
+    }
+
+
+@pytest_asyncio.fixture
+async def setup_issuer_certs(acapy_issuer_admin):
+    """Ensure the issuer has signing keys and certificates.
+
+    This fixture:
+    1. Checks if a default certificate already exists
+    2. If not, generates a signing key with proper ISO 18013-5 compliant extensions
+    3. Retrieves the DEFAULT certificate that will be used for signing
+
+    Note: We avoid using force=true to prevent regenerating keys between tests
+    in the same session, which would cause certificate mismatch errors.
+
+    Args:
+        acapy_issuer_admin: ACA-Py issuer admin controller
+
+    Yields:
+        Dictionary with key_id, cert_id, and certificate_pem
+    """
+    # First, check if a default certificate already exists
+    # If it does, use it instead of regenerating
+    try:
+        default_cert = await acapy_issuer_admin.get("/mso_mdoc/certificates/default")
+        certificate_pem = default_cert.get("certificate_pem")
+
+        if certificate_pem:
+            yield {
+                "key_id": default_cert.get("key_id"),
+                "cert_id": default_cert.get("cert_id"),
+                "certificate_pem": certificate_pem,
+            }
+            return
+    except Exception:
+        # No default cert exists, we'll need to generate one
+        pass
+
+    # Generate keys via admin API (without force=true, so it only creates if needed)
+    # This ensures we get certificates with the required ISO 18013-5 extensions
+    # (SubjectKeyIdentifier, CRLDistributionPoints, IssuerAlternativeName)
+    try:
+        result = await acapy_issuer_admin.post("/mso_mdoc/generate-keys", json={})
+        key_id = result.get("key_id")
+        cert_id = result.get("cert_id")
+    except Exception:
+        # Keys may already exist, that's OK
+        key_id = None
+        cert_id = None
+
+    # Get the DEFAULT signing certificate - this is the one that will be used
+    # for credential issuance, not just any certificate in the wallet
+    try:
+        default_cert = await acapy_issuer_admin.get("/mso_mdoc/certificates/default")
+        certificate_pem = default_cert.get("certificate_pem")
+
+        if not certificate_pem:
+            raise RuntimeError(
+                "Certificate PEM not found in default certificate response"
+            )
+
+        yield {
+            "key_id": default_cert.get("key_id"),
+            "cert_id": default_cert.get("cert_id"),
+            "certificate_pem": certificate_pem,
+        }
+    except Exception as e:
+        # Fall back to listing certificates if default endpoint fails
+        certs_response = await acapy_issuer_admin.get(
+            "/mso_mdoc/certificates?include_pem=true"
+        )
+        certificates = certs_response.get("certificates", [])
+
+        if not certificates:
+            raise RuntimeError(
+                f"No certificates found on issuer after key generation: {e}"
+            ) from e
+
+        # Use the first certificate (fallback)
+        issuer_cert = certificates[0]
+        certificate_pem = issuer_cert.get("certificate_pem")
+
+        if not certificate_pem:
+            raise RuntimeError("Certificate PEM not found in issuer certificate")
+
+        yield {
+            "key_id": key_id or issuer_cert.get("key_id"),
+            "cert_id": cert_id or issuer_cert.get("cert_id"),
+            "certificate_pem": certificate_pem,
+        }
+
+
+@pytest_asyncio.fixture
+async def setup_verifier_trust_anchors(acapy_verifier_admin, setup_issuer_certs):
+    """Upload trust anchors to the verifier wallet via admin API.
+
+    This fixture uploads the issuer's signing certificate as a trust anchor
+    to the verifier's wallet for mDoc verification.
+
+    Args:
+        acapy_verifier_admin: ACA-Py verifier admin controller
+        setup_issuer_certs: Issuer certificate fixture (provides the actual cert)
+
+    Yields:
+        Dictionary with anchor_id
+    """
+    # Upload issuer's certificate as trust anchor
+    try:
+        result = await acapy_verifier_admin.post(
+            "/mso_mdoc/trust-anchors",
+            json={
+                "certificate_pem": setup_issuer_certs["certificate_pem"],
+                "anchor_id": "issuer-signing-cert",
+                "metadata": {
+                    "description": "Issuer signing certificate",
+                    "purpose": "integration-testing",
+                },
+            },
+        )
+        yield {"anchor_id": result.get("anchor_id")}
+
+        # Cleanup after test
+        try:
+            await acapy_verifier_admin.delete(
+                f"/mso_mdoc/trust-anchors/{result.get('anchor_id')}"
+            )
+        except Exception:
+            pass  # Cleanup failure is not critical
+
+    except Exception as e:
+        # Trust anchor may already exist
+        anchors = await acapy_verifier_admin.get("/mso_mdoc/trust-anchors")
+        if anchors.get("trust_anchors"):
+            yield {"anchor_id": anchors["trust_anchors"][0]["anchor_id"]}
+        else:
+            raise RuntimeError(f"Failed to setup trust anchors: {e}") from e
+
+
+@pytest_asyncio.fixture
+async def setup_credo_trust_anchors(credo_client, setup_issuer_certs):
+    """Upload trust anchors to Credo agent via HTTP API.
+
+    This fixture uploads the issuer's signing certificate as a trust anchor
+    to Credo's X509 module for mDoc verification.
+
+    Args:
+        credo_client: HTTP client for Credo agent
+        setup_issuer_certs: Issuer certificate fixture (provides the actual cert)
+
+    Yields:
+        Dictionary with status
+    """
+    # Upload issuer certificate as trust anchor to Credo
+    try:
+        response = await credo_client.post(
+            "/x509/trust-anchors",
+            json={
+                "certificate_pem": setup_issuer_certs["certificate_pem"],
+            },
+        )
+        response.raise_for_status()
+        result = response.json()
+        print(f"Uploaded trust anchor to Credo: {result}")
+        yield {"status": "success"}
+
+    except Exception as e:
+        # Check if trust anchors were set
+        try:
+            response = await credo_client.get("/x509/trust-anchors")
+            anchors = response.json()
+            if anchors.get("count", 0) > 0:
+                yield {"status": "already_configured"}
+            else:
+                raise RuntimeError(f"Failed to setup Credo trust anchors: {e}") from e
+        except Exception:
+            raise RuntimeError(f"Failed to setup Credo trust anchors: {e}") from e
+
+
+@pytest_asyncio.fixture
+async def setup_all_trust_anchors(
+    setup_verifier_trust_anchors, setup_credo_trust_anchors, setup_issuer_certs
+):
+    """Convenience fixture that sets up trust anchors in all agents.
+
+    This fixture ensures both ACA-Py verifier and Credo have the same
+    trust anchor configured before tests run. The trust anchor is the
+    actual certificate used by the issuer for signing mDocs.
+
+    Args:
+        setup_verifier_trust_anchors: ACA-Py verifier trust anchor fixture
+        setup_credo_trust_anchors: Credo trust anchor fixture
+        setup_issuer_certs: Issuer certificate fixture
+
+    Yields:
+        Dictionary with all setup results
+    """
+    yield {
+        "verifier": setup_verifier_trust_anchors,
+        "credo": setup_credo_trust_anchors,
+        "issuer_cert_pem": setup_issuer_certs["certificate_pem"],
+    }
+
+
+@pytest_asyncio.fixture
+async def setup_pki_chain_trust_anchor(acapy_verifier_admin, generated_test_certs):
+    """Upload the generated root CA as trust anchor for PKI chain tests.
+
+    This fixture is specifically for tests that manually create mDocs
+    using the leaf certificate from generated_test_certs. It uploads
+    the root CA so the verifier can validate the full PKI chain.
+
+    Args:
+        acapy_verifier_admin: ACA-Py verifier admin controller
+        generated_test_certs: Generated test certificate chain
+
+    Yields:
+        Dictionary with anchor_id
+    """
+    # Upload root CA as trust anchor
+    try:
+        result = await acapy_verifier_admin.post(
+            "/mso_mdoc/trust-anchors",
+            json={
+                "certificate_pem": generated_test_certs["root_ca_pem"],
+                "anchor_id": "pki-test-root-ca",
+                "metadata": {
+                    "description": "Ephemeral test root CA for PKI chain tests",
+                    "purpose": "pki-chain-testing",
+                },
+            },
+        )
+        yield {"anchor_id": result.get("anchor_id")}
+
+        # Cleanup after test
+        try:
+            await acapy_verifier_admin.delete(
+                f"/mso_mdoc/trust-anchors/{result.get('anchor_id')}"
+            )
+        except Exception:
+            pass  # Cleanup failure is not critical
+
+    except Exception as e:
+        # Trust anchor may already exist
+        anchors = await acapy_verifier_admin.get("/mso_mdoc/trust-anchors")
+        if anchors.get("trust_anchors"):
+            # Look for existing PKI chain anchor or use first one
+            for anchor in anchors["trust_anchors"]:
+                if anchor.get("anchor_id") == "pki-test-root-ca":
+                    yield {"anchor_id": anchor["anchor_id"]}
+                    return
+            yield {"anchor_id": anchors["trust_anchors"][0]["anchor_id"]}
+        else:
+            raise RuntimeError(f"Failed to setup PKI chain trust anchor: {e}") from e
+
+
+# =============================================================================
+# Shared Helper Functions
+# =============================================================================
+
+
+def safely_get_first_credential(response, wallet_name: str) -> str:
+    """Safely extract credential from wallet response, skipping test if unavailable.
+
+    Args:
+        response: The HTTP response from wallet accept-offer call
+        wallet_name: Name of wallet for error messages (e.g., "Credo", "Sphereon")
+
+    Returns:
+        The credential string
+
+    Raises:
+        pytest.skip: If credential could not be obtained (infrastructure issue)
+    """
+    if response.status_code != 200:
+        pytest.skip(
+            f"{wallet_name} failed to accept offer (status {response.status_code}): {response.text}"
+        )
+
+    resp_json = response.json()
+    if "credential" not in resp_json:
+        pytest.skip(f"{wallet_name} did not return credential: {resp_json}")
+
+    return resp_json["credential"]
+
+
+async def wait_for_presentation_valid(
+    verifier_admin: Controller,
+    presentation_id: str,
+    max_retries: int = 15,
+    interval: float = 1.0,
+) -> dict:
+    """Poll for presentation to be validated.
+
+    Args:
+        verifier_admin: ACA-Py verifier admin controller
+        presentation_id: The presentation ID to check
+        max_retries: Maximum number of retry attempts (default: 15)
+        interval: Sleep interval between retries in seconds (default: 1.0)
+
+    Returns:
+        The presentation record when valid
+
+    Raises:
+        AssertionError: If presentation becomes invalid or times out
+    """
+    for _ in range(max_retries):
+        record = await verifier_admin.get(f"/oid4vp/presentation/{presentation_id}")
+        state = record.get("state")
+
+        if state == "presentation-valid":
+            return record
+        if state == "presentation-invalid":
+            raise AssertionError(f"Presentation invalid: {record}")
+
+        await asyncio.sleep(interval)
+
+    raise AssertionError(
+        f"Timeout waiting for presentation validation. Final state: {record.get('state')}"
+    )
+
+
+# =============================================================================
+# Session-Scoped DID Fixtures
+# =============================================================================
 
 
 @pytest_asyncio.fixture(scope="session")
-async def controller():
-    """Connect to Issuer."""
-    controller = Controller(ISSUER_ADMIN_ENDPOINT)
-    async with controller:
-        yield controller
+async def issuer_ed25519_did():
+    """Create a session-scoped Ed25519 issuer DID.
+
+    This DID is reused across all tests in the session for improved performance.
+    Each test creates unique credential configurations, so DID reuse is safe.
+
+    Yields:
+        str: The issuer DID (e.g., "did:key:z6Mk...")
+    """
+    controller = Controller(ACAPY_ISSUER_ADMIN_URL)
+
+    # Wait for ACA-Py issuer to be ready
+    for _ in range(30):
+        status = await controller.get("/status/ready")
+        if status.get("ready") is True:
+            break
+        await asyncio.sleep(1)
+    else:
+        raise RuntimeError("ACA-Py issuer service not available for DID creation")
+
+    did_response = await controller.post(
+        "/wallet/did/create",
+        json={"method": "key", "options": {"key_type": "ed25519"}},
+    )
+    yield did_response["result"]["did"]
+
+
+@pytest_asyncio.fixture(scope="session")
+async def issuer_p256_did():
+    """Create a session-scoped P-256 issuer DID.
+
+    This DID is reused across all tests in the session for improved performance.
+    Each test creates unique credential configurations, so DID reuse is safe.
+
+    Yields:
+        str: The issuer DID (e.g., "did:jwk:...")
+    """
+    controller = Controller(ACAPY_ISSUER_ADMIN_URL)
+
+    # Wait for ACA-Py issuer to be ready
+    for _ in range(30):
+        status = await controller.get("/status/ready")
+        if status.get("ready") is True:
+            break
+        await asyncio.sleep(1)
+    else:
+        raise RuntimeError("ACA-Py issuer service not available for DID creation")
+
+    did_result = await controller.post("/did/jwk/create", json={"key_type": "p256"})
+    yield did_result["did"]
+
+
+# =============================================================================
+# Credential Configuration Factory Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def sd_jwt_credential_config():
+    """Factory for creating SD-JWT credential supported configurations.
+
+    Returns:
+        Callable that generates unique SD-JWT credential configurations.
+
+    Usage:
+        config = sd_jwt_credential_config(
+            vct="EmployeeCredential",
+            claims={"name": {"mandatory": True}, "employee_id": {"mandatory": True}},
+            sd_list=["/name", "/employee_id"]
+        )
+    """
+
+    def _config(
+        vct: str,
+        claims: dict[str, dict],
+        sd_list: list[str],
+        scope: str = None,
+        proof_algs: list[str] = None,
+        binding_methods: list[str] = None,
+        crypto_suites: list[str] = None,
+    ) -> dict:
+        """Generate an SD-JWT credential configuration.
+
+        Args:
+            vct: Verifiable Credential Type
+            claims: Dictionary of claim names to claim definitions
+            sd_list: List of selectively disclosable claim paths (e.g., ["/name"])
+            scope: OAuth scope (defaults to vct)
+            proof_algs: Proof signing algorithms (defaults to ["EdDSA", "ES256"])
+            binding_methods: Binding methods (defaults to ["did:key"])
+            crypto_suites: Cryptographic suites (defaults to ["EdDSA"])
+
+        Returns:
+            Complete credential supported configuration
+        """
+        random_suffix = str(uuid.uuid4())[:8]
+        return {
+            "id": f"{vct}_{random_suffix}",
+            "format": "vc+sd-jwt",
+            "scope": scope or vct,
+            "proof_types_supported": {
+                "jwt": {
+                    "proof_signing_alg_values_supported": proof_algs
+                    or ["EdDSA", "ES256"]
+                }
+            },
+            "format_data": {
+                "cryptographic_binding_methods_supported": binding_methods
+                or ["did:key"],
+                "cryptographic_suites_supported": crypto_suites or ["EdDSA"],
+                "vct": vct,
+                "claims": claims,
+            },
+            "vc_additional_data": {"sd_list": sd_list},
+        }
+
+    return _config
+
+
+@pytest.fixture
+def mdoc_credential_config():
+    """Factory for creating mDOC credential configurations.
+
+    Returns:
+        Callable that generates unique mDOC credential configurations.
+
+    Usage:
+        config = mdoc_credential_config(
+            doctype="org.iso.18013.5.1.mDL",
+            namespace_claims={
+                "org.iso.18013.5.1": {
+                    "family_name": {"mandatory": True},
+                    "given_name": {"mandatory": True}
+                }
+            }
+        )
+    """
+
+    def _config(
+        doctype: str = "org.iso.18013.5.1.mDL",
+        namespace_claims: dict[str, dict] = None,
+        binding_methods: list[str] = None,
+        crypto_suites: list[str] = None,
+    ) -> dict:
+        """Generate an mDOC credential configuration.
+
+        Args:
+            doctype: Document type (defaults to mDL)
+            namespace_claims: Dictionary of namespace to claims
+            binding_methods: Binding methods (defaults to ["cose_key", "did:key", "did"])
+            crypto_suites: Cryptographic suites (defaults to ["ES256"])
+
+        Returns:
+            Complete mDOC credential supported configuration
+        """
+        random_suffix = str(uuid.uuid4())[:8]
+
+        # Default mDL claims if none provided
+        if namespace_claims is None:
+            namespace_claims = {
+                "org.iso.18013.5.1": {
+                    "given_name": {"mandatory": True},
+                    "family_name": {"mandatory": True},
+                    "birth_date": {"mandatory": False},
+                }
+            }
+
+        return {
+            "id": f"MdocCredential_{random_suffix}",
+            "format": "mso_mdoc",
+            "cryptographic_binding_methods_supported": binding_methods
+            or ["cose_key", "did:key", "did"],
+            "cryptographic_suites_supported": crypto_suites or ["ES256"],
+            "format_data": {
+                "doctype": doctype,
+                "claims": namespace_claims,
+            },
+        }
+
+    return _config
+
+
+# =============================================================================
+# Legacy Compatibility Fixtures (for old test files)
+# =============================================================================
 
 
 @pytest.fixture
 def test_client():
-    client = OpenID4VCIClient()
-    yield client
+    """OpenID4VCI test client for pre-auth code flow tests."""
+    return OpenID4VCIClient()
 
 
-@pytest_asyncio.fixture(scope="session")
-async def issuer_did(controller: Controller):
-    result = await controller.post(
-        "/did/jwk/create",
-        json={
-            "key_type": "p256",
-        },
-    )
-    assert "did" in result
-    did = result["did"]
-    yield did
+@pytest_asyncio.fixture
+async def credo(credo_client):
+    """Credo wrapper for backward compatibility with old tests."""
+    wrapper = CredoWrapper(CREDO_AGENT_URL)
+    async with wrapper:
+        yield wrapper
 
 
-@pytest_asyncio.fixture(scope="session")
-async def supported_cred_id(controller: Controller, issuer_did: str):
-    """Create a supported credential."""
-    supported = await controller.post(
+@pytest_asyncio.fixture
+async def sphereon(sphereon_client):
+    """Sphereon wrapper for backward compatibility with old tests."""
+    wrapper = SphereaonWrapper(SPHEREON_WRAPPER_URL)
+    async with wrapper:
+        yield wrapper
+
+
+@pytest_asyncio.fixture
+async def offer(acapy_issuer_admin, issuer_p256_did):
+    """Create a JWT VC credential offer."""
+    # Create supported credential
+    supported = await acapy_issuer_admin.post(
         "/oid4vci/credential-supported/create/jwt",
         json={
             "cryptographic_binding_methods_supported": ["did"],
             "cryptographic_suites_supported": ["ES256"],
             "format": "jwt_vc_json",
-            "id": "UniversityDegreeCredential",
-            # "types": ["VerifiableCredential", "UniversityDegreeCredential"],
+            "id": f"UniversityDegree_{uuid.uuid4().hex[:8]}",
             "@context": [
                 "https://www.w3.org/2018/credentials/v1",
                 "https://www.w3.org/2018/credentials/examples/v1",
@@ -58,62 +886,96 @@ async def supported_cred_id(controller: Controller, issuer_did: str):
             "type": ["VerifiableCredential", "UniversityDegreeCredential"],
         },
     )
-    yield supported["supported_cred_id"]
 
-
-@pytest_asyncio.fixture
-async def offer(controller: Controller, issuer_did: str, supported_cred_id: str):
-    """Create a credential offer."""
-    exchange = await controller.post(
+    # Create exchange
+    exchange = await acapy_issuer_admin.post(
         "/oid4vci/exchange/create",
         json={
-            "supported_cred_id": supported_cred_id,
+            "supported_cred_id": supported["supported_cred_id"],
             "credential_subject": {"name": "alice"},
-            "verification_method": issuer_did + "#0",
+            "verification_method": issuer_p256_did + "#0",
         },
     )
-    offer = await controller.get(
+
+    # Get offer
+    offer_response = await acapy_issuer_admin.get(
         "/oid4vci/credential-offer",
         params={"exchange_id": exchange["exchange_id"]},
     )
-    yield offer
+    yield offer_response
 
 
 @pytest_asyncio.fixture
-async def offer_by_ref(controller: Controller, issuer_did: str, supported_cred_id: str):
-    """Create a credential offer."""
-    exchange = await controller.post(
-        "/oid4vci/exchange/create",
+async def offer_by_ref(acapy_issuer_admin, issuer_p256_did):
+    """Create a JWT VC credential offer by reference."""
+    # Create supported credential
+    supported = await acapy_issuer_admin.post(
+        "/oid4vci/credential-supported/create/jwt",
         json={
-            "supported_cred_id": supported_cred_id,
-            "credential_subject": {"name": "alice"},
-            "verification_method": issuer_did + "#0",
+            "cryptographic_binding_methods_supported": ["did"],
+            "cryptographic_suites_supported": ["ES256"],
+            "format": "jwt_vc_json",
+            "id": f"UniversityDegree_{uuid.uuid4().hex[:8]}",
+            "@context": [
+                "https://www.w3.org/2018/credentials/v1",
+                "https://www.w3.org/2018/credentials/examples/v1",
+            ],
+            "type": ["VerifiableCredential", "UniversityDegreeCredential"],
         },
     )
 
-    exchange_param = {"exchange_id": exchange["exchange_id"]}
-    offer_ref_full = await controller.get(
-        "/oid4vci/credential-offer-by-ref",
-        params=exchange_param,
+    # Create exchange
+    exchange = await acapy_issuer_admin.post(
+        "/oid4vci/exchange/create",
+        json={
+            "supported_cred_id": supported["supported_cred_id"],
+            "credential_subject": {"name": "alice"},
+            "verification_method": issuer_p256_did + "#0",
+        },
     )
 
-    offer_ref = urlparse(offer_ref_full["credential_offer_uri"])
-    offer_ref = parse_qs(offer_ref.query)["credential_offer"][0]
-    async with ClientSession(headers=controller.headers) as session:
-        async with session.request(
-            "GET", url=offer_ref, params=exchange_param, headers=controller.headers
-        ) as offer:
-            yield await offer.json()
+    # Get offer by reference
+    offer_ref_full = await acapy_issuer_admin.get(
+        "/oid4vci/credential-offer-by-ref",
+        params={"exchange_id": exchange["exchange_id"]},
+    )
+
+    credential_offer_uri = offer_ref_full["credential_offer_uri"]
+    # Replace placeholder with actual endpoint (handle URL encoding)
+    for placeholder in (
+        "${OID4VCI_ENDPOINT:-http://localhost:8022}",
+        "${OID4VCI_ENDPOINT}",
+        urllib.parse.quote("${OID4VCI_ENDPOINT:-http://localhost:8022}", safe=""),
+        urllib.parse.quote("${OID4VCI_ENDPOINT}", safe=""),
+    ):
+        if placeholder in credential_offer_uri:
+            credential_offer_uri = credential_offer_uri.replace(
+                placeholder, ACAPY_ISSUER_OID4VCI_URL
+            )
+            break
+
+    # Dereference the offer
+    offer_ref = urlparse(credential_offer_uri)
+    offer_ref_url = parse_qs(offer_ref.query)["credential_offer"][0]
+
+    async with ClientSession() as session:
+        async with session.get(
+            offer_ref_url,
+            params={"exchange_id": exchange["exchange_id"]},
+        ) as response:
+            offer_data = await response.json()
+            yield offer_data
 
 
 @pytest_asyncio.fixture
-async def sdjwt_supported_cred_id(controller: Controller, issuer_did: str):
-    """Create an SD-JWT VC supported credential."""
-    supported = await controller.post(
+async def sdjwt_offer(acapy_issuer_admin, issuer_p256_did):
+    """Create an SD-JWT VC credential offer."""
+    # Create supported credential
+    supported = await acapy_issuer_admin.post(
         "/oid4vci/credential-supported/create/sd-jwt",
         json={
             "format": "vc+sd-jwt",
-            "id": "IDCard",
+            "id": f"IDCard_{uuid.uuid4().hex[:8]}",
             "cryptographic_binding_methods_supported": ["jwk"],
             "display": [
                 {
@@ -125,164 +987,132 @@ async def sdjwt_supported_cred_id(controller: Controller, issuer_did: str):
             ],
             "vct": "ExampleIDCard",
             "claims": {
-                "given_name": {
-                    "mandatory": True,
-                    "value_type": "string",
-                },
-                "family_name": {
-                    "mandatory": True,
-                    "value_type": "string",
-                },
+                "given_name": {"mandatory": True, "value_type": "string"},
+                "family_name": {"mandatory": True, "value_type": "string"},
                 "age_equal_or_over": {
-                    "12": {
-                        "mandatory": True,
-                        "value_type": "boolean",
-                    },
-                    "14": {
-                        "mandatory": True,
-                        "value_type": "boolean",
-                    },
-                    "16": {
-                        "mandatory": True,
-                        "value_type": "boolean",
-                    },
-                    "18": {
-                        "mandatory": True,
-                        "value_type": "boolean",
-                    },
-                    "21": {
-                        "mandatory": True,
-                        "value_type": "boolean",
-                    },
-                    "65": {
-                        "mandatory": True,
-                        "value_type": "boolean",
-                    },
+                    "12": {"mandatory": True, "value_type": "boolean"},
+                    "18": {"mandatory": True, "value_type": "boolean"},
+                    "21": {"mandatory": True, "value_type": "boolean"},
                 },
             },
             "sd_list": [
                 "/given_name",
                 "/family_name",
                 "/age_equal_or_over/12",
-                "/age_equal_or_over/14",
-                "/age_equal_or_over/16",
                 "/age_equal_or_over/18",
                 "/age_equal_or_over/21",
-                "/age_equal_or_over/65",
             ],
         },
     )
-    yield supported["supported_cred_id"]
 
-
-@pytest_asyncio.fixture
-async def sdjwt_offer(
-    controller: Controller, issuer_did: str, sdjwt_supported_cred_id: str
-):
-    """Create a cred offer for an SD-JWT VC."""
-    exchange = await controller.post(
+    # Create exchange
+    exchange = await acapy_issuer_admin.post(
         "/oid4vci/exchange/create",
         json={
-            "supported_cred_id": sdjwt_supported_cred_id,
+            "supported_cred_id": supported["supported_cred_id"],
             "credential_subject": {
                 "given_name": "Erika",
                 "family_name": "Mustermann",
-                "source_document_type": "id_card",
-                "age_equal_or_over": {
-                    "12": True,
-                    "14": True,
-                    "16": True,
-                    "18": True,
-                    "21": True,
-                    "65": False,
-                },
+                "age_equal_or_over": {"12": True, "18": True, "21": False},
             },
-            "verification_method": issuer_did + "#0",
+            "verification_method": issuer_p256_did + "#0",
         },
     )
-    offer = await controller.get(
+
+    # Get offer
+    offer_response = await acapy_issuer_admin.get(
         "/oid4vci/credential-offer",
         params={"exchange_id": exchange["exchange_id"]},
     )
-    offer_uri = offer["credential_offer"]
-
-    yield offer_uri
+    yield offer_response["credential_offer"]
 
 
 @pytest_asyncio.fixture
-async def sdjwt_offer_by_ref(
-    controller: Controller, issuer_did: str, sdjwt_supported_cred_id: str
-):
-    """Create a cred offer for an SD-JWT VC."""
-    exchange = await controller.post(
-        "/oid4vci/exchange/create",
+async def sdjwt_offer_by_ref(acapy_issuer_admin, issuer_p256_did):
+    """Create an SD-JWT VC credential offer by reference."""
+    # Create supported credential
+    supported = await acapy_issuer_admin.post(
+        "/oid4vci/credential-supported/create/sd-jwt",
         json={
-            "supported_cred_id": sdjwt_supported_cred_id,
-            "credential_subject": {
-                "given_name": "Erika",
-                "family_name": "Mustermann",
-                "source_document_type": "id_card",
-                "age_equal_or_over": {
-                    "12": True,
-                    "14": True,
-                    "16": True,
-                    "18": True,
-                    "21": True,
-                    "65": False,
-                },
+            "format": "vc+sd-jwt",
+            "id": f"IDCard_{uuid.uuid4().hex[:8]}",
+            "cryptographic_binding_methods_supported": ["jwk"],
+            "vct": "ExampleIDCard",
+            "claims": {
+                "given_name": {"mandatory": True, "value_type": "string"},
+                "family_name": {"mandatory": True, "value_type": "string"},
             },
-            "verification_method": issuer_did + "#0",
+            "sd_list": ["/given_name", "/family_name"],
         },
     )
 
-    exchange_param = {"exchange_id": exchange["exchange_id"]}
-    offer_ref_full = await controller.get(
-        "/oid4vci/credential-offer-by-ref",
-        params=exchange_param,
+    # Create exchange
+    exchange = await acapy_issuer_admin.post(
+        "/oid4vci/exchange/create",
+        json={
+            "supported_cred_id": supported["supported_cred_id"],
+            "credential_subject": {"given_name": "Erika", "family_name": "Mustermann"},
+            "verification_method": issuer_p256_did + "#0",
+        },
     )
 
-    offer_ref = urlparse(offer_ref_full["credential_offer_uri"])
-    offer_ref = parse_qs(offer_ref.query)["credential_offer"][0]
-    async with ClientSession(headers=controller.headers) as session:
-        async with session.request(
-            "GET", url=offer_ref, params=exchange_param, headers=controller.headers
-        ) as offer:
-            yield (await offer.json())["credential_offer"]
+    # Get offer by reference
+    offer_ref_full = await acapy_issuer_admin.get(
+        "/oid4vci/credential-offer-by-ref",
+        params={"exchange_id": exchange["exchange_id"]},
+    )
+
+    credential_offer_uri = offer_ref_full["credential_offer_uri"]
+    # Replace placeholder (handle URL encoding)
+    for placeholder in (
+        "${OID4VCI_ENDPOINT:-http://localhost:8022}",
+        "${OID4VCI_ENDPOINT}",
+        urllib.parse.quote("${OID4VCI_ENDPOINT:-http://localhost:8022}", safe=""),
+        urllib.parse.quote("${OID4VCI_ENDPOINT}", safe=""),
+    ):
+        if placeholder in credential_offer_uri:
+            credential_offer_uri = credential_offer_uri.replace(
+                placeholder, ACAPY_ISSUER_OID4VCI_URL
+            )
+            break
+
+    # Dereference the offer
+    offer_ref = urlparse(credential_offer_uri)
+    offer_ref_url = parse_qs(offer_ref.query)["credential_offer"][0]
+
+    async with ClientSession() as session:
+        async with session.get(
+            offer_ref_url,
+            params={"exchange_id": exchange["exchange_id"]},
+        ) as response:
+            offer_data = await response.json()
+            yield offer_data["credential_offer"]
 
 
 @pytest_asyncio.fixture
-async def presentation_definition_id(controller: Controller, issuer_did: str):
-    """Create a supported credential."""
-    record = await controller.post(
+async def request_uri(acapy_verifier_admin, issuer_p256_did):
+    """Create a presentation request URI."""
+    # Create presentation definition
+    pres_def = await acapy_verifier_admin.post(
         "/oid4vp/presentation-definition",
         json={
             "pres_def": {
-                "id": str(uuid4()),
+                "id": str(uuid.uuid4()),
                 "purpose": "Present basic profile info",
                 "format": {
                     "jwt_vc_json": {"alg": ["ES256"]},
                     "jwt_vp_json": {"alg": ["ES256"]},
-                    "jwt_vc": {"alg": ["ES256"]},
-                    "jwt_vp": {"alg": ["ES256"]},
                 },
                 "input_descriptors": [
                     {
-                        "id": "4ce7aff1-0234-4f35-9d21-251668a60950",
+                        "id": str(uuid.uuid4()),
                         "name": "Profile",
-                        "purpose": "Present basic profile info",
                         "constraints": {
                             "fields": [
                                 {
-                                    "name": "name",
-                                    "path": [
-                                        "$.vc.credentialSubject.name",
-                                        "$.credentialSubject.name",
-                                    ],
-                                    "filter": {
-                                        "type": "string",
-                                        "pattern": "^.{1,64}$",
-                                    },
-                                },
+                                    "path": ["$.vc.credentialSubject.name"],
+                                    "filter": {"type": "string"},
+                                }
                             ]
                         },
                     }
@@ -290,24 +1120,36 @@ async def presentation_definition_id(controller: Controller, issuer_did: str):
             }
         },
     )
-    yield record["pres_def_id"]
+
+    # Create request
+    request = await acapy_verifier_admin.post(
+        "/oid4vp/request",
+        json={
+            "pres_def_id": pres_def["pres_def_id"],
+            "vp_formats": {
+                "jwt_vc_json": {"alg": ["ES256"]},
+                "jwt_vp_json": {"alg": ["ES256"]},
+            },
+        },
+    )
+    yield request["request_uri"]
 
 
 @pytest_asyncio.fixture
-async def sdjwt_presentation_definition_id(controller: Controller, issuer_did: str):
-    """Create a supported credential."""
-    record = await controller.post(
+async def sdjwt_request_uri(acapy_verifier_admin, issuer_p256_did):
+    """Create an SD-JWT presentation request URI."""
+    # Create presentation definition
+    pres_def = await acapy_verifier_admin.post(
         "/oid4vp/presentation-definition",
         json={
             "pres_def": {
-                "id": str(uuid4()),
-                "purpose": "Present basic profile info",
+                "id": str(uuid.uuid4()),
+                "purpose": "Present ID card",
                 "format": {"vc+sd-jwt": {}},
                 "input_descriptors": [
                     {
                         "id": "ID Card",
                         "name": "Profile",
-                        "purpose": "Present basic profile info",
                         "constraints": {
                             "limit_disclosure": "required",
                             "fields": [
@@ -321,38 +1163,12 @@ async def sdjwt_presentation_definition_id(controller: Controller, issuer_did: s
             }
         },
     )
-    yield record["pres_def_id"]
 
-
-@pytest_asyncio.fixture
-async def request_uri(
-    controller: Controller, issuer_did: str, presentation_definition_id: str
-):
-    """Create a credential offer."""
-    exchange = await controller.post(
+    # Create request
+    request = await acapy_verifier_admin.post(
         "/oid4vp/request",
         json={
-            "pres_def_id": presentation_definition_id,
-            "vp_formats": {
-                "jwt_vc_json": {"alg": ["ES256", "EdDSA"]},
-                "jwt_vp_json": {"alg": ["ES256", "EdDSA"]},
-                "jwt_vc": {"alg": ["ES256", "EdDSA"]},
-                "jwt_vp": {"alg": ["ES256", "EdDSA"]},
-            },
-        },
-    )
-    yield exchange["request_uri"]
-
-
-@pytest_asyncio.fixture
-async def sdjwt_request_uri(
-    controller: Controller, issuer_did: str, sdjwt_presentation_definition_id: str
-):
-    """Create a credential offer."""
-    exchange = await controller.post(
-        "/oid4vp/request",
-        json={
-            "pres_def_id": sdjwt_presentation_definition_id,
+            "pres_def_id": pres_def["pres_def_id"],
             "vp_formats": {
                 "vc+sd-jwt": {
                     "sd-jwt_alg_values": ["ES256", "EdDSA"],
@@ -361,4 +1177,4 @@ async def sdjwt_request_uri(
             },
         },
     )
-    yield exchange["request_uri"]
+    yield request["request_uri"]

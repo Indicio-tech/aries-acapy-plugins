@@ -1,55 +1,323 @@
-version: "3"
 services:
-  issuer:
-    image: oid4vc
-    build: 
-      dockerfile: docker/Dockerfile
-      context: ..
-    ports:
-      - "3000:3000"
-      - "3001:3001"
-      - "8081:8081"
-    volumes:
-      - ../docker/entrypoint.sh:/entrypoint.sh:ro,z
-      - ../oid4vc:/usr/src/app/oid4vc:z
-    environment:
-      RUST_LOG: warn
-      OID4VCI_HOST: 0.0.0.0
-      OID4VCI_PORT: 8081
-      OID4VCI_ENDPOINT: "http://issuer:8081"
-    command: >
-      start
-        --inbound-transport http 0.0.0.0 3000
-        --outbound-transport http
-        --endpoint http://issuer:3000
-        --admin 0.0.0.0 3001
-        --admin-insecure-mode
-        --no-ledger
-        --wallet-type askar
-        --emit-new-didcomm-prefix
-        --wallet-name issuer
-        --wallet-key insecure
-        --auto-provision
-        --log-level info
-        --debug-webhooks
-        --plugin oid4vc
-    healthcheck:
-      test: curl -s -o /dev/null -w '%{http_code}' "http://localhost:3001/status/live" | grep "200" > /dev/null
-      start_period: 30s
-      interval: 7s
-      timeout: 5s
-      retries: 5
+  # ==========================================================================
+  # Shared Base Image - Built once, used by issuer and verifier
+  # ==========================================================================
+  oid4vc-base:
+    build:
+      dockerfile: oid4vc/docker/Dockerfile.base
+      context: ../../
+      args:
+        ACAPY_VERSION: 1.4.0
+        ISOMDL_BRANCH: main
+    image: oid4vc-base:latest
+    profiles:
+      - base-only  # Only build when explicitly requested
 
-  tests:
-    image: oid4vc-test-runner
+  # Credo Holder/Verifier - Receives credentials from ACA-Py
+  credo-agent:
+    build:
+      context: ./credo
+      # Use BuildKit cache from previous builds
+    ports:
+      - "3020:3020"
+    environment:
+      - NODE_ENV=development
+      - PORT=3020
+      - ACAPY_ISSUER_URL=http://acapy-issuer.local:8022
+      - ACAPY_VERIFIER_URL=http://acapy-verifier.local:8032
+      # Trust anchors are now uploaded via API - no filesystem path needed
+    # Healthcheck defined in Dockerfile
+    # No volume mounts for trust anchors - they are uploaded via API
+    depends_on:
+      acapy-issuer:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Sphereon Wrapper - Receives credentials from ACA-Py
+  sphereon-wrapper:
+    build:
+      context: ./sphereon
+    ports:
+      - "3010:3010"
+    environment:
+      - PORT=3010
+    # Healthcheck defined in Dockerfile
+
+  # ACA-Py Issuer - Issues credentials via OID4VCI
+  acapy-issuer:
+    build: 
+      dockerfile: oid4vc/docker/Dockerfile
+      context: ../../
+      args:
+        ACAPY_VERSION: 1.4.0
+        ISOMDL_BRANCH: main
+    ports:
+      - "8020:8020"  # inbound transport
+      - "8083:8021"  # admin (mapped to 8083)
+      - "8022:8022"  # oid4vci endpoint
+    environment:
+      - AGENT_ENDPOINT=http://acapy-issuer:8020
+      - OID4VCI_ENDPOINT=http://acapy-issuer.local:8022
+      - STATUS_LIST_PUBLIC_URI=http://acapy-issuer.local:8022/status/{list_number}
+      - WALLET_STORAGE_TYPE=${WALLET_STORAGE_TYPE:-sqlite}
+      - PYTHONPATH=/usr/src/app/isomdl_wrapper:/usr/src/app
+      - ACAPY_ADMIN_PORT=8021
+      - LOG_LEVEL=DEBUG
+      # Certificates are now stored in wallet, no file paths needed
+      # Keys and certs are auto-generated on startup if not present
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8021/status/ready"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 300s
+    volumes:
+      - ../docker/dev.yml:/usr/src/app/docker/dev.yml
+      - ../oid4vc:/usr/src/app/oid4vc
+      - ../mso_mdoc:/usr/src/app/mso_mdoc
+      # Static cert mounts removed - certs are now stored in wallet
+    networks:
+      default:
+        aliases:
+          - acapy-issuer.local
+    command: start --arg-file /usr/src/app/docker/dev.yml --wallet-storage-type ${WALLET_STORAGE_TYPE:-sqlite} --log-level DEBUG
+    restart: unless-stopped
+
+  # ACA-Py Verifier - Receives presentations from Credo
+  acapy-verifier:
+    build: 
+      dockerfile: oid4vc/docker/Dockerfile
+      context: ../../
+      args:
+        ACAPY_VERSION: 1.4.0
+        ISOMDL_BRANCH: main
+    ports:
+      - "8030:8030"  # inbound transport
+      - "8031:8031"  # admin
+      - "8032:8032"  # oid4vp endpoint
+      - "8033:8033"  # oid4vci endpoint
+    environment:
+      - AGENT_ENDPOINT=http://acapy-verifier:8030
+      - OID4VCI_ENDPOINT=http://acapy-verifier.local:8033
+      - OID4VP_ENDPOINT=http://acapy-verifier.local:8032
+      - WALLET_STORAGE_TYPE=${WALLET_STORAGE_TYPE:-sqlite}
+      - PYTHONPATH=/usr/src/app/isomdl_wrapper:/usr/src/app
+      - ACAPY_ADMIN_PORT=8031
+      - LOG_LEVEL=DEBUG
+      # Use wallet-based trust store instead of file-based
+      - OID4VC_MDOC_TRUST_STORE_TYPE=${OID4VC_MDOC_TRUST_STORE_TYPE:-wallet}
+      # Fallback path for file-based trust store (if OID4VC_MDOC_TRUST_STORE_TYPE=file)
+      - OID4VC_MDOC_TRUST_ANCHORS_PATH=/etc/acapy/mdoc/trust-anchors/
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8031/status/ready"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 300s
+    volumes:
+      - ../../oid4vc/oid4vc:/usr/src/app/oid4vc
+      - ../../oid4vc/mso_mdoc:/usr/src/app/mso_mdoc
+      - ../../oid4vc/sd_jwt_vc:/usr/src/app/sd_jwt_vc
+      - ../docker/dev-verifier.yml:/usr/src/app/docker/dev-verifier.yml
+      # Static trust anchor mounts removed - trust anchors stored in wallet
+    networks:
+      default:
+        aliases:
+          - acapy-verifier.local
+    command: start --arg-file /usr/src/app/docker/dev-verifier.yml --wallet-storage-type ${WALLET_STORAGE_TYPE:-sqlite} --log-level DEBUG
+    restart: unless-stopped
+
+  # Integration Test Runner
+  test-river:
     build:
       context: .
-    volumes:
-      - ./oid4vci_client:/usr/src/app/oid4vci_client:z
-      - ./tests:/usr/src/app/tests:z
+      dockerfile: Dockerfile.test.runner
+      args:
+        ACAPY_VERSION: 1.4.0
+    working_dir: /usr/src/app
     environment:
-      ISSUER_ADMIN_ENDPOINT: http://issuer:3001
+      - REQUIRE_MDOC=true
+      - CREDO_AGENT_URL=http://credo-agent:3020
+      - SPHEREON_WRAPPER_URL=http://sphereon-wrapper:3010
+      - ACAPY_ISSUER_ADMIN_URL=http://acapy-issuer:8021
+      - ACAPY_ISSUER_OID4VCI_URL=http://acapy-issuer.local:8022
+      - ACAPY_VERIFIER_ADMIN_URL=http://acapy-verifier:8031
+      - ACAPY_VERIFIER_OID4VP_URL=http://acapy-verifier.local:8032
+      - PYTHONPATH=/usr/src/app
+      - WAIT_HOSTS=credo-agent:3020,sphereon-wrapper:3010,acapy-issuer:8021,acapy-verifier:8031
+      - WAIT_HOSTS_TIMEOUT=300
+    volumes:
+      - ./test-results:/usr/src/app/test-results
+      - ./tests:/usr/src/app/tests
+      - ./pyproject.toml:/usr/src/app/pyproject.toml
+      # Static cert mounts removed - certs generated dynamically in tests
     depends_on:
-      issuer:
+      credo-agent:
         condition: service_healthy
-        
+      sphereon-wrapper:
+        condition: service_healthy
+      acapy-issuer:
+        condition: service_healthy
+      acapy-verifier:
+        condition: service_healthy
+    command: >
+      /bin/sh -c "
+      /wait &&
+      uv run pytest tests/ --verbose --tb=short --junit-xml=test-results/junit-quick.xml --durations=5
+      "
+
+  # ============================================================================
+  # Walt.id Web Wallet Stack - For Playwright E2E Testing
+  # ============================================================================
+  #
+  # NOTE: walt.id Docker images are linux/amd64 only. For ARM64 (Apple Silicon),
+  # you must either:
+  #   1. Run with Docker Desktop's Rosetta emulation (slower)
+  #   2. Build images locally from walt-id/waltid-identity repo
+  #
+  # To run on Apple Silicon:
+  #   DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose --profile waltid up
+  #
+  # ============================================================================
+
+  # PostgreSQL for walt.id wallet
+  waltid-postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: waltid
+      POSTGRES_PASSWORD: waltid
+      POSTGRES_DB: waltid
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U waltid -d waltid"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    profiles:
+      - waltid
+
+  # Valkey (Redis-compatible) for walt.id session tokens
+  waltid-valkey:
+    image: valkey/valkey:8-alpine
+    command: valkey-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    profiles:
+      - waltid
+
+  # Walt.id Wallet API
+  waltid-wallet-api:
+    image: waltid/wallet-api:latest
+    platform: linux/amd64
+    ports:
+      - "7001:7001"
+    environment:
+      - WALTID_WALLET_BACKEND_BIND_ADDRESS=0.0.0.0
+      # Web server config
+      - WALLET_BACKEND_PORT=7001
+      - SERVICE_HOST=waltid-wallet-api.local
+      # Database config
+      - POSTGRES_DB_HOST=waltid-postgres
+      - POSTGRES_DB_PORT=5432
+      - DB_NAME=waltid
+      - DB_USERNAME=waltid
+      - DB_PASSWORD=waltid
+      # OIDC config (optional - use local auth)
+      - DEMO_WALLET_FRONTEND_PORT=7101
+    volumes:
+      - ./playwright/waltid-config:/waltid-wallet-api/config:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:7001/wallet-api/auth/login -X POST -d '{}' -H 'Content-Type: application/json' || exit 0"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+    depends_on:
+      waltid-postgres:
+        condition: service_healthy
+      waltid-valkey:
+        condition: service_healthy
+    networks:
+      default:
+        aliases:
+          - waltid-wallet-api.local
+    profiles:
+      - waltid
+
+  # Nginx Reverse Proxy for Walt.id (proxies /wallet-api/ to wallet-api service)
+  waltid-proxy:
+    image: nginx:alpine
+    ports:
+      - "7101:80"
+    volumes:
+      - ./playwright/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      waltid-wallet-api:
+        condition: service_healthy
+      waltid-web-wallet-backend:
+        condition: service_started
+    networks:
+      default:
+        aliases:
+          - waltid-web-wallet
+    profiles:
+      - waltid
+
+  # Walt.id Web Wallet Frontend (internal, accessed via proxy)
+  waltid-web-wallet-backend:
+    image: waltid/waltid-web-wallet:latest
+    platform: linux/amd64
+    environment:
+      - PORT=7101
+      - NUXT_PUBLIC_ISSUER_CALLBACK_URL=http://localhost:7101
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7101"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+    depends_on:
+      waltid-wallet-api:
+        condition: service_healthy
+    networks:
+      default:
+        aliases:
+          - waltid-wallet.local
+    profiles:
+      - waltid
+
+  # Playwright Test Runner
+  playwright-runner:
+    build:
+      context: ./playwright
+      dockerfile: Dockerfile
+    working_dir: /app
+    environment:
+      # Use the nginx proxy which routes /wallet-api/ to wallet-api service
+      - WALTID_WEB_WALLET_URL=http://waltid-web-wallet:80
+      - WALTID_WALLET_URL=http://waltid-web-wallet:80
+      - WALTID_WALLET_API_URL=http://waltid-wallet-api:7001
+      - ACAPY_ISSUER_ADMIN_URL=http://acapy-issuer:8021
+      - ACAPY_ISSUER_OID4VCI_URL=http://acapy-issuer.local:8022
+      - ACAPY_VERIFIER_ADMIN_URL=http://acapy-verifier:8031
+      - ACAPY_VERIFIER_OID4VP_URL=http://acapy-verifier.local:8032
+      - CI=true
+    volumes:
+      - ./test-results:/app/test-results
+      - ./playwright/tests:/app/tests
+      - ./playwright/helpers:/app/helpers
+      - ./playwright/certs:/app/certs:ro
+    depends_on:
+      waltid-proxy:
+        condition: service_started
+      acapy-issuer:
+        condition: service_healthy
+      acapy-verifier:
+        condition: service_healthy
+    profiles:
+      - waltid
+
+volumes:
+  test-results:

@@ -1,4 +1,5 @@
-from typing import Any, Dict
+from typing import Any
+
 import pytest
 
 from sphereon_wrapper import SphereaonWrapper
@@ -11,13 +12,13 @@ async def test_api(sphereon: SphereaonWrapper):
 
     result = await sphereon.test()
     assert result
-    assert "test" in result
-    assert result["test"] == "success"
+    # Sphereon health endpoint returns {'status': 'ok'}
+    assert result.get("status") == "ok"
 
 
 @pytest.mark.interop
 @pytest.mark.asyncio
-async def test_sphereon_pre_auth(sphereon: SphereaonWrapper, offer: Dict[str, Any]):
+async def test_sphereon_pre_auth(sphereon: SphereaonWrapper, offer: dict[str, Any]):
     """Test receive offer for pre auth code flow."""
     await sphereon.accept_credential_offer(offer["credential_offer"])
 
@@ -25,7 +26,7 @@ async def test_sphereon_pre_auth(sphereon: SphereaonWrapper, offer: Dict[str, An
 @pytest.mark.interop
 @pytest.mark.asyncio
 async def test_sphereon_pre_auth_by_ref(
-    sphereon: SphereaonWrapper, offer_by_ref: Dict[str, Any]
+    sphereon: SphereaonWrapper, offer_by_ref: dict[str, Any]
 ):
     """Test receive offer for pre auth code flow, where offer is passed by reference from the
     credential-offer-by-ref endpoint and then dereferenced."""

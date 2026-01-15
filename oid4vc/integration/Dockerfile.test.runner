@@ -1,0 +1,86 @@
+# =============================================================================
+# Stage 1: Build isomdl-uniffi wheel (requires Rust)
+# =============================================================================
+FROM python:3.12-slim-bookworm AS isomdl-build
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust toolchain (minimal profile to save space)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Clone isomdl-uniffi with shallow clone
+ARG ISOMDL_BRANCH=main
+RUN git clone --depth 1 --branch ${ISOMDL_BRANCH} \
+    https://github.com/Indicio-tech/isomdl-uniffi.git /build/isomdl-uniffi
+
+WORKDIR /build/isomdl-uniffi/python
+
+# Create package directory and __init__.py
+RUN mkdir -p isomdl_uniffi && \
+    printf 'try:\n    from .isomdl_uniffi import *\nexcept ImportError:\n    pass\n' > isomdl_uniffi/__init__.py
+
+# Build wheel
+RUN pip install --no-cache-dir build wheel setuptools
+RUN python setup.py bdist_wheel
+
+# =============================================================================
+# Stage 2: Final test runner image
+# =============================================================================
+FROM python:3.12-slim-bookworm
+
+WORKDIR /usr/src/app
+
+# Add docker-compose-wait tool
+ENV WAIT_VERSION=2.12.1
+ADD https://github.com/ufoscout/docker-compose-wait/releases/download/$WAIT_VERSION/wait /wait
+RUN chmod +x /wait
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    jq \
+    git \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone ACA-Py with shallow clone
+ARG ACAPY_VERSION=1.4.0
+RUN git clone --depth 1 --branch ${ACAPY_VERSION} \
+    https://github.com/openwallet-foundation/acapy.git /usr/acapy
+
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+# Setup project
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --frozen
+
+# Install isomdl-uniffi from builder stage
+COPY --from=isomdl-build /build/isomdl-uniffi/python/dist/*.whl /tmp/
+RUN uv pip install /tmp/*.whl --python .venv && rm -rf /tmp/*.whl
+
+# Install acapy-agent from cloned source
+RUN uv pip install -e /usr/acapy --python .venv
+
+# Copy integration test components
+COPY tests/ tests/
+COPY credo_wrapper/ credo_wrapper/
+COPY sphereon_wrapper/ sphereon_wrapper/
+COPY oid4vci_client/ oid4vci_client/
+COPY acapy_controller.py ./
+
+# Create test results directory
+RUN mkdir -p test-results
+
+# Wait for services then run tests
+ENTRYPOINT ["/bin/sh", "-c", "/wait && exec \"$@\"", "--"]
+CMD ["uv", "run", "pytest"]
