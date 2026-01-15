@@ -1,37 +1,39 @@
-from os import getenv
-from urllib.parse import urlparse
+"""Fixtures for mDOC interop tests.
 
+This conftest provides the basic fixtures needed for test_credo_mdoc.py.
+Most mDOC-specific fixtures are defined in test_credo_mdoc.py itself.
+"""
+
+from os import getenv
+
+import httpx
 import pytest_asyncio
 
 from credo_wrapper import CredoWrapper
-from sphereon_wrapper import SphereaonWrapper
 
-
-def _normalize_url(env_var: str, default: str) -> str:
-    """Return a URL with scheme ensured, preferring environment overrides."""
-
-    value = getenv(env_var, default)
-    parsed = urlparse(value)
-    if not parsed.scheme:
-        return f"http://{value}"
-    return value
-
-
-SPHEREON_BASE_URL = _normalize_url("SPHEREON_WRAPPER_URL", "http://localhost:3010")
-CREDO_BASE_URL = _normalize_url("CREDO_AGENT_URL", "http://localhost:3020")
-
-
-@pytest_asyncio.fixture
-async def sphereon():
-    """Create a wrapper instance and connect to the server."""
-    wrapper = SphereaonWrapper(SPHEREON_BASE_URL)
-    async with wrapper:
-        yield wrapper
+# Service endpoints from docker-compose.yml environment variables
+CREDO_AGENT_URL = getenv("CREDO_AGENT_URL", "http://localhost:3020")
+ACAPY_ISSUER_ADMIN_URL = getenv("ACAPY_ISSUER_ADMIN_URL", "http://localhost:8021")
+ACAPY_VERIFIER_ADMIN_URL = getenv("ACAPY_VERIFIER_ADMIN_URL", "http://localhost:8031")
 
 
 @pytest_asyncio.fixture
 async def credo():
-    """Create a wrapper instance and connect to the server."""
-    wrapper = CredoWrapper(CREDO_BASE_URL)
-    async with wrapper:
+    """Create a Credo wrapper instance."""
+    wrapper = CredoWrapper(CREDO_AGENT_URL)
+    async with wrapper as wrapper:
         yield wrapper
+
+
+@pytest_asyncio.fixture
+async def acapy_issuer():
+    """HTTP client for ACA-Py issuer admin API."""
+    async with httpx.AsyncClient(base_url=ACAPY_ISSUER_ADMIN_URL) as client:
+        yield client
+
+
+@pytest_asyncio.fixture
+async def acapy_verifier():
+    """HTTP client for ACA-Py verifier admin API."""
+    async with httpx.AsyncClient(base_url=ACAPY_VERIFIER_ADMIN_URL) as client:
+        yield client

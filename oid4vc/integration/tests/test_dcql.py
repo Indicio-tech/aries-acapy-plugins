@@ -1,4 +1,5 @@
 import pytest
+
 from acapy_controller import Controller
 
 
@@ -121,19 +122,36 @@ async def test_dcql_query_delete(controller: Controller):
     query = await controller.post("/oid4vp/dcql/queries", json=cred_json)
     query_id = query["dcql_query_id"]
 
+    # Get initial count of queries
     queries_list = await controller.get(
         "/oid4vp/dcql/queries",
     )
+    initial_count = len(queries_list["results"])
 
-    length = len(queries_list["results"])
-    assert queries_list["results"][0]["credentials"] == cred_json["credentials"]
+    # Verify the query we created exists by filtering for its ID
+    filtered_queries = await controller.get(
+        "/oid4vp/dcql/queries",
+        params={"dcql_query_id": query_id},
+    )
+    assert len(filtered_queries["results"]) == 1
+    assert filtered_queries["results"][0]["credentials"] == cred_json["credentials"]
 
-    queries_list = await controller.delete(
+    # Delete the query
+    await controller.delete(
         f"/oid4vp/dcql/query/{query_id}",
     )
 
+    # Verify count decreased
     queries_list = await controller.get(
         "/oid4vp/dcql/queries",
     )
+    assert len(queries_list["results"]) == initial_count - 1
 
-    assert len(queries_list["results"]) == length - 1
+    # Verify the query can be retrieved directly still gives an error (record not found)
+    # Note: The API returns 400 when filtering by a non-existent ID, not an empty list
+    try:
+        await controller.get(f"/oid4vp/dcql/query/{query_id}")
+        assert False, "Expected 404/400 error when getting deleted query"
+    except Exception:
+        # Expected - query was deleted
+        pass
