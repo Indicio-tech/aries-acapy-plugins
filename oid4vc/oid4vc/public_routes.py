@@ -59,7 +59,8 @@ from .models.exchange import OID4VCIExchangeRecord
 from .models.nonce import Nonce
 from .models.supported_cred import SupportedCredential
 from .pop_result import PopResult
-from .routes import _parse_cred_offer, CredOfferQuerySchema, CredOfferResponseSchemaVal
+from .routes import CredOfferQuerySchema, CredOfferResponseSchemaVal
+from .routes.helpers import _parse_cred_offer
 from .status_handler import StatusHandler
 from .utils import get_auth_header, get_tenant_subpath
 

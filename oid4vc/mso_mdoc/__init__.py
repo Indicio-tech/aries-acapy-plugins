@@ -2,10 +2,12 @@
 
 from importlib.util import find_spec
 
+from acapy_agent.admin.base_server import BaseAdminServer
 from acapy_agent.config.injection_context import InjectionContext
 
 from mso_mdoc.cred_processor import MsoMdocCredProcessor
 from oid4vc.cred_processor import CredProcessors
+from . import routes
 
 cwt = find_spec("cwt")
 pycose = find_spec("pycose")
@@ -17,6 +19,13 @@ if not all((cwt, pycose, cbor2, cbor_diag)):
 
 async def setup(context: InjectionContext):
     """Setup the plugin."""
-    processors = context.inject(CredProcessors)
+    processors = context.inject_or(CredProcessors)
+    if not processors:
+        processors = CredProcessors()
+        context.injector.bind_instance(CredProcessors, processors)
     mso_mdoc = MsoMdocCredProcessor()
     processors.register_issuer("mso_mdoc", mso_mdoc)
+
+    admin_server = context.inject_or(BaseAdminServer)
+    if admin_server:
+        await routes.register(admin_server.app)

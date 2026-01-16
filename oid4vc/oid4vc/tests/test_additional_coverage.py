@@ -1954,11 +1954,8 @@ class TestPublicRouteFunctionality:
     def test_did_jwk_operations(self):
         """Test DID JWK creation and retrieval operations."""
         pytest.importorskip("oid4vc.did_utils")
-        from oid4vc.did_utils import (
-            _create_default_did,
-            _retrieve_default_did,
-            retrieve_or_create_did_jwk,
-        )
+        from oid4vc.did_utils import retrieve_or_create_did_jwk
+        from oid4vc.public_routes import _create_default_did, _retrieve_default_did
 
         # Test functions exist
         assert retrieve_or_create_did_jwk is not None
