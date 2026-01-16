@@ -2,7 +2,7 @@
 
 import json
 from dataclasses import dataclass
-from typing import Dict, List, Literal, Optional, Union, Any
+from typing import Any, Literal, Optional
 from urllib.parse import parse_qsl, urlparse
 
 from aiohttp import ClientSession
@@ -19,7 +19,7 @@ class CredentialGrantPreAuth:
     """Credential Grant Pre-Auth."""
 
     code: str
-    user_pin_required: Optional[bool] = None
+    user_pin_required: bool | None = None
 
     @classmethod
     def from_grants(cls, value: dict) -> Optional["CredentialGrantPreAuth"]:
@@ -39,17 +39,17 @@ class CredentialOffer:
     """Credential Offer."""
 
     credential_issuer: str
-    credentials: List[str]
-    authorization_code: Optional[dict] = None
-    pre_authorized_code: Optional[CredentialGrantPreAuth] = None
+    credentials: list[str]
+    authorization_code: dict | None = None
+    pre_authorized_code: CredentialGrantPreAuth | None = None
 
     @classmethod
     def from_dict(cls, value: dict):
         """Parse from dict."""
-        offer = value["offer"]
+        offer = value["credential_offer"]
         return cls(
             offer["credential_issuer"],
-            offer["credentials"],
+            offer["credential_configuration_ids"],
             offer.get("grants", {}).get("authorization_code"),
             CredentialGrantPreAuth.from_grants(offer.get("grants", {})),
         )
@@ -75,9 +75,9 @@ class TokenParams:
 class OpenID4VCIClient:
     """OpenID Connect 4 Verifiable Credential Issuance Client."""
 
-    def __init__(self, key: Optional[AskarKey] = None):
+    def __init__(self, key: AskarKey | None = None):
         """Initialize the client."""
-        self.did_to_key: Dict[str, AskarKey] = {}
+        self.did_to_key: dict[str, AskarKey] = {}
 
     def generate_did(self, key_type: Literal["ed25519", "secp256k1"]) -> str:
         """Generate a DID."""
@@ -152,12 +152,14 @@ class OpenID4VCIClient:
                 json=request,
             ) as resp:
                 if resp.status != 200:
-                    raise ValueError(f"Error requesting credential: {await resp.text()}")
+                    raise ValueError(
+                        f"Error requesting credential: {await resp.text()}"
+                    )
                 credential = await resp.json()
 
         return credential
 
-    async def receive_offer(self, offer_in: Union[str, dict], holder_did: str):
+    async def receive_offer(self, offer_in: str | dict, holder_did: str):
         """Receive an offer."""
         if isinstance(offer_in, str):
             parsed = dict(parse_qsl(urlparse(offer_in).query))

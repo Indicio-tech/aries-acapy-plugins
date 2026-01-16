@@ -55,6 +55,22 @@ class SupportedCredential(BaseRecord):
                 Verifiable Credential.
             kwargs: Keyword arguments to allow generic initialization of the record.
         """
+        # Handle type and @context if they are passed in kwargs (top level in JSON)
+        # by moving them to vc_additional_data
+        if "type" in kwargs:
+            type_val = kwargs.pop("type")
+            if vc_additional_data is None:
+                vc_additional_data = {}
+            if "type" not in vc_additional_data:
+                vc_additional_data["type"] = type_val
+
+        if "@context" in kwargs:
+            context_val = kwargs.pop("@context")
+            if vc_additional_data is None:
+                vc_additional_data = {}
+            if "@context" not in vc_additional_data:
+                vc_additional_data["@context"] = context_val
+
         super().__init__(supported_cred_id, **kwargs)
         self.format = format
         self.identifier = identifier

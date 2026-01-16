@@ -3,12 +3,12 @@ version: '3'
 services:
 
   issuer:
-    # from .. run
-    # DOCKER_DEFAULT_PLATFORM=linux/amd64 docker build -f ./docker/Dockerfile --tag oid4vci .
+    # from demo/ directory run:
+    # DOCKER_DEFAULT_PLATFORM=linux/amd64 docker build -f docker/Dockerfile --tag oid4vc ../..
     image: oid4vc
     build:
-      dockerfile: docker/Dockerfile
-      context: ..
+      dockerfile: oid4vc/docker/Dockerfile
+      context: ../..
     ports:
       - "3000:3000"
       - "3001:3001"
