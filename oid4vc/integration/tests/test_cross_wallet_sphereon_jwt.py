@@ -7,10 +7,9 @@ These tests focus on Sphereon wallet behavior with JWT VC credentials:
 """
 
 import asyncio
+
 import pytest
-
 from conftest import safely_get_first_credential
-
 
 # =============================================================================
 # Cross-Wallet Issuance and Verification Tests - Sphereon Focus
@@ -109,9 +108,9 @@ async def test_issue_to_sphereon_verify_with_credo_jwt_vc(
             "verifiable_credentials": [sphereon_credential],
         },
     )
-    assert (
-        present_response.status_code == 200
-    ), f"Sphereon present failed: {present_response.text}"
+    assert present_response.status_code == 200, (
+        f"Sphereon present failed: {present_response.text}"
+    )
 
     # Step 4: Verify on ACA-Py side
     record = None

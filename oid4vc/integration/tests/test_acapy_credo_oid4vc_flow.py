@@ -11,7 +11,6 @@ This test covers the complete OID4VC flow:
 import uuid
 
 import pytest
-
 from conftest import wait_for_presentation_valid
 
 
@@ -554,7 +553,9 @@ async def test_acapy_credo_mdoc_selective_disclosure(
     credential_supported["proof_types_supported"] = {
         "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
     }
-    credential_supported["format_data"]["cryptographic_binding_methods_supported"] = ["cose_key"]
+    credential_supported["format_data"]["cryptographic_binding_methods_supported"] = [
+        "cose_key"
+    ]
     credential_supported["format_data"]["cryptographic_suites_supported"] = ["ES256"]
 
     credential_config_response = await acapy_issuer_admin.post(

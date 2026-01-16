@@ -362,9 +362,9 @@ class TestIssuerCertificates:
         if response.status_code == 404:
             pytest.skip("mDOC key listing endpoint not available")
 
-        assert (
-            response.status_code == 200
-        ), f"Expected 200, got {response.status_code}: {response.text}"
+        assert response.status_code == 200, (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        )
         result = response.json()
         # API returns {"keys": [...]}
         assert isinstance(result, dict)
@@ -380,9 +380,9 @@ class TestIssuerCertificates:
         if keys_response.status_code == 404:
             pytest.skip("mDOC key endpoints not available")
 
-        assert (
-            keys_response.status_code == 200
-        ), f"Expected 200, got {keys_response.status_code}: {keys_response.text}"
+        assert keys_response.status_code == 200, (
+            f"Expected 200, got {keys_response.status_code}: {keys_response.text}"
+        )
 
         keys_data = keys_response.json()
 
@@ -419,9 +419,9 @@ class TestIssuerCertificates:
 
         # If endpoint exists, should return certificate
         if response.status_code not in [404, 405]:
-            assert (
-                response.status_code == 200
-            ), f"Expected 200, got {response.status_code}: {response.text}"
+            assert response.status_code == 200, (
+                f"Expected 200, got {response.status_code}: {response.text}"
+            )
 
 
 # =============================================================================
@@ -468,9 +468,9 @@ class TestEndToEndTrustChain:
         # Step 2: Get issuer certificate using the default certificate endpoint
         cert_response = await acapy_issuer.get("/mso_mdoc/certificates/default")
 
-        assert (
-            cert_response.status_code == 200
-        ), f"Failed to get certificate: {cert_response.text}"
+        assert cert_response.status_code == 200, (
+            f"Failed to get certificate: {cert_response.text}"
+        )
         cert_data = cert_response.json()
         issuer_cert = cert_data.get("certificate_pem")
 
@@ -506,8 +506,8 @@ async def acapy_issuer():
     """HTTP client for ACA-Py issuer admin API."""
     from os import getenv
 
-    ACAPY_ISSUER_ADMIN_URL = getenv("ACAPY_ISSUER_ADMIN_URL", "http://localhost:8021")
-    async with httpx.AsyncClient(base_url=ACAPY_ISSUER_ADMIN_URL) as client:
+    acapy_issuer_admin_url = getenv("ACAPY_ISSUER_ADMIN_URL", "http://localhost:8021")
+    async with httpx.AsyncClient(base_url=acapy_issuer_admin_url) as client:
         yield client
 
 
@@ -516,8 +516,8 @@ async def acapy_verifier():
     """HTTP client for ACA-Py verifier admin API."""
     from os import getenv
 
-    ACAPY_VERIFIER_ADMIN_URL = getenv(
+    acapy_verifier_admin_url = getenv(
         "ACAPY_VERIFIER_ADMIN_URL", "http://localhost:8031"
     )
-    async with httpx.AsyncClient(base_url=ACAPY_VERIFIER_ADMIN_URL) as client:
+    async with httpx.AsyncClient(base_url=acapy_verifier_admin_url) as client:
         yield client

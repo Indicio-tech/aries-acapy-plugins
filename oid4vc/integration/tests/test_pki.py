@@ -71,8 +71,6 @@ async def test_mdoc_pki_trust_chain(
         except Exception as e2:
             pytest.fail(f"Failed to create signed mdoc (leaf only): {e2}")
 
-    mdoc_hex = mdoc.stringify()
-
     # 3. Present the mdoc to ACA-Py Verifier
     # ACA-Py Verifier should have the Root CA in its trust store (mounted via docker-compose)
 
@@ -148,7 +146,7 @@ async def test_mdoc_pki_trust_chain(
     permitted_items = {"org.iso.18013.5.1.mDL": {"org.iso.18013.5.1": ["given_name"]}}
     unsigned_response = session.generate_response(permitted_items)
     signed_response = holder_key.sign(unsigned_response)
-    presentation_response = session.submit_response(signed_response)
+    session.submit_response(signed_response)
 
     # Convert presentation response to hex/base64 for ACA-Py
 
@@ -235,25 +233,8 @@ async def test_mdoc_pki_trust_chain(
                 v += "=" * (4 - rem)
             return base64.urlsafe_b64decode(v)
 
-        x_bytes = base64url_decode(holder_jwk["x"])
-        y_bytes = base64url_decode(holder_jwk["y"])
-
-        device_key_cose = {
-            1: 2,  # kty: EC2
-            3: -7,  # alg: ES256
-            -1: 1,  # crv: P-256
-            -2: x_bytes,
-            -3: y_bytes,
-        }
-
-        device_engagement = {
-            0: "1.0",
-            1: [
-                1,  # CipherSuiteID
-                cbor2.CBORTag(24, cbor2.dumps(device_key_cose)),  # DeviceKeyBytes
-            ],
-        }
-        device_engagement_bytes = cbor2.dumps(device_engagement)
+        # Note: device_key_cose construction is for reference - not used in 2024 OID4VP flow
+        # In the 2024 spec, SessionTranscript uses JWK thumbprint instead of COSE keys
 
         # 3. Construct SessionTranscript using 2024 OID4VP spec format
         # SessionTranscript = [null, null, ["OpenID4VPHandover", sha256(cbor([clientId, nonce, jwkThumbprint, responseUri]))]]

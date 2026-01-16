@@ -182,9 +182,9 @@ class TestOID4VCMdocCompliance:
 
             # The credential should be a CBOR-encoded mso_mdoc
             mdoc_credential = cred_data["credential"]
-            assert isinstance(
-                mdoc_credential, str
-            ), "mso_mdoc should be base64-encoded string"
+            assert isinstance(mdoc_credential, str), (
+                "mso_mdoc should be base64-encoded string"
+            )
 
             test_runner.test_results["mdoc_credential_flow"] = {
                 "status": "PASS",

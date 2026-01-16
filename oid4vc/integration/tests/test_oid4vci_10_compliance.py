@@ -78,9 +78,9 @@ class TestOID4VCI10Compliance:
 
             # OID4VCI 1.0 § 11.2.3: credential_configurations_supported must be object
             configs = metadata["credential_configurations_supported"]
-            assert isinstance(
-                configs, dict
-            ), "credential_configurations_supported must be object in OID4VCI 1.0"
+            assert isinstance(configs, dict), (
+                "credential_configurations_supported must be object in OID4VCI 1.0"
+            )
 
             test_runner.test_results["metadata_compliance"] = {
                 "status": "PASS",

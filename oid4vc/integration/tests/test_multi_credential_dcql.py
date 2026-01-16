@@ -442,10 +442,9 @@ class TestMultiCredentialCredentialSets:
             },
         }
 
-        passport_response = await acapy_issuer_admin.post(
+        await acapy_issuer_admin.post(
             "/oid4vci/credential-supported/create", json=passport_config
         )
-        passport_config_id = passport_response["supported_cred_id"]
 
         # Create Driver's License credential config
         license_config = {

@@ -226,9 +226,9 @@ class TestOID4VCIRevocation:
             ba_initial = bitarray()
             ba_initial.frombytes(bit_bytes_initial)
 
-            assert (
-                ba_initial[status_list_index] == 0
-            ), "Credential should not be revoked initially"
+            assert ba_initial[status_list_index] == 0, (
+                "Credential should not be revoked initially"
+            )
             LOGGER.info("Credential initially valid (bit set to 0)")
 
             # Test revocation (update status)

@@ -33,9 +33,9 @@ async def test_dual_oid4vci_endpoints():
             f"{acapy_oid4vci_base}/.well-known/openid-credential-issuer"
         )
 
-        assert (
-            standard_response.status_code == 200
-        ), f"Standard endpoint failed: {standard_response.status_code}"
+        assert standard_response.status_code == 200, (
+            f"Standard endpoint failed: {standard_response.status_code}"
+        )
         standard_data = standard_response.json()
 
         print(f"✅ Standard endpoint returned: {json.dumps(standard_data, indent=2)}")
@@ -46,9 +46,9 @@ async def test_dual_oid4vci_endpoints():
             f"{acapy_oid4vci_base}/.well-known/openid_credential_issuer"
         )
 
-        assert (
-            deprecated_response.status_code == 200
-        ), f"Deprecated endpoint failed: {deprecated_response.status_code}"
+        assert deprecated_response.status_code == 200, (
+            f"Deprecated endpoint failed: {deprecated_response.status_code}"
+        )
         deprecated_data = deprecated_response.json()
 
         print(
@@ -56,32 +56,32 @@ async def test_dual_oid4vci_endpoints():
         )
 
         # Verify both endpoints return identical data
-        assert (
-            standard_data == deprecated_data
-        ), "Endpoints should return identical JSON data"
+        assert standard_data == deprecated_data, (
+            "Endpoints should return identical JSON data"
+        )
         print("✅ Both endpoints return identical data")
 
         # Verify required fields are present
         assert "credential_issuer" in standard_data, "credential_issuer field missing"
-        assert (
-            "credential_endpoint" in standard_data
-        ), "credential_endpoint field missing"
-        assert (
-            "credential_configurations_supported" in standard_data
-        ), "credential_configurations_supported field missing"
+        assert "credential_endpoint" in standard_data, (
+            "credential_endpoint field missing"
+        )
+        assert "credential_configurations_supported" in standard_data, (
+            "credential_configurations_supported field missing"
+        )
 
         print("✅ All required OID4VCI metadata fields present")
 
         # Verify deprecated endpoint has proper deprecation headers
-        assert (
-            deprecated_response.headers.get("Deprecation") == "true"
-        ), "Deprecated endpoint missing Deprecation header"
-        assert (
-            "deprecated" in deprecated_response.headers.get("Warning", "").lower()
-        ), "Deprecated endpoint missing Warning header"
-        assert (
-            "Sunset" in deprecated_response.headers
-        ), "Deprecated endpoint missing Sunset header"
+        assert deprecated_response.headers.get("Deprecation") == "true", (
+            "Deprecated endpoint missing Deprecation header"
+        )
+        assert "deprecated" in deprecated_response.headers.get("Warning", "").lower(), (
+            "Deprecated endpoint missing Warning header"
+        )
+        assert "Sunset" in deprecated_response.headers, (
+            "Deprecated endpoint missing Sunset header"
+        )
 
         print("✅ Deprecated endpoint has proper deprecation headers")
         print(f"   Deprecation: {deprecated_response.headers.get('Deprecation')}")
@@ -104,9 +104,9 @@ async def test_credo_can_reach_underscore_endpoint():
             f"{acapy_oid4vci_base}/.well-known/openid_credential_issuer"
         )
 
-        assert (
-            response.status_code == 200
-        ), f"Credo-style endpoint discovery failed: {response.status_code}"
+        assert response.status_code == 200, (
+            f"Credo-style endpoint discovery failed: {response.status_code}"
+        )
 
         metadata = response.json()
 
@@ -115,15 +115,15 @@ async def test_credo_can_reach_underscore_endpoint():
         expected_issuer = acapy_oid4vci_base.replace(
             "acapy-issuer", "acapy-issuer.local"
         )
-        assert (
-            metadata.get("credential_issuer") == expected_issuer
-        ), "credential_issuer mismatch"
-        assert (
-            metadata.get("credential_endpoint") == f"{expected_issuer}/credential"
-        ), "credential_endpoint mismatch"
-        assert (
-            "credential_configurations_supported" in metadata
-        ), "Missing credential_configurations_supported"
+        assert metadata.get("credential_issuer") == expected_issuer, (
+            "credential_issuer mismatch"
+        )
+        assert metadata.get("credential_endpoint") == f"{expected_issuer}/credential", (
+            "credential_endpoint mismatch"
+        )
+        assert "credential_configurations_supported" in metadata, (
+            "Missing credential_configurations_supported"
+        )
 
         print(
             "✅ Credo can successfully discover issuer metadata via underscore endpoint"
@@ -206,9 +206,9 @@ async def test_openid_configuration_endpoint():
             f"{acapy_oid4vci_base}/.well-known/openid-configuration"
         )
 
-        assert (
-            response.status_code == 200
-        ), f"openid-configuration endpoint failed: {response.status_code}"
+        assert response.status_code == 200, (
+            f"openid-configuration endpoint failed: {response.status_code}"
+        )
 
         config = response.json()
         print(f"✅ openid-configuration returned: {json.dumps(config, indent=2)}")
@@ -216,16 +216,16 @@ async def test_openid_configuration_endpoint():
         # Verify required OIDC Discovery fields
         assert "issuer" in config, "Missing required 'issuer' field"
         assert "token_endpoint" in config, "Missing required 'token_endpoint' field"
-        assert (
-            "response_types_supported" in config
-        ), "Missing required 'response_types_supported' field"
+        assert "response_types_supported" in config, (
+            "Missing required 'response_types_supported' field"
+        )
 
         print("✅ Required OIDC Discovery fields present")
 
         # Verify OAuth 2.0 AS Metadata fields
-        assert (
-            "grant_types_supported" in config
-        ), "Missing 'grant_types_supported' field"
+        assert "grant_types_supported" in config, (
+            "Missing 'grant_types_supported' field"
+        )
         assert (
             "urn:ietf:params:oauth:grant-type:pre-authorized_code"
             in config["grant_types_supported"]
@@ -236,30 +236,30 @@ async def test_openid_configuration_endpoint():
         # Verify OID4VCI compatibility fields
         assert "credential_issuer" in config, "Missing 'credential_issuer' field"
         assert "credential_endpoint" in config, "Missing 'credential_endpoint' field"
-        assert (
-            "credential_configurations_supported" in config
-        ), "Missing 'credential_configurations_supported' field"
+        assert "credential_configurations_supported" in config, (
+            "Missing 'credential_configurations_supported' field"
+        )
 
         print("✅ OID4VCI compatibility fields present")
 
         # Verify issuer URLs are consistent
-        assert (
-            config["issuer"] == config["credential_issuer"]
-        ), "issuer and credential_issuer should match"
+        assert config["issuer"] == config["credential_issuer"], (
+            "issuer and credential_issuer should match"
+        )
 
         print("✅ Issuer URLs are consistent")
 
         # Verify recommended fields
         if "scopes_supported" in config:
-            assert (
-                "openid" in config["scopes_supported"]
-            ), "'openid' scope should be supported"
+            assert "openid" in config["scopes_supported"], (
+                "'openid' scope should be supported"
+            )
             print("✅ 'openid' scope is supported")
 
         if "code_challenge_methods_supported" in config:
-            assert (
-                "S256" in config["code_challenge_methods_supported"]
-            ), "PKCE S256 should be supported"
+            assert "S256" in config["code_challenge_methods_supported"], (
+                "PKCE S256 should be supported"
+            )
             print("✅ PKCE S256 is supported")
 
         print("✅ OpenID Configuration endpoint is fully compliant")
@@ -299,9 +299,9 @@ async def test_openid_configuration_vs_credential_issuer_consistency():
 
         assert oidc_config.get(
             "credential_configurations_supported"
-        ) == oid4vci_config.get(
-            "credential_configurations_supported"
-        ), "credential_configurations_supported should be consistent"
+        ) == oid4vci_config.get("credential_configurations_supported"), (
+            "credential_configurations_supported should be consistent"
+        )
 
         print("✅ Discovery endpoints return consistent credential metadata")
 

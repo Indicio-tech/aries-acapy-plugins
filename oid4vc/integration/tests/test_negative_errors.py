@@ -536,8 +536,8 @@ async def acapy_issuer():
     """HTTP client for ACA-Py issuer admin API."""
     from os import getenv
 
-    ACAPY_ISSUER_ADMIN_URL = getenv("ACAPY_ISSUER_ADMIN_URL", "http://localhost:8021")
-    async with httpx.AsyncClient(base_url=ACAPY_ISSUER_ADMIN_URL) as client:
+    acapy_issuer_admin_url = getenv("ACAPY_ISSUER_ADMIN_URL", "http://localhost:8021")
+    async with httpx.AsyncClient(base_url=acapy_issuer_admin_url) as client:
         yield client
 
 
@@ -546,8 +546,8 @@ async def acapy_verifier():
     """HTTP client for ACA-Py verifier admin API."""
     from os import getenv
 
-    ACAPY_VERIFIER_ADMIN_URL = getenv(
+    acapy_verifier_admin_url = getenv(
         "ACAPY_VERIFIER_ADMIN_URL", "http://localhost:8031"
     )
-    async with httpx.AsyncClient(base_url=ACAPY_VERIFIER_ADMIN_URL) as client:
+    async with httpx.AsyncClient(base_url=acapy_verifier_admin_url) as client:
         yield client

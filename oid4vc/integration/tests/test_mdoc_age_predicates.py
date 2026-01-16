@@ -109,10 +109,7 @@ class TestMdocAgePredicates:
             "did": issuer_did,
         }
 
-        exchange = await acapy_issuer_admin.post(
-            "/oid4vci/exchange/create", json=exchange_request
-        )
-        exchange_id = exchange["exchange_id"]
+        await acapy_issuer_admin.post("/oid4vci/exchange/create", json=exchange_request)
 
         # Create DCQL query requesting only age_over_18 (not birth_date)
         dcql_query = {
@@ -263,10 +260,9 @@ class TestMdocAgePredicates:
             },
         }
 
-        config_response = await acapy_issuer_admin.post(
+        await acapy_issuer_admin.post(
             "/oid4vci/credential-supported/create", json=mdoc_config
         )
-        config_id = config_response["supported_cred_id"]
 
         # Holder is 25 years old
         birth_date = birth_date_for_age(25)
@@ -288,9 +284,9 @@ class TestMdocAgePredicates:
 
         # Verify credential subject has correct age predicates
         claims = credential_subject["org.iso.18013.5.1"]
-        assert claims["age_over_18"] == True
-        assert claims["age_over_21"] == True
-        assert claims["age_over_65"] == False
+        assert claims["age_over_18"] is True
+        assert claims["age_over_21"] is True
+        assert claims["age_over_65"] is False
 
         LOGGER.info(f"✅ Age predicates correctly set for birth_date={birth_date}")
         LOGGER.info(f"   age_over_18: {claims['age_over_18']}")

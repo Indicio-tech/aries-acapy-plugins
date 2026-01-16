@@ -125,9 +125,9 @@ class TestDCQLSdJwtFlow:
         credential_response = await credo_client.post(
             "/oid4vci/accept-offer", json=accept_offer_request
         )
-        assert (
-            credential_response.status_code == 200
-        ), f"Credential issuance failed: {credential_response.text}"
+        assert credential_response.status_code == 200, (
+            f"Credential issuance failed: {credential_response.text}"
+        )
         credential_result = credential_response.json()
 
         assert "credential" in credential_result
@@ -182,9 +182,9 @@ class TestDCQLSdJwtFlow:
         presentation_response = await credo_client.post(
             "/oid4vp/present", json=present_request
         )
-        assert (
-            presentation_response.status_code == 200
-        ), f"Presentation failed: {presentation_response.text}"
+        assert presentation_response.status_code == 200, (
+            f"Presentation failed: {presentation_response.text}"
+        )
         presentation_result = presentation_response.json()
 
         # Verify Credo reports success
@@ -341,9 +341,7 @@ class TestDCQLSdJwtFlow:
         assert presentation_response.json().get("success") is True
 
         # Verify presentation
-        latest_presentation = await wait_for_presentation_valid(
-            acapy_verifier_admin, presentation_id
-        )
+        await wait_for_presentation_valid(acapy_verifier_admin, presentation_id)
         print("✅ DCQL SD-JWT nested claims flow completed successfully!")
 
 
@@ -437,9 +435,9 @@ class TestDCQLMdocFlow:
                 "holder_did_method": "key",
             },
         )
-        assert (
-            credential_response.status_code == 200
-        ), f"mDOC issuance failed: {credential_response.text}"
+        assert credential_response.status_code == 200, (
+            f"mDOC issuance failed: {credential_response.text}"
+        )
         credential_result = credential_response.json()
         assert credential_result["format"] == "mso_mdoc"
         received_credential = credential_result["credential"]
@@ -494,9 +492,9 @@ class TestDCQLMdocFlow:
             "/oid4vp/present",
             json={"request_uri": request_uri, "credentials": [received_credential]},
         )
-        assert (
-            presentation_response.status_code == 200
-        ), f"Presentation failed: {presentation_response.text}"
+        assert presentation_response.status_code == 200, (
+            f"Presentation failed: {presentation_response.text}"
+        )
         assert presentation_response.json().get("success") is True
 
         # Step 7: Verify presentation

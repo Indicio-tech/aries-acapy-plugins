@@ -6,6 +6,19 @@ import time
 from typing import Any
 
 import httpx
+from acapy_agent.did.did_key import DIDKey
+from acapy_agent.wallet.key_type import P256
+from aries_askar import Key
+
+from .test_config import (
+    CREDENTIAL_SUBJECT_DATA,
+    MDOC_AVAILABLE,
+    MSO_MDOC_CREDENTIAL_CONFIG,
+    TEST_CONFIG,
+    mdl,
+)
+
+LOGGER = logging.getLogger(__name__)
 
 
 def assert_claims_present(
@@ -134,21 +147,6 @@ def assert_selective_disclosure(
         assert_claims_absent(
             matched_credentials, query_id, must_not_have, check_nested=check_nested
         )
-
-
-from acapy_agent.did.did_key import DIDKey
-from acapy_agent.wallet.key_type import P256
-from aries_askar import Key
-
-from .test_config import (
-    CREDENTIAL_SUBJECT_DATA,
-    MDOC_AVAILABLE,
-    MSO_MDOC_CREDENTIAL_CONFIG,
-    TEST_CONFIG,
-    mdl,
-)
-
-LOGGER = logging.getLogger(__name__)
 
 
 class OID4VCTestHelper:

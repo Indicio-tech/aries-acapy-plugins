@@ -6,10 +6,8 @@ These tests focus on mDOC format interoperability between Credo and Sphereon:
 """
 
 import pytest
-
 from conftest import safely_get_first_credential, wait_for_presentation_valid
 from test_config import MDOC_AVAILABLE  # noqa: F401
-
 
 # =============================================================================
 # mDOC Cross-Wallet Tests
@@ -138,12 +136,12 @@ async def test_mdoc_issue_to_credo_verify_with_sphereon_patterns(
             "credentials": [mdoc_credential],
         },
     )
-    assert (
-        present_response.status_code == 200
-    ), f"Credo mDOC present failed: {present_response.text}"
+    assert present_response.status_code == 200, (
+        f"Credo mDOC present failed: {present_response.text}"
+    )
 
     # Verify on ACA-Py
-    record = await wait_for_presentation_valid(acapy_verifier_admin, presentation_id)
+    await wait_for_presentation_valid(acapy_verifier_admin, presentation_id)
     print("mDOC cross-wallet test passed!")
 
 
@@ -255,9 +253,9 @@ async def test_mdoc_issue_to_sphereon_verify_with_credo_patterns(
             "verifiable_credentials": [mdoc_credential],
         },
     )
-    assert (
-        present_response.status_code == 200
-    ), f"Sphereon mDOC present failed: {present_response.text}"
+    assert present_response.status_code == 200, (
+        f"Sphereon mDOC present failed: {present_response.text}"
+    )
 
     # Verify
-    record = await wait_for_presentation_valid(acapy_verifier_admin, presentation_id)
+    await wait_for_presentation_valid(acapy_verifier_admin, presentation_id)

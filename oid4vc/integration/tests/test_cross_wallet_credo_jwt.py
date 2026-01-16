@@ -7,10 +7,9 @@ These tests focus on Credo wallet behavior with JWT VC credentials:
 """
 
 import asyncio
+
 import pytest
-
 from conftest import safely_get_first_credential, wait_for_presentation_valid
-
 
 # =============================================================================
 # Cross-Wallet Issuance and Verification Tests - Credo Focus
@@ -122,9 +121,9 @@ async def test_issue_to_credo_verify_with_sphereon_jwt_vc(
         "/oid4vp/present", json=present_request
     )
 
-    assert (
-        presentation_response.status_code == 200
-    ), f"Presentation failed: {presentation_response.text}"
+    assert presentation_response.status_code == 200, (
+        f"Presentation failed: {presentation_response.text}"
+    )
     presentation_result = presentation_response.json()
     assert presentation_result.get("success") is True
 
@@ -369,9 +368,9 @@ async def test_selective_disclosure_credo_vs_sphereon_parity(
         "/oid4vp/present",
         json={"request_uri": request_uri, "credentials": [sd_jwt_credential]},
     )
-    assert (
-        present_response.status_code == 200
-    ), f"Present failed: {present_response.text}"
+    assert present_response.status_code == 200, (
+        f"Present failed: {present_response.text}"
+    )
 
     # Verify presentation and check disclosed claims
     record = await wait_for_presentation_valid(acapy_verifier_admin, presentation_id)

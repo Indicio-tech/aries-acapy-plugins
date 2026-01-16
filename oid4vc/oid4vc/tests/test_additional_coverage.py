@@ -149,8 +149,7 @@ class TestOID4VCIExchangeRecord:
         deserialized_record = OID4VCIExchangeRecord.deserialize(serialized)
         assert original_record.state == deserialized_record.state
         assert (
-            original_record.verification_method
-            == deserialized_record.verification_method
+            original_record.verification_method == deserialized_record.verification_method
         )
         assert (
             original_record.credential_subject == deserialized_record.credential_subject
@@ -197,12 +196,8 @@ class TestOID4VCIExchangeRecord:
             assert retrieved_record.state == record.state
             assert retrieved_record.verification_method == record.verification_method
             assert retrieved_record.issuer_id == record.issuer_id
-            assert (
-                retrieved_record.credential_subject["license_number"] == "DL123456789"
-            )
-            assert (
-                retrieved_record.credential_subject["address"]["city"] == "Springfield"
-            )
+            assert retrieved_record.credential_subject["license_number"] == "DL123456789"
+            assert retrieved_record.credential_subject["address"]["city"] == "Springfield"
 
 
 class TestPresentationExchange:
@@ -1301,8 +1296,7 @@ class TestAuthorizationRequestFunctionality:
         assert "ldp_vp" in auth_request.vp_formats
         # Note: request_id is None initially until record is saved
         assert (
-            auth_request.pres_def_id is not None
-            or auth_request.dcql_query_id is not None
+            auth_request.pres_def_id is not None or auth_request.dcql_query_id is not None
         )
 
     def test_oid4vp_request_with_dcql_query(self):
@@ -1948,9 +1942,9 @@ class TestPublicRouteFunctionality:
         bank_constraints = complex_presentation_definition["input_descriptors"][0][
             "constraints"
         ]["fields"]
-        employment_constraints = complex_presentation_definition["input_descriptors"][
-            1
-        ]["constraints"]["fields"]
+        employment_constraints = complex_presentation_definition["input_descriptors"][1][
+            "constraints"
+        ]["fields"]
 
         assert len(bank_constraints) == 2
         assert len(employment_constraints) == 2
@@ -2444,9 +2438,7 @@ class TestOID4VCIntegrationFlows:
         assert len(
             presentation_response["presentation_submission"]["descriptor_map"]
         ) == len(presentation_request["presentation_definition"]["input_descriptors"])
-        assert (
-            len(presentation_response["vp_token"]) > 100
-        )  # Meaningful VP token length
+        assert len(presentation_response["vp_token"]) > 100  # Meaningful VP token length
 
     def test_dcql_query_evaluation_flow(self):
         """Test DCQL query evaluation with realistic credential matching."""
@@ -2510,9 +2502,7 @@ class TestOID4VCIntegrationFlows:
 
         # Validate query evaluation
         assert matching_birth_year < threshold_year  # 1995 < 2005, should match
-        assert (
-            non_matching_birth_year >= threshold_year
-        )  # 2010 >= 2005, should not match
+        assert non_matching_birth_year >= threshold_year  # 2010 >= 2005, should not match
 
     def test_error_handling_patterns(self):
         """Test error handling patterns across OID4VC flows."""

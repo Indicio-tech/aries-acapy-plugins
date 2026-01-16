@@ -416,7 +416,7 @@ class TestCredoRevocationFlow:
         LOGGER.info("Credential revoked before presentation")
 
         # Present the (now revoked) credential
-        pres_response = await credo_client.post(
+        await credo_client.post(
             "/oid4vp/present",
             json={
                 "request_uri": request_uri,
@@ -679,24 +679,22 @@ class TestRevocationEdgeCases:
                 "holder_did_method": "key",
             },
         )
-        assert (
-            cred_response.status_code == 200
-        ), f"Credo failed to accept credential: {cred_response.status_code} - {cred_response.text}"
+        assert cred_response.status_code == 200, (
+            f"Credo failed to accept credential: {cred_response.status_code} - {cred_response.text}"
+        )
 
         # Revoke
-        revoke_response = await acapy_issuer_admin.patch(
+        await acapy_issuer_admin.patch(
             f"/status-list/defs/{definition_id}/creds/{exchange_id}",
             json={"status": "1"},
         )
-        publish_response = await acapy_issuer_admin.put(
-            f"/status-list/defs/{definition_id}/publish"
-        )
+        await acapy_issuer_admin.put(f"/status-list/defs/{definition_id}/publish")
         LOGGER.info("Credential revoked")
 
         # Unrevoke (set status back to 0)
         # Note: Unrevocation may not be supported by all implementations
         try:
-            unrevoke_response = await acapy_issuer_admin.patch(
+            await acapy_issuer_admin.patch(
                 f"/status-list/defs/{definition_id}/creds/{exchange_id}",
                 json={"status": "0"},  # 0 = active/unrevoked
             )
