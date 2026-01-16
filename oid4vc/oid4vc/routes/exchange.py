@@ -80,9 +80,7 @@ async def list_exchange_records(request: web.BaseRequest):
     try:
         async with context.profile.session() as session:
             if exchange_id := request.query.get("exchange_id"):
-                record = await OID4VCIExchangeRecord.retrieve_by_id(
-                    session, exchange_id
-                )
+                record = await OID4VCIExchangeRecord.retrieve_by_id(session, exchange_id)
                 results = [record.serialize()]
             else:
                 filter_ = {
@@ -272,9 +270,7 @@ async def credential_refresh(request: web.Request):
                         raise web.HTTPBadRequest(reason="Offer exists; cannot refresh.")
                     else:
                         existing.state = OID4VCIExchangeRecord.STATE_SUPERCEDED
-                        await existing.save(
-                            session, reason="Superceded by new request."
-                        )
+                        await existing.save(session, reason="Superceded by new request.")
             except StorageNotFoundError:
                 pass
         record = await create_exchange(request, refresh_id)

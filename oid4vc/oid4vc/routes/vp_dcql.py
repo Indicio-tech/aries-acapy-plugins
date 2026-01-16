@@ -70,9 +70,7 @@ async def create_dcql_query(request: web.Request):
         for cred in credentials:
             cred_queries.append(CredentialQuery.deserialize(cred))
 
-        dcql_query = DCQLQuery(
-            credentials=cred_queries, credential_sets=credential_sets
-        )
+        dcql_query = DCQLQuery(credentials=cred_queries, credential_sets=credential_sets)
         await dcql_query.save(session=session)
 
     return web.json_response(

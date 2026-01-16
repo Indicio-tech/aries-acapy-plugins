@@ -81,9 +81,7 @@ async def create_did_jwk(request: web.Request):
         jwk = json.loads(key.get_jwk_public())
         jwk["use"] = "sig"
 
-        did = "did:jwk:" + bytes_to_b64(
-            json.dumps(jwk).encode(), urlsafe=True, pad=False
-        )
+        did = "did:jwk:" + bytes_to_b64(json.dumps(jwk).encode(), urlsafe=True, pad=False)
 
         did_info = DIDInfo(
             did=did,

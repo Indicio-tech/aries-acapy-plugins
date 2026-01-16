@@ -119,9 +119,7 @@ class SupportedCredCreateRequestSchema(OpenAPISchema):
     )
     proof_types_supported = fields.Dict(
         required=False,
-        metadata={
-            "example": {"jwt": {"proof_signing_alg_values_supported": ["ES256"]}}
-        },
+        metadata={"example": {"jwt": {"proof_signing_alg_values_supported": ["ES256"]}}},
     )
     display = fields.List(
         fields.Dict(),
@@ -210,9 +208,7 @@ async def supported_credential_create(request: web.Request):
     _ensure_jwt_vc_additional_data(body)
 
     # Filter to only allowed fields
-    filtered_body = {
-        k: v for k, v in body.items() if k in _ALLOWED_SUPPORTED_CRED_FIELDS
-    }
+    filtered_body = {k: v for k, v in body.items() if k in _ALLOWED_SUPPORTED_CRED_FIELDS}
 
     record = SupportedCredential(**filtered_body)
 
@@ -250,9 +246,7 @@ class JwtSupportedCredCreateRequestSchema(OpenAPISchema):
     )
     proof_types_supported = fields.Dict(
         required=False,
-        metadata={
-            "example": {"jwt": {"proof_signing_alg_values_supported": ["ES256"]}}
-        },
+        metadata={"example": {"jwt": {"proof_signing_alg_values_supported": ["ES256"]}}},
     )
     display = fields.List(
         fields.Dict(),
@@ -467,9 +461,7 @@ async def get_supported_credential_by_id(request: web.Request):
 
     try:
         async with context.session() as session:
-            record = await SupportedCredential.retrieve_by_id(
-                session, supported_cred_id
-            )
+            record = await SupportedCredential.retrieve_by_id(session, supported_cred_id)
     except StorageNotFoundError as err:
         raise web.HTTPNotFound(reason=err.roll_up) from err
     except StorageError as err:
@@ -551,9 +543,7 @@ async def update_supported_credential_jwt_vc(request: web.Request):
     LOGGER.info(f"body: {body}")
     try:
         async with context.session() as session:
-            record = await SupportedCredential.retrieve_by_id(
-                session, supported_cred_id
-            )
+            record = await SupportedCredential.retrieve_by_id(session, supported_cred_id)
 
             assert isinstance(session, AskarProfileSession)
             record = await jwt_supported_cred_update_helper(record, body, session)
@@ -596,9 +586,7 @@ async def supported_credential_remove(request: web.Request):
 
     try:
         async with context.session() as session:
-            record = await SupportedCredential.retrieve_by_id(
-                session, supported_cred_id
-            )
+            record = await SupportedCredential.retrieve_by_id(session, supported_cred_id)
             await record.delete_record(session)
     except StorageNotFoundError as err:
         raise web.HTTPNotFound(reason=err.roll_up) from err

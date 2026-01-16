@@ -40,9 +40,7 @@ async def test_dcql_query_saving(profile: Profile):
     async with profile.session() as session:
         await des_query.save(session=session)
 
-        retrieved_query = await DCQLQuery.retrieve_by_id(
-            session, des_query.dcql_query_id
-        )
+        retrieved_query = await DCQLQuery.retrieve_by_id(session, des_query.dcql_query_id)
 
     assert len(retrieved_query.credentials) == 1
     assert isinstance(retrieved_query.credentials[0], CredentialQuery)

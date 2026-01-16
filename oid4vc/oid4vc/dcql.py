@@ -113,9 +113,9 @@ class DCQLVerifyResult:
     verified: bool = False
     cred_query_id_to_claims: Dict[str, dict] = field(default_factory=dict)
     details: Optional[str] = None
-    satisfied_credential_sets: Optional[
-        List[int]
-    ] = None  # Indices of satisfied credential sets
+    satisfied_credential_sets: Optional[List[int]] = (
+        None  # Indices of satisfied credential sets
+    )
 
 
 class DCQLQueryEvaluator:
@@ -303,7 +303,10 @@ class DCQLQueryEvaluator:
                     if not any(v in claim.values for v in values):
                         return (
                             False,
-                            "Credential presented did not match the values required by the query",
+                            (
+                                "Credential presented did not match the values "
+                                "required by the query"
+                            ),
                         )
             except ValueError:
                 return (False, f"Path {claim.path} does not exist")
@@ -319,7 +322,10 @@ class DCQLQueryEvaluator:
             if claim.claim_name not in namespace_data:
                 return (
                     False,
-                    f"Claim {claim.claim_name} does not exist in namespace {claim.namespace}",
+                    (
+                        f"Claim {claim.claim_name} does not exist in "
+                        f"namespace {claim.namespace}"
+                    ),
                 )
             value = namespace_data[claim.claim_name]
             if claim.values and value not in claim.values:
@@ -381,8 +387,10 @@ class DCQLQueryEvaluator:
         """Verify a submission against the query.
 
         This method now supports:
-        - CredentialSets: Allows specifying alternative combinations of credentials
-        - ClaimSets: Allows specifying alternative combinations of claims within a credential
+        - CredentialSets: Allows specifying alternative combinations of
+          credentials
+        - ClaimSets: Allows specifying alternative combinations of claims
+          within a credential
 
         The verification process:
         1. Verify each credential in the vp_token against the query

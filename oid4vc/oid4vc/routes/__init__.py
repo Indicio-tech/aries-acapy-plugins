@@ -16,7 +16,6 @@ organized into logical submodules:
 from aiohttp import web
 
 from .constants import VCI_SPEC_URI, VP_SPEC_URI
-from ..utils import supported_cred_is_unique
 
 # Import all handlers for route registration
 from .credential_offer import (
@@ -137,9 +136,7 @@ async def register(app: web.Application):
                 allow_head=False,
             ),
             web.delete("/oid4vci/exchange/records/{exchange_id}", exchange_delete),
-            web.post(
-                "/oid4vci/credential-supported/create", supported_credential_create
-            ),
+            web.post("/oid4vci/credential-supported/create", supported_credential_create),
             web.post(
                 "/oid4vci/credential-supported/create/jwt",
                 supported_credential_create_jwt,

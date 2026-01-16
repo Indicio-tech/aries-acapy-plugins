@@ -59,9 +59,7 @@ async def list_oid4vp_presentations(request: web.Request):
     try:
         async with context.profile.session() as session:
             if presentation_id := request.query.get("presentation_id"):
-                record = await OID4VPPresentation.retrieve_by_id(
-                    session, presentation_id
-                )
+                record = await OID4VPPresentation.retrieve_by_id(session, presentation_id)
                 results = [record.serialize()]
             else:
                 filter_ = {
