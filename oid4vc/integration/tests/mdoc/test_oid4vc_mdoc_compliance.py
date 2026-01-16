@@ -10,7 +10,7 @@ import httpx
 import pytest
 from cbor2 import CBORTag
 
-from ..helpers import MDOC_AVAILABLE, TEST_CONFIG, mdl
+from tests.helpers import MDOC_AVAILABLE, TEST_CONFIG, mdl
 
 # OID4VCTestHelper was legacy - tests should use inline logic or base classes
 

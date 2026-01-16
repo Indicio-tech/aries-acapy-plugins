@@ -14,8 +14,8 @@ import uuid
 
 import pytest
 
-from ..base import BaseMdocTest
-from ..helpers import Doctype, wait_for_presentation_state
+from tests.base import BaseMdocTest
+from tests.helpers import Doctype, wait_for_presentation_state
 
 pytestmark = [pytest.mark.mdoc, pytest.mark.interop]
 

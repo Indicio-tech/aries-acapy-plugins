@@ -10,7 +10,7 @@ import asyncio
 
 import pytest
 
-from ..conftest import safely_get_first_credential, wait_for_presentation_valid
+from tests.conftest import safely_get_first_credential, wait_for_presentation_valid
 
 # =============================================================================
 # Cross-Wallet Issuance and Verification Tests - Credo Focus

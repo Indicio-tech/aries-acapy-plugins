@@ -9,7 +9,7 @@ import httpx
 import pytest
 from aries_askar import Key, KeyAlg
 
-from ..helpers import TEST_CONFIG
+from tests.helpers import TEST_CONFIG
 
 # OID4VCTestHelper was legacy - tests should use inline logic or base classes
 

@@ -8,8 +8,8 @@ import jwt
 import pytest
 from bitarray import bitarray
 
-from ..conftest import wait_for_presentation_valid
-from ..helpers import MDOC_AVAILABLE
+from tests.conftest import wait_for_presentation_valid
+from tests.helpers import MDOC_AVAILABLE
 
 LOGGER = logging.getLogger(__name__)
 

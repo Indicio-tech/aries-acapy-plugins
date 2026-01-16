@@ -7,8 +7,8 @@ These tests focus on mDOC format interoperability between Credo and Sphereon:
 
 import pytest
 
-from ..conftest import safely_get_first_credential, wait_for_presentation_valid
-from ..helpers import MDOC_AVAILABLE  # noqa: F401
+from tests.conftest import safely_get_first_credential, wait_for_presentation_valid
+from tests.helpers import MDOC_AVAILABLE  # noqa: F401
 
 # =============================================================================
 # mDOC Cross-Wallet Tests

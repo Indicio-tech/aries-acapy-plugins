@@ -10,7 +10,7 @@ import asyncio
 
 import pytest
 
-from ..conftest import safely_get_first_credential
+from tests.conftest import safely_get_first_credential
 
 # =============================================================================
 # Cross-Wallet Issuance and Verification Tests - Sphereon Focus

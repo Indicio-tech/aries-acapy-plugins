@@ -136,7 +136,7 @@ services:
         ACAPY_VERSION: 1.4.0
     working_dir: /usr/src/app
     environment:
-      - REQUIRE_MDOC=true
+      - REQUIRE_MDOC=false
       - CREDO_AGENT_URL=http://credo-agent:3020
       - SPHEREON_WRAPPER_URL=http://sphereon-wrapper:3010
       - ACAPY_ISSUER_ADMIN_URL=http://acapy-issuer:8021

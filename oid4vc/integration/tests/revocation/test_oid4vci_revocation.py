@@ -14,7 +14,7 @@ from bitarray import bitarray
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from ..helpers import TEST_CONFIG
+from tests.helpers import TEST_CONFIG
 
 # OID4VCTestHelper was legacy - tests should use inline logic or base classes
 

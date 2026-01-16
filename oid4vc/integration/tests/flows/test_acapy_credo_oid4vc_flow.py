@@ -12,7 +12,7 @@ import uuid
 
 import pytest
 
-from ..conftest import wait_for_presentation_valid
+from tests.conftest import wait_for_presentation_valid
 
 
 @pytest.mark.asyncio

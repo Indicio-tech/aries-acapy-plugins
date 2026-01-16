@@ -18,7 +18,6 @@ from .assertions import (
 )
 from .constants import (
     ALGORITHMS,
-    CLAIM_PATHS,
     MDOC_AVAILABLE,
     TEST_CONFIG,
     VCT,
@@ -39,7 +38,6 @@ __all__ = [
     "Doctype",
     "VCT",
     "ALGORITHMS",
-    "CLAIM_PATHS",
     "MDOC_AVAILABLE",
     "TEST_CONFIG",
     "mdl",
