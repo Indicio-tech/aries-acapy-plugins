@@ -16,6 +16,7 @@ organized into logical submodules:
 from aiohttp import web
 
 from .constants import VCI_SPEC_URI, VP_SPEC_URI
+from ..utils import supported_cred_is_unique
 
 # Import all handlers for route registration
 from .credential_offer import (

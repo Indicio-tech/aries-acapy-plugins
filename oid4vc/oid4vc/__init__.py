@@ -2,6 +2,7 @@
 
 import logging
 
+from acapy_agent.admin.base_server import BaseAdminServer
 from acapy_agent.config.injection_context import InjectionContext
 from acapy_agent.core.event_bus import Event, EventBus
 from acapy_agent.core.profile import Profile
@@ -12,6 +13,7 @@ from acapy_agent.wallet.did_method import DIDMethods
 from jwt_vc_json.cred_processor import JwtVcJsonCredProcessor
 from oid4vc.cred_processor import CredProcessors
 
+from . import routes
 from .app_resources import AppResources
 from .config import Config
 from .jwk import DID_JWK
@@ -48,6 +50,11 @@ async def setup(context: InjectionContext):
 
     status_handler = StatusHandler(context)
     context.injector.bind_instance(StatusHandler, status_handler)
+
+    # Register admin routes
+    admin_server = context.inject_or(BaseAdminServer)
+    if admin_server:
+        await routes.register(admin_server.app)
 
 
 async def startup(profile: Profile, event: Event):

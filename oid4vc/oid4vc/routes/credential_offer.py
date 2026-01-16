@@ -14,7 +14,7 @@ from aiohttp_apispec import (
 )
 from marshmallow import fields
 
-from ..utils import _parse_cred_offer
+from .helpers import _parse_cred_offer
 
 
 class CredOfferQuerySchema(OpenAPISchema):
