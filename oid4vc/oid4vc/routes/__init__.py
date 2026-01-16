@@ -34,10 +34,6 @@ from .exchange import (
     get_exchange_by_id,
     list_exchange_records,
 )
-from .helpers import (
-    _create_pre_auth_code,
-    _parse_cred_offer,
-)
 from .supported_credential import (
     get_supported_credential_by_id,
     supported_credential_create,
@@ -85,9 +81,6 @@ __all__ = [
     "credential_refresh",
     "get_exchange_by_id",
     "exchange_delete",
-    # Helper functions
-    "_create_pre_auth_code",
-    "_parse_cred_offer",
     # Supported credential
     "supported_credential_create",
     "supported_credential_create_jwt",
