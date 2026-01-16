@@ -7,10 +7,10 @@ import time
 
 import httpx
 import pytest
-import pytest_asyncio
 from aries_askar import Key, KeyAlg
 
 from ..helpers import TEST_CONFIG
+
 # OID4VCTestHelper was legacy - tests should use inline logic or base classes
 
 LOGGER = logging.getLogger(__name__)
@@ -76,11 +76,7 @@ class TestOID4VCI10Compliance:
                 "credential_configurations_supported must be object in OID4VCI 1.0"
             )
 
-            test_runner.test_results["metadata_compliance"] = {
-                "status": "PASS",
-                "metadata": metadata,
-                "validation": "OID4VCI 1.0 § 11.2 compliant",
-            }
+            # Metadata validated successfully; results consumed by assertions above
 
     @pytest.mark.asyncio
     async def test_oid4vci_10_credential_request_with_identifier(self, test_runner):

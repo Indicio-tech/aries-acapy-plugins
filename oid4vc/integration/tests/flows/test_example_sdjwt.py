@@ -8,7 +8,6 @@ import pytest
 
 from tests.base import BaseSdJwtTest
 from tests.helpers import (
-    ALGORITHMS,
     VCT,
     assert_disclosed_claims,
     assert_hidden_claims,
@@ -24,7 +23,7 @@ class TestSDJWTFlow(BaseSdJwtTest):
         self, credential_flow, presentation_flow, issuer_did
     ):
         """Test issuing and verifying an SD-JWT identity credential.
-        
+
         This test demonstrates:
         1. Using credential_flow helper to issue SD-JWT
         2. Using presentation_flow helper to verify

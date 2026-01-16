@@ -19,11 +19,11 @@ from .assertions import (
 from .constants import (
     ALGORITHMS,
     CLAIM_PATHS,
-    CredentialFormat,
-    Doctype,
     MDOC_AVAILABLE,
     TEST_CONFIG,
     VCT,
+    CredentialFormat,
+    Doctype,
     mdl,
 )
 from .flow_helpers import CredentialFlowHelper, PresentationFlowHelper

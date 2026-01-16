@@ -13,11 +13,9 @@ Refactored: ~200 lines (71% reduction)
 import uuid
 
 import pytest
-import pytest_asyncio
 
-from ..helpers import Doctype, wait_for_presentation_state
 from ..base import BaseMdocTest
-from credo_wrapper import CredoWrapper
+from ..helpers import Doctype, wait_for_presentation_state
 
 pytestmark = [pytest.mark.mdoc, pytest.mark.interop]
 

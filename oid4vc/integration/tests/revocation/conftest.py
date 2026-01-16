@@ -5,7 +5,6 @@ function-scoped isolation to prevent state pollution between tests.
 """
 
 import pytest
-import pytest_asyncio
 
 
 # Revocation tests should use function-scoped credential configurations

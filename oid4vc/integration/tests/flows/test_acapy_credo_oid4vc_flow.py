@@ -11,6 +11,7 @@ This test covers the complete OID4VC flow:
 import uuid
 
 import pytest
+
 from ..conftest import wait_for_presentation_valid
 
 

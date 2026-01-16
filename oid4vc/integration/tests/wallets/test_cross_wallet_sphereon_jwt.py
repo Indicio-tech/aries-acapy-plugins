@@ -9,6 +9,7 @@ These tests focus on Sphereon wallet behavior with JWT VC credentials:
 import asyncio
 
 import pytest
+
 from ..conftest import safely_get_first_credential
 
 # =============================================================================

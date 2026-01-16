@@ -9,13 +9,13 @@ import zlib
 import httpx
 import jwt
 import pytest
-import pytest_asyncio
 from acapy_agent.wallet.util import bytes_to_b64
 from bitarray import bitarray
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
 from ..helpers import TEST_CONFIG
+
 # OID4VCTestHelper was legacy - tests should use inline logic or base classes
 
 LOGGER = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ class TestOID4VCIRevocation:
 
     @pytest.mark.skip(reason="Legacy test needing refactor")
     @pytest.mark.asyncio
-    async def test_revocation_status_in_credential(self):
+    async def test_revocation_status_in_credential(self, test_runner):
         """Test that issued credential contains revocation status."""
         LOGGER.info("Testing revocation status in credential...")
 

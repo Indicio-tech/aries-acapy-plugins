@@ -4,8 +4,6 @@ import base64
 import json
 from typing import Any
 
-from .constants import CredentialFormat
-
 
 def assert_disclosed_claims(
     matched_credentials: dict[str, Any],
@@ -139,29 +137,29 @@ def assert_valid_sd_jwt(credential: str, expected_claims: list[str] | None = Non
     """
     assert credential, "Credential is empty"
     assert isinstance(credential, str), f"Expected string, got {type(credential)}"
-    
+
     # SD-JWT format: <issuer-jwt>~<disclosure>~<disclosure>...~<kb-jwt>
     parts = credential.split("~")
     assert len(parts) >= 2, f"Invalid SD-JWT format: expected at least 2 parts, got {len(parts)}"
-    
+
     # Decode the issuer JWT (first part)
     issuer_jwt = parts[0]
     jwt_parts = issuer_jwt.split(".")
     assert len(jwt_parts) == 3, f"Invalid JWT format: expected 3 parts, got {len(jwt_parts)}"
-    
+
     # Decode payload (add padding if needed)
     payload_b64 = jwt_parts[1]
     padding = 4 - len(payload_b64) % 4
     if padding != 4:
         payload_b64 += "=" * padding
-    
+
     payload_bytes = base64.urlsafe_b64decode(payload_b64)
     payload = json.loads(payload_bytes)
-    
+
     # Basic SD-JWT checks
     assert "iss" in payload, "Missing 'iss' claim in SD-JWT"
     assert "_sd" in payload or "_sd_alg" in payload, "Missing SD-JWT selective disclosure claims"
-    
+
     if expected_claims:
         # Note: With selective disclosure, claims may be in disclosures, not payload
         # This is a basic check - full verification needs disclosure parsing
@@ -170,7 +168,7 @@ def assert_valid_sd_jwt(credential: str, expected_claims: list[str] | None = Non
         # Allow missing if they're selectively disclosed
         if missing and "_sd" not in payload:
             assert False, f"Expected claims not in payload and no selective disclosures: {missing}"
-    
+
     return payload
 
 
@@ -191,13 +189,13 @@ def assert_mdoc_structure(mdoc_data: bytes | dict, doctype: str) -> None:
             mdoc_data = cbor2.loads(mdoc_data)
         except Exception as e:
             assert False, f"Failed to decode mDOC CBOR: {e}"
-    
+
     assert isinstance(mdoc_data, dict), f"Expected dict, got {type(mdoc_data)}"
     assert "docType" in mdoc_data or "doctype" in mdoc_data, "Missing docType in mDOC"
-    
+
     actual_doctype = mdoc_data.get("docType") or mdoc_data.get("doctype")
     assert actual_doctype == doctype, f"Expected doctype {doctype}, got {actual_doctype}"
-    
+
     # Check for namespaced data
     assert "nameSpaces" in mdoc_data or "namespaces" in mdoc_data, "Missing nameSpaces in mDOC"
 
@@ -230,7 +228,7 @@ def assert_credential_revoked(credential_status: dict, exchange_id: str) -> None
     """
     assert credential_status is not None, "Credential status is None"
     assert "status" in credential_status, "Missing 'status' field"
-    
+
     status_value = credential_status["status"]
     # Status "1" typically indicates revoked in status list
     assert status_value in ["1", 1, "revoked"], (

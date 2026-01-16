@@ -7,7 +7,7 @@ Use this as a template when migrating or writing mDOC tests.
 import pytest
 
 from tests.base import BaseMdocTest
-from tests.helpers import Doctype, assert_mdoc_structure, assert_presentation_successful
+from tests.helpers import Doctype, assert_presentation_successful
 
 
 class TestMdocFlow(BaseMdocTest):
@@ -22,7 +22,7 @@ class TestMdocFlow(BaseMdocTest):
         setup_all_trust_anchors,
     ):
         """Test issuing and verifying an mDL (mobile driver's license).
-        
+
         This test demonstrates:
         1. Using BaseMdocTest (automatically uses P-256 issuer_did)
         2. PKI trust anchor setup via fixture

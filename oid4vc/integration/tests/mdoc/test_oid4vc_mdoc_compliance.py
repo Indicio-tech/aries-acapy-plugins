@@ -11,6 +11,7 @@ import pytest
 from cbor2 import CBORTag
 
 from ..helpers import MDOC_AVAILABLE, TEST_CONFIG, mdl
+
 # OID4VCTestHelper was legacy - tests should use inline logic or base classes
 
 LOGGER = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ class TestOID4VCMdocCompliance:
     @pytest.fixture(scope="class")
     def test_runner(self):
         """Setup test runner."""
-        runner = OID4VCTestHelper()
+        runner = {}
         yield runner
 
     @pytest.mark.skipif(not MDOC_AVAILABLE, reason="isomdl_uniffi not available")

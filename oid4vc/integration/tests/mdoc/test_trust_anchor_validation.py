@@ -108,7 +108,7 @@ class TestTrustAnchorManagement:
 
         assert response.status_code == 200
         result = response.json()
-        assert isinstance(result, (list, dict))
+        assert isinstance(result, list | dict)
 
     @pytest.mark.asyncio
     async def test_delete_trust_anchor(self, acapy_verifier: httpx.AsyncClient):

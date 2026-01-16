@@ -4,11 +4,13 @@ This conftest provides the basic fixtures needed for test_credo_mdoc.py.
 Most mDOC-specific fixtures are defined in test_credo_mdoc.py itself.
 """
 
+import uuid
 from os import getenv
 
 import httpx
 import pytest_asyncio
 
+from acapy_controller import Controller
 from credo_wrapper import CredoWrapper
 
 # Service endpoints from docker-compose.yml environment variables
@@ -42,18 +44,14 @@ async def acapy_verifier():
 # Legacy fixtures for backward compatibility with interop tests
 # These are kept here for tests in this directory that may still use them
 
-import uuid
-
-from acapy_controller import Controller
-
 
 @pytest_asyncio.fixture
 async def sphereon():
     """Sphereon wrapper - kept for legacy interop tests."""
     # Import moved here to avoid circular dependencies
     from sphereon_wrapper import SphereaonWrapper
-    SPHEREON_WRAPPER_URL = getenv("SPHEREON_WRAPPER_URL", "http://localhost:3030")
-    wrapper = SphereaonWrapper(SPHEREON_WRAPPER_URL)
+    sphereon_wrapper_url = getenv("SPHEREON_WRAPPER_URL", "http://localhost:3030")
+    wrapper = SphereaonWrapper(sphereon_wrapper_url)
     async with wrapper:
         yield wrapper
 
@@ -62,7 +60,7 @@ async def sphereon():
 async def offer(acapy_issuer, issuer_p256_did):
     """Create a JWT VC credential offer for legacy tests."""
     issuer_admin = Controller(ACAPY_ISSUER_ADMIN_URL)
-    
+
     # Create supported credential
     supported = await issuer_admin.post(
         "/oid4vci/credential-supported/create/jwt",

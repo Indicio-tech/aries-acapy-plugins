@@ -11,8 +11,6 @@ organized and only loaded when needed for mDOC tests.
 # maintain the hierarchical conftest structure.
 
 # Import commonly needed modules for mDOC tests
-import pytest
-import pytest_asyncio
 
 
 # Future mDOC-specific fixtures can be added here

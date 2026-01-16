@@ -12,16 +12,13 @@ Certificate Strategy:
 
 import asyncio
 import os
-import urllib.parse
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
 import pytest_asyncio
-from aiohttp import ClientSession
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -29,7 +26,6 @@ from cryptography.x509.oid import NameOID
 
 from acapy_controller import Controller
 from credo_wrapper import CredoWrapper
-from oid4vci_client.client import OpenID4VCIClient
 from sphereon_wrapper import SphereaonWrapper
 
 # Environment configuration
@@ -238,8 +234,8 @@ def _generate_root_ca(key):
     builder = x509.CertificateBuilder()
     builder = builder.subject_name(name)
     builder = builder.issuer_name(name)
-    builder = builder.not_valid_before(datetime.now(timezone.utc))
-    builder = builder.not_valid_after(datetime.now(timezone.utc) + timedelta(days=365))
+    builder = builder.not_valid_before(datetime.now(UTC))
+    builder = builder.not_valid_after(datetime.now(UTC) + timedelta(days=365))
     builder = builder.serial_number(x509.random_serial_number())
     builder = builder.public_key(key.public_key())
     builder = _add_iaca_extensions(builder, key, key, is_ca=True, is_root=True)
@@ -252,8 +248,8 @@ def _generate_intermediate_ca(key, issuer_key, issuer_name):
     builder = x509.CertificateBuilder()
     builder = builder.subject_name(name)
     builder = builder.issuer_name(issuer_name)
-    builder = builder.not_valid_before(datetime.now(timezone.utc))
-    builder = builder.not_valid_after(datetime.now(timezone.utc) + timedelta(days=365))
+    builder = builder.not_valid_before(datetime.now(UTC))
+    builder = builder.not_valid_after(datetime.now(UTC) + timedelta(days=365))
     builder = builder.serial_number(x509.random_serial_number())
     builder = builder.public_key(key.public_key())
     builder = _add_iaca_extensions(builder, key, issuer_key, is_ca=True, is_root=False)
@@ -266,8 +262,8 @@ def _generate_leaf_ds(key, issuer_key, issuer_name):
     builder = x509.CertificateBuilder()
     builder = builder.subject_name(name)
     builder = builder.issuer_name(issuer_name)
-    builder = builder.not_valid_before(datetime.now(timezone.utc))
-    builder = builder.not_valid_after(datetime.now(timezone.utc) + timedelta(days=365))
+    builder = builder.not_valid_before(datetime.now(UTC))
+    builder = builder.not_valid_after(datetime.now(UTC) + timedelta(days=365))
     builder = builder.serial_number(x509.random_serial_number())
     builder = builder.public_key(key.public_key())
     builder = _add_iaca_extensions(builder, key, issuer_key, is_ca=False)

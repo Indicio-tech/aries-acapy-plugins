@@ -9,6 +9,7 @@ These tests focus on Credo wallet behavior with JWT VC credentials:
 import asyncio
 
 import pytest
+
 from ..conftest import safely_get_first_credential, wait_for_presentation_valid
 
 # =============================================================================
