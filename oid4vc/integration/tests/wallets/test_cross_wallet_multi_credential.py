@@ -9,7 +9,7 @@ These tests verify that wallets can present multiple credentials in a single pre
 import asyncio
 
 import pytest
-from conftest import safely_get_first_credential
+from ..conftest import safely_get_first_credential
 
 # =============================================================================
 # Multi-Credential Presentation Tests

@@ -6,7 +6,7 @@ import uuid
 import cbor2
 import pytest
 
-from .test_config import MDOC_AVAILABLE
+from ..helpers import MDOC_AVAILABLE
 
 # Only run if mdoc is available
 if MDOC_AVAILABLE:

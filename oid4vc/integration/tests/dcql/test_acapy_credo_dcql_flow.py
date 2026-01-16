@@ -19,8 +19,8 @@ import uuid
 
 import pytest
 
-from .conftest import wait_for_presentation_valid
-from .test_utils import assert_selective_disclosure
+from ..conftest import wait_for_presentation_valid
+from ..helpers import assert_selective_disclosure
 
 
 class TestDCQLSdJwtFlow:

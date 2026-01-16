@@ -10,8 +10,8 @@ import pytest
 import pytest_asyncio
 from aries_askar import Key, KeyAlg
 
-from .test_config import TEST_CONFIG
-from .test_utils import OID4VCTestHelper
+from ..helpers import TEST_CONFIG
+# OID4VCTestHelper was legacy - tests should use inline logic or base classes
 
 LOGGER = logging.getLogger(__name__)
 
@@ -19,14 +19,8 @@ LOGGER = logging.getLogger(__name__)
 class TestOID4VCI10Compliance:
     """OID4VCI 1.0 compliance test suite."""
 
-    @pytest_asyncio.fixture
-    async def test_runner(self):
-        """Setup test runner."""
-        runner = OID4VCTestHelper()
-        yield runner
-
     @pytest.mark.asyncio
-    async def test_oid4vci_10_metadata(self, test_runner):
+    async def test_oid4vci_10_metadata(self):
         """Test OID4VCI 1.0 § 11.2: Credential Issuer Metadata."""
         LOGGER.info("Testing OID4VCI 1.0 credential issuer metadata...")
 

@@ -149,6 +149,7 @@ services:
     volumes:
       - ./test-results:/usr/src/app/test-results
       - ./tests:/usr/src/app/tests
+      - ./credo_wrapper:/usr/src/app/credo_wrapper
       - ./pyproject.toml:/usr/src/app/pyproject.toml
       # Static cert mounts removed - certs generated dynamically in tests
     depends_on:

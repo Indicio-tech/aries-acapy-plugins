@@ -14,7 +14,7 @@ import asyncio
 import os
 import urllib.parse
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -47,7 +47,7 @@ ACAPY_VERIFIER_OID4VP_URL = os.getenv(
 )
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="module")
 async def credo_client():
     """HTTP client for Credo agent service."""
     async with httpx.AsyncClient(base_url=CREDO_AGENT_URL, timeout=30.0) as client:
@@ -63,7 +63,7 @@ async def credo_client():
         yield client
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="module")
 async def sphereon_client():
     """HTTP client for Sphereon wrapper service."""
     async with httpx.AsyncClient(base_url=SPHEREON_WRAPPER_URL, timeout=30.0) as client:
@@ -82,7 +82,7 @@ async def sphereon_client():
         yield client
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="module")
 async def acapy_issuer_admin():
     """ACA-Py issuer admin API controller."""
     controller = Controller(ACAPY_ISSUER_ADMIN_URL)
@@ -99,7 +99,7 @@ async def acapy_issuer_admin():
     yield controller
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="module")
 async def acapy_verifier_admin():
     """ACA-Py verifier admin API controller."""
     controller = Controller(ACAPY_VERIFIER_ADMIN_URL)
@@ -238,8 +238,8 @@ def _generate_root_ca(key):
     builder = x509.CertificateBuilder()
     builder = builder.subject_name(name)
     builder = builder.issuer_name(name)
-    builder = builder.not_valid_before(datetime.now(UTC))
-    builder = builder.not_valid_after(datetime.now(UTC) + timedelta(days=365))
+    builder = builder.not_valid_before(datetime.now(timezone.utc))
+    builder = builder.not_valid_after(datetime.now(timezone.utc) + timedelta(days=365))
     builder = builder.serial_number(x509.random_serial_number())
     builder = builder.public_key(key.public_key())
     builder = _add_iaca_extensions(builder, key, key, is_ca=True, is_root=True)
@@ -252,8 +252,8 @@ def _generate_intermediate_ca(key, issuer_key, issuer_name):
     builder = x509.CertificateBuilder()
     builder = builder.subject_name(name)
     builder = builder.issuer_name(issuer_name)
-    builder = builder.not_valid_before(datetime.now(UTC))
-    builder = builder.not_valid_after(datetime.now(UTC) + timedelta(days=365))
+    builder = builder.not_valid_before(datetime.now(timezone.utc))
+    builder = builder.not_valid_after(datetime.now(timezone.utc) + timedelta(days=365))
     builder = builder.serial_number(x509.random_serial_number())
     builder = builder.public_key(key.public_key())
     builder = _add_iaca_extensions(builder, key, issuer_key, is_ca=True, is_root=False)
@@ -266,8 +266,8 @@ def _generate_leaf_ds(key, issuer_key, issuer_name):
     builder = x509.CertificateBuilder()
     builder = builder.subject_name(name)
     builder = builder.issuer_name(issuer_name)
-    builder = builder.not_valid_before(datetime.now(UTC))
-    builder = builder.not_valid_after(datetime.now(UTC) + timedelta(days=365))
+    builder = builder.not_valid_before(datetime.now(timezone.utc))
+    builder = builder.not_valid_after(datetime.now(timezone.utc) + timedelta(days=365))
     builder = builder.serial_number(x509.random_serial_number())
     builder = builder.public_key(key.public_key())
     builder = _add_iaca_extensions(builder, key, issuer_key, is_ca=False)
@@ -846,12 +846,6 @@ def mdoc_credential_config():
 # =============================================================================
 
 
-@pytest.fixture
-def test_client():
-    """OpenID4VCI test client for pre-auth code flow tests."""
-    return OpenID4VCIClient()
-
-
 @pytest_asyncio.fixture
 async def credo(credo_client):
     """Credo wrapper for backward compatibility with old tests."""
@@ -905,276 +899,4 @@ async def offer(acapy_issuer_admin, issuer_p256_did):
     yield offer_response
 
 
-@pytest_asyncio.fixture
-async def offer_by_ref(acapy_issuer_admin, issuer_p256_did):
-    """Create a JWT VC credential offer by reference."""
-    # Create supported credential
-    supported = await acapy_issuer_admin.post(
-        "/oid4vci/credential-supported/create/jwt",
-        json={
-            "cryptographic_binding_methods_supported": ["did"],
-            "cryptographic_suites_supported": ["ES256"],
-            "format": "jwt_vc_json",
-            "id": f"UniversityDegree_{uuid.uuid4().hex[:8]}",
-            "@context": [
-                "https://www.w3.org/2018/credentials/v1",
-                "https://www.w3.org/2018/credentials/examples/v1",
-            ],
-            "type": ["VerifiableCredential", "UniversityDegreeCredential"],
-        },
-    )
-
-    # Create exchange
-    exchange = await acapy_issuer_admin.post(
-        "/oid4vci/exchange/create",
-        json={
-            "supported_cred_id": supported["supported_cred_id"],
-            "credential_subject": {"name": "alice"},
-            "verification_method": issuer_p256_did + "#0",
-        },
-    )
-
-    # Get offer by reference
-    offer_ref_full = await acapy_issuer_admin.get(
-        "/oid4vci/credential-offer-by-ref",
-        params={"exchange_id": exchange["exchange_id"]},
-    )
-
-    credential_offer_uri = offer_ref_full["credential_offer_uri"]
-    # Replace placeholder with actual endpoint (handle URL encoding)
-    for placeholder in (
-        "${OID4VCI_ENDPOINT:-http://localhost:8022}",
-        "${OID4VCI_ENDPOINT}",
-        urllib.parse.quote("${OID4VCI_ENDPOINT:-http://localhost:8022}", safe=""),
-        urllib.parse.quote("${OID4VCI_ENDPOINT}", safe=""),
-    ):
-        if placeholder in credential_offer_uri:
-            credential_offer_uri = credential_offer_uri.replace(
-                placeholder, ACAPY_ISSUER_OID4VCI_URL
-            )
-            break
-
-    # Dereference the offer
-    offer_ref = urlparse(credential_offer_uri)
-    offer_ref_url = parse_qs(offer_ref.query)["credential_offer"][0]
-
-    async with ClientSession() as session:
-        async with session.get(
-            offer_ref_url,
-            params={"exchange_id": exchange["exchange_id"]},
-        ) as response:
-            offer_data = await response.json()
-            yield offer_data
-
-
-@pytest_asyncio.fixture
-async def sdjwt_offer(acapy_issuer_admin, issuer_p256_did):
-    """Create an SD-JWT VC credential offer."""
-    # Create supported credential
-    supported = await acapy_issuer_admin.post(
-        "/oid4vci/credential-supported/create/sd-jwt",
-        json={
-            "format": "vc+sd-jwt",
-            "id": f"IDCard_{uuid.uuid4().hex[:8]}",
-            "cryptographic_binding_methods_supported": ["jwk"],
-            "display": [
-                {
-                    "name": "ID Card",
-                    "locale": "en-US",
-                    "background_color": "#12107c",
-                    "text_color": "#FFFFFF",
-                }
-            ],
-            "vct": "ExampleIDCard",
-            "claims": {
-                "given_name": {"mandatory": True, "value_type": "string"},
-                "family_name": {"mandatory": True, "value_type": "string"},
-                "age_equal_or_over": {
-                    "12": {"mandatory": True, "value_type": "boolean"},
-                    "18": {"mandatory": True, "value_type": "boolean"},
-                    "21": {"mandatory": True, "value_type": "boolean"},
-                },
-            },
-            "sd_list": [
-                "/given_name",
-                "/family_name",
-                "/age_equal_or_over/12",
-                "/age_equal_or_over/18",
-                "/age_equal_or_over/21",
-            ],
-        },
-    )
-
-    # Create exchange
-    exchange = await acapy_issuer_admin.post(
-        "/oid4vci/exchange/create",
-        json={
-            "supported_cred_id": supported["supported_cred_id"],
-            "credential_subject": {
-                "given_name": "Erika",
-                "family_name": "Mustermann",
-                "age_equal_or_over": {"12": True, "18": True, "21": False},
-            },
-            "verification_method": issuer_p256_did + "#0",
-        },
-    )
-
-    # Get offer
-    offer_response = await acapy_issuer_admin.get(
-        "/oid4vci/credential-offer",
-        params={"exchange_id": exchange["exchange_id"]},
-    )
-    yield offer_response["credential_offer"]
-
-
-@pytest_asyncio.fixture
-async def sdjwt_offer_by_ref(acapy_issuer_admin, issuer_p256_did):
-    """Create an SD-JWT VC credential offer by reference."""
-    # Create supported credential
-    supported = await acapy_issuer_admin.post(
-        "/oid4vci/credential-supported/create/sd-jwt",
-        json={
-            "format": "vc+sd-jwt",
-            "id": f"IDCard_{uuid.uuid4().hex[:8]}",
-            "cryptographic_binding_methods_supported": ["jwk"],
-            "vct": "ExampleIDCard",
-            "claims": {
-                "given_name": {"mandatory": True, "value_type": "string"},
-                "family_name": {"mandatory": True, "value_type": "string"},
-            },
-            "sd_list": ["/given_name", "/family_name"],
-        },
-    )
-
-    # Create exchange
-    exchange = await acapy_issuer_admin.post(
-        "/oid4vci/exchange/create",
-        json={
-            "supported_cred_id": supported["supported_cred_id"],
-            "credential_subject": {"given_name": "Erika", "family_name": "Mustermann"},
-            "verification_method": issuer_p256_did + "#0",
-        },
-    )
-
-    # Get offer by reference
-    offer_ref_full = await acapy_issuer_admin.get(
-        "/oid4vci/credential-offer-by-ref",
-        params={"exchange_id": exchange["exchange_id"]},
-    )
-
-    credential_offer_uri = offer_ref_full["credential_offer_uri"]
-    # Replace placeholder (handle URL encoding)
-    for placeholder in (
-        "${OID4VCI_ENDPOINT:-http://localhost:8022}",
-        "${OID4VCI_ENDPOINT}",
-        urllib.parse.quote("${OID4VCI_ENDPOINT:-http://localhost:8022}", safe=""),
-        urllib.parse.quote("${OID4VCI_ENDPOINT}", safe=""),
-    ):
-        if placeholder in credential_offer_uri:
-            credential_offer_uri = credential_offer_uri.replace(
-                placeholder, ACAPY_ISSUER_OID4VCI_URL
-            )
-            break
-
-    # Dereference the offer
-    offer_ref = urlparse(credential_offer_uri)
-    offer_ref_url = parse_qs(offer_ref.query)["credential_offer"][0]
-
-    async with ClientSession() as session:
-        async with session.get(
-            offer_ref_url,
-            params={"exchange_id": exchange["exchange_id"]},
-        ) as response:
-            offer_data = await response.json()
-            yield offer_data["credential_offer"]
-
-
-@pytest_asyncio.fixture
-async def request_uri(acapy_verifier_admin, issuer_p256_did):
-    """Create a presentation request URI."""
-    # Create presentation definition
-    pres_def = await acapy_verifier_admin.post(
-        "/oid4vp/presentation-definition",
-        json={
-            "pres_def": {
-                "id": str(uuid.uuid4()),
-                "purpose": "Present basic profile info",
-                "format": {
-                    "jwt_vc_json": {"alg": ["ES256"]},
-                    "jwt_vp_json": {"alg": ["ES256"]},
-                },
-                "input_descriptors": [
-                    {
-                        "id": str(uuid.uuid4()),
-                        "name": "Profile",
-                        "constraints": {
-                            "fields": [
-                                {
-                                    "path": ["$.vc.credentialSubject.name"],
-                                    "filter": {"type": "string"},
-                                }
-                            ]
-                        },
-                    }
-                ],
-            }
-        },
-    )
-
-    # Create request
-    request = await acapy_verifier_admin.post(
-        "/oid4vp/request",
-        json={
-            "pres_def_id": pres_def["pres_def_id"],
-            "vp_formats": {
-                "jwt_vc_json": {"alg": ["ES256"]},
-                "jwt_vp_json": {"alg": ["ES256"]},
-            },
-        },
-    )
-    yield request["request_uri"]
-
-
-@pytest_asyncio.fixture
-async def sdjwt_request_uri(acapy_verifier_admin, issuer_p256_did):
-    """Create an SD-JWT presentation request URI."""
-    # Create presentation definition
-    pres_def = await acapy_verifier_admin.post(
-        "/oid4vp/presentation-definition",
-        json={
-            "pres_def": {
-                "id": str(uuid.uuid4()),
-                "purpose": "Present ID card",
-                "format": {"vc+sd-jwt": {}},
-                "input_descriptors": [
-                    {
-                        "id": "ID Card",
-                        "name": "Profile",
-                        "constraints": {
-                            "limit_disclosure": "required",
-                            "fields": [
-                                {"path": ["$.vct"], "filter": {"type": "string"}},
-                                {"path": ["$.family_name"]},
-                                {"path": ["$.given_name"]},
-                            ],
-                        },
-                    }
-                ],
-            }
-        },
-    )
-
-    # Create request
-    request = await acapy_verifier_admin.post(
-        "/oid4vp/request",
-        json={
-            "pres_def_id": pres_def["pres_def_id"],
-            "vp_formats": {
-                "vc+sd-jwt": {
-                    "sd-jwt_alg_values": ["ES256", "EdDSA"],
-                    "kb-jwt_alg_values": ["ES256", "EdDSA"],
-                }
-            },
-        },
-    )
-    yield request["request_uri"]
+# Legacy fixtures kept for test_interop compatibility - moved to test_interop/conftest.py
