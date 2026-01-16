@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import httpx
 
 
@@ -78,20 +76,3 @@ class CredoWrapper:
         )
         response.raise_for_status()
         return response.json()
-
-
-    # Credo API
-
-    async def openid4vci_accept_offer(self, offer: str):
-        """Accept OpenID4VCI credential offer."""
-        return await self.client.request(
-            "openid4vci.acceptCredentialOffer",
-            offer=offer,
-        )
-
-    async def openid4vp_accept_request(self, request: str):
-        """Accept OpenID4VP presentation (authorization) request."""
-        return await self.client.request(
-            "openid4vci.acceptAuthorizationRequest",
-            request=request,
-        )
