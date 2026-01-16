@@ -5,6 +5,11 @@ import pytest
 from oid4vci_client.client import OpenID4VCIClient
 
 
+@pytest.fixture
+def test_client():
+    return OpenID4VCIClient()
+
+
 @pytest.mark.asyncio
 async def test_pre_auth_code_flow_ed25519(test_client: OpenID4VCIClient, offer: dict):
     """Connect to AFJ."""

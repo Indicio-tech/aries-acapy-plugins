@@ -1,0 +1,1161 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="27" failures="58" skipped="16" tests="140" time="10.498" timestamp="2026-01-16T19:33:20.151938+00:00" hostname="690dedbb3191"><testcase classname="tests.dcql.test_acapy_credo_dcql_flow.TestDCQLSdJwtFlow" name="test_dcql_sd_jwt_basic_flow" time="0.398"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/dcql/test_acapy_credo_dcql_flow.py:82: in test_dcql_sd_jwt_basic_flow
+    credential_config_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.dcql.test_acapy_credo_dcql_flow.TestDCQLSdJwtFlow" name="test_dcql_sd_jwt_nested_claims" time="0.025"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/dcql/test_acapy_credo_dcql_flow.py:254: in test_dcql_sd_jwt_nested_claims
+    credential_config_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.dcql.test_acapy_credo_dcql_flow.TestDCQLMdocFlow" name="test_dcql_mdoc_basic_flow" time="0.098"><error message="failed on setup with &quot;httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404&quot;">tests/conftest.py:388: in setup_issuer_certs
+    default_cert = await acapy_issuer_admin.get("/mso_mdoc/certificates/default")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates/default'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+During handling of the above exception, another exception occurred:
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:463: in setup
+    return super().setup()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:748: in pytest_fixture_setup
+    hook_result = yield
+                  ^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:318: in _asyncgen_fixture_wrapper
+    result = runner.run(setup(), context=context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:314: in setup
+    res = await gen_obj.__anext__()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/conftest.py:403: in setup_issuer_certs
+    certs_response = await acapy_issuer_admin.get(
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404</error></testcase><testcase classname="tests.dcql.test_acapy_credo_dcql_flow.TestDCQLMdocFlow" name="test_dcql_mdoc_path_syntax" time="0.085"><error message="failed on setup with &quot;httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404&quot;">tests/conftest.py:388: in setup_issuer_certs
+    default_cert = await acapy_issuer_admin.get("/mso_mdoc/certificates/default")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates/default'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+During handling of the above exception, another exception occurred:
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:463: in setup
+    return super().setup()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:748: in pytest_fixture_setup
+    hook_result = yield
+                  ^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:318: in _asyncgen_fixture_wrapper
+    result = runner.run(setup(), context=context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:314: in setup
+    res = await gen_obj.__anext__()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/conftest.py:403: in setup_issuer_certs
+    certs_response = await acapy_issuer_admin.get(
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404</error></testcase><testcase classname="tests.dcql.test_acapy_credo_dcql_flow.TestDCQLSelectiveDisclosure" name="test_dcql_sd_jwt_selective_disclosure" time="0.024"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/dcql/test_acapy_credo_dcql_flow.py:685: in test_dcql_sd_jwt_selective_disclosure
+    config_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.dcql.test_acapy_credo_dcql_flow.TestDCQLSelectiveDisclosure" name="test_dcql_mdoc_selective_disclosure" time="0.083"><error message="failed on setup with &quot;httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404&quot;">tests/conftest.py:388: in setup_issuer_certs
+    default_cert = await acapy_issuer_admin.get("/mso_mdoc/certificates/default")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates/default'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+During handling of the above exception, another exception occurred:
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:463: in setup
+    return super().setup()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:748: in pytest_fixture_setup
+    hook_result = yield
+                  ^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:318: in _asyncgen_fixture_wrapper
+    result = runner.run(setup(), context=context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:314: in setup
+    res = await gen_obj.__anext__()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/conftest.py:403: in setup_issuer_certs
+    certs_response = await acapy_issuer_admin.get(
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404</error></testcase><testcase classname="tests.dcql.test_acapy_credo_dcql_flow.TestDCQLCredentialSets" name="test_dcql_credential_sets_multi_credential" time="0.025"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/dcql/test_acapy_credo_dcql_flow.py:978: in test_dcql_credential_sets_multi_credential
+    identity_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.dcql.test_acapy_credo_dcql_flow.TestDCQLSpecCompliance" name="test_dcql_dc_sd_jwt_format_identifier" time="0.024"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/dcql/test_acapy_credo_dcql_flow.py:1158: in test_dcql_dc_sd_jwt_format_identifier
+    config_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.dcql.test_dcql" name="test_dcql_query_create" time="0.109" /><testcase classname="tests.dcql.test_dcql" name="test_dcql_query_list" time="0.050" /><testcase classname="tests.dcql.test_dcql" name="test_dcql_query_get" time="0.197" /><testcase classname="tests.dcql.test_dcql" name="test_dcql_query_delete" time="0.142"><failure message="httpx.HTTPStatusError: Client error '400 DCQLQuery.__init__() missing 1 required keyword-only argument: 'credentials', for record id 038dc092-e454-423e-af95-03a3e1f78078.' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400">tests/dcql/test_dcql.py:126: in test_dcql_query_delete
+    queries_list = await controller.get(
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '400 DCQLQuery.__init__() missing 1 required keyword-only argument: 'credentials', for record id 038dc092-e454-423e-af95-03a3e1f78078.' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/400</failure></testcase><testcase classname="tests.dcql.test_multi_credential_dcql.TestMultiCredentialDCQL" name="test_two_sd_jwt_credentials" time="0.087"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/dcql/test_multi_credential_dcql.py:70: in test_two_sd_jwt_credentials
+    identity_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.dcql.test_multi_credential_dcql.TestMultiCredentialDCQL" name="test_three_credentials_different_issuers" time="0.329"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/dcql/test_multi_credential_dcql.py:309: in test_three_credentials_different_issuers
+    config_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.dcql.test_multi_credential_dcql.TestMultiCredentialCredentialSets" name="test_credential_sets_alternative_ids" time="0.068"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/dcql/test_multi_credential_dcql.py:445: in test_credential_sets_alternative_ids
+    await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.dcql.test_multi_credential_dcql.TestMixedFormatMultiCredential" name="test_sd_jwt_plus_mdoc" time="0.024"><skipped type="pytest.skip" message="Mixed format DCQL not supported: Client error '422 {'json': {'credentials': {0: {'meta': {'doctype_value': ['Unknown field.']}}}}}' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422">/usr/src/app/tests/dcql/test_multi_credential_dcql.py:622: Mixed format DCQL not supported: Client error '422 {'json': {'credentials': {0: {'meta': {'doctype_value': ['Unknown field.']}}}}}' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422</skipped></testcase><testcase classname="tests.flows.test_acapy_credo_oid4vc_flow" name="test_full_acapy_credo_oid4vc_flow" time="0.160"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/flows/test_acapy_credo_oid4vc_flow.py:65: in test_full_acapy_credo_oid4vc_flow
+    credential_config_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.flows.test_acapy_credo_oid4vc_flow" name="test_error_handling_invalid_credential_offer" time="0.004" /><testcase classname="tests.flows.test_acapy_credo_oid4vc_flow" name="test_error_handling_invalid_presentation_request" time="0.009" /><testcase classname="tests.flows.test_acapy_credo_oid4vc_flow" name="test_acapy_credo_mdoc_flow" time="0.139"><error message="failed on setup with &quot;httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404&quot;">tests/conftest.py:388: in setup_issuer_certs
+    default_cert = await acapy_issuer_admin.get("/mso_mdoc/certificates/default")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates/default'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+During handling of the above exception, another exception occurred:
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:463: in setup
+    return super().setup()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:748: in pytest_fixture_setup
+    hook_result = yield
+                  ^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:318: in _asyncgen_fixture_wrapper
+    result = runner.run(setup(), context=context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:314: in setup
+    res = await gen_obj.__anext__()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/conftest.py:403: in setup_issuer_certs
+    certs_response = await acapy_issuer_admin.get(
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404</error></testcase><testcase classname="tests.flows.test_acapy_credo_oid4vc_flow" name="test_acapy_credo_sd_jwt_selective_disclosure" time="0.024"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/flows/test_acapy_credo_oid4vc_flow.py:412: in test_acapy_credo_sd_jwt_selective_disclosure
+    credential_config_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.flows.test_acapy_credo_oid4vc_flow" name="test_acapy_credo_mdoc_selective_disclosure" time="0.085"><error message="failed on setup with &quot;httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404&quot;">tests/conftest.py:388: in setup_issuer_certs
+    default_cert = await acapy_issuer_admin.get("/mso_mdoc/certificates/default")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates/default'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+During handling of the above exception, another exception occurred:
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:463: in setup
+    return super().setup()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:748: in pytest_fixture_setup
+    hook_result = yield
+                  ^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:318: in _asyncgen_fixture_wrapper
+    result = runner.run(setup(), context=context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:314: in setup
+    res = await gen_obj.__anext__()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/conftest.py:403: in setup_issuer_certs
+    certs_response = await acapy_issuer_admin.get(
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404</error></testcase><testcase classname="tests.flows.test_acapy_oid4vc_simple" name="test_simple_oid4vc_flow" time="0.058" /><testcase classname="tests.flows.test_cred_offer_uri" name="test_credential_offer_structure" time="0.146" /><testcase classname="tests.flows.test_cred_offer_uri" name="test_credential_offer_by_ref_structure" time="0.147"><failure message="aiohttp.client_exceptions.InvalidUrlClientError: $%7BOID4VCI_ENDPOINT:-http://localhost:8022%7D/oid4vci/dereference-credential-offer">tests/flows/test_cred_offer_uri.py:115: in test_credential_offer_by_ref_structure
+    async with session.get(offer_ref_url) as resp:
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/aiohttp/client.py:1517: in __aenter__
+    self._resp: _RetType = await self._coro
+                           ^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/aiohttp/client.py:639: in _request
+    raise err_exc_cls(url)
+E   aiohttp.client_exceptions.InvalidUrlClientError: $%7BOID4VCI_ENDPOINT:-http://localhost:8022%7D/oid4vci/dereference-credential-offer</failure></testcase><testcase classname="tests.flows.test_dual_endpoints" name="test_dual_oid4vci_endpoints" time="0.031"><failure message="AssertionError: Deprecated endpoint failed: 404&#10;assert 404 == 200&#10; +  where 404 = &lt;Response [404 Not Found]&gt;.status_code">tests/flows/test_dual_endpoints.py:49: in test_dual_oid4vci_endpoints
+    assert deprecated_response.status_code == 200, (
+E   AssertionError: Deprecated endpoint failed: 404
+E   assert 404 == 200
+E    +  where 404 = &lt;Response [404 Not Found]&gt;.status_code</failure></testcase><testcase classname="tests.flows.test_dual_endpoints" name="test_credo_can_reach_underscore_endpoint" time="0.020"><failure message="AssertionError: Credo-style endpoint discovery failed: 404&#10;assert 404 == 200&#10; +  where 404 = &lt;Response [404 Not Found]&gt;.status_code">tests/flows/test_dual_endpoints.py:107: in test_credo_can_reach_underscore_endpoint
+    assert response.status_code == 200, (
+E   AssertionError: Credo-style endpoint discovery failed: 404
+E   assert 404 == 200
+E    +  where 404 = &lt;Response [404 Not Found]&gt;.status_code</failure></testcase><testcase classname="tests.flows.test_dual_endpoints" name="test_acapy_services_health" time="0.024" /><testcase classname="tests.flows.test_dual_endpoints" name="test_oid4vci_server_endpoints" time="0.022" /><testcase classname="tests.flows.test_dual_endpoints" name="test_openid_configuration_endpoint" time="0.020"><failure message="AssertionError: openid-configuration endpoint failed: 404&#10;assert 404 == 200&#10; +  where 404 = &lt;Response [404 Not Found]&gt;.status_code">tests/flows/test_dual_endpoints.py:209: in test_openid_configuration_endpoint
+    assert response.status_code == 200, (
+E   AssertionError: openid-configuration endpoint failed: 404
+E   assert 404 == 200
+E    +  where 404 = &lt;Response [404 Not Found]&gt;.status_code</failure></testcase><testcase classname="tests.flows.test_dual_endpoints" name="test_openid_configuration_vs_credential_issuer_consistency" time="0.027"><failure message="assert 404 == 200&#10; +  where 404 = &lt;Response [404 Not Found]&gt;.status_code">tests/flows/test_dual_endpoints.py:285: in test_openid_configuration_vs_credential_issuer_consistency
+    assert oidc_response.status_code == 200
+E   assert 404 == 200
+E    +  where 404 = &lt;Response [404 Not Found]&gt;.status_code</failure></testcase><testcase classname="tests.flows.test_example_sdjwt.TestSDJWTFlow" name="test_issue_and_verify_identity_credential" time="0.207"><failure message="AssertionError: Credential issuance failed: {&quot;error&quot;:&quot;Failed to accept credential offer&quot;,&quot;details&quot;:&quot;Error parsing credential offer in draft 11, 13 or 14 format extracted from credential offer 'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%20%22%24%7BOID4VCI_ENDPOINT%3A-http%3A//localhost%3A8022%7D%22%2C%20%22credentials%22%3A%20%5B%22SDJWTCred_d763f4db%22%5D%2C%20%22grants%22%3A%20%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%20%7B%22pre-authorized_code%22%3A%20%225YiX3calFtrZr2hPCnQt2A%22%2C%20%22user_pin_required%22%3A%20false%7D%7D%7D'\n✖ Expected a URL at \&quot;credential_issuer\&quot;\n✖ Url must be an https:// url at \&quot;credential_issuer\&quot;\n✖ Expected array, received undefined at \&quot;credential_configuration_ids\&quot; or Expected a URL at \&quot;credential_issuer\&quot;\n✖ Url must be an https:// url at \&quot;credential_issuer\&quot;&quot;,&quot;stack&quot;:&quot;Error: Error parsing credential offer in draft 11, 13 or 14 format extracted from credential offer 'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%20%22%24%7BOID4VCI_ENDPOINT%3A-http%3A//localhost%3A8022%7D%22%2C%20%22credentials%22%3A%20%5B%22SDJWTCred_d763f4db%22%5D%2C%20%22grants%22%3A%20%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%20%7B%22pre-authorized_code%22%3A%20%225YiX3calFtrZr2hPCnQt2A%22%2C%20%22user_pin_required%22%3A%20false%7D%7D%7D'\n✖ Expected a URL at \&quot;credential_issuer\&quot;\n✖ Url must be an https:// url at \&quot;credential_issuer\&quot;\n✖ Expected array, received undefined at \&quot;credential_configuration_ids\&quot; or Expected a URL at \&quot;credential_issuer\&quot;\n✖ Url must be an https:// url at \&quot;credential_issuer\&quot;\n    at resolveCredentialOffer (file:///app/node_modules/@openid4vc/openid4vci/dist/index.mjs:89:46)\n    at Openid4vciClient.resolveCredentialOffer (file:///app/node_modules/@openid4vc/openid4vci/dist/index.mjs:1627:10)\n    at OpenId4VciHolderService$1.resolveCredentialOffer (file:///app/node_modules/@credo-ts/openid4vc/build/openid4vc-holder/OpenId4VciHolderService.mjs:29:46)\n    at OpenId4VcHolderApi$1.resolveCredentialOffer (file:///app/node_modules/@credo-ts/openid4vc/build/openid4vc-holder/OpenId4VcHolderApi.mjs:76:45)\n    at file:///app/dist/issuance.js:16:60\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at next (/app/node_modules/express/lib/router/route.js:149:13)\n    at Route.dispatch (/app/node_modules/express/lib/router/route.js:119:3)\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at /app/node_modules/express/lib/router/index.js:284:15&quot;}">tests/flows/test_example_sdjwt.py:34: in test_issue_and_verify_identity_credential
+    result = await credential_flow.issue_sd_jwt(
+tests/helpers/flow_helpers.py:109: in issue_sd_jwt
+    assert credential_response.status_code == 200, (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: Credential issuance failed: {"error":"Failed to accept credential offer","details":"Error parsing credential offer in draft 11, 13 or 14 format extracted from credential offer 'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%20%22%24%7BOID4VCI_ENDPOINT%3A-http%3A//localhost%3A8022%7D%22%2C%20%22credentials%22%3A%20%5B%22SDJWTCred_d763f4db%22%5D%2C%20%22grants%22%3A%20%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%20%7B%22pre-authorized_code%22%3A%20%225YiX3calFtrZr2hPCnQt2A%22%2C%20%22user_pin_required%22%3A%20false%7D%7D%7D'\n✖ Expected a URL at \"credential_issuer\"\n✖ Url must be an https:// url at \"credential_issuer\"\n✖ Expected array, received undefined at \"credential_configuration_ids\" or Expected a URL at \"credential_issuer\"\n✖ Url must be an https:// url at \"credential_issuer\"","stack":"Error: Error parsing credential offer in draft 11, 13 or 14 format extracted from credential offer 'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%20%22%24%7BOID4VCI_ENDPOINT%3A-http%3A//localhost%3A8022%7D%22%2C%20%22credentials%22%3A%20%5B%22SDJWTCred_d763f4db%22%5D%2C%20%22grants%22%3A%20%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%20%7B%22pre-authorized_code%22%3A%20%225YiX3calFtrZr2hPCnQt2A%22%2C%20%22user_pin_required%22%3A%20false%7D%7D%7D'\n✖ Expected a URL at \"credential_issuer\"\n✖ Url must be an https:// url at \"credential_issuer\"\n✖ Expected array, received undefined at \"credential_configuration_ids\" or Expected a URL at \"credential_issuer\"\n✖ Url must be an https:// url at \"credential_issuer\"\n    at resolveCredentialOffer (file:///app/node_modules/@openid4vc/openid4vci/dist/index.mjs:89:46)\n    at Openid4vciClient.resolveCredentialOffer (file:///app/node_modules/@openid4vc/openid4vci/dist/index.mjs:1627:10)\n    at OpenId4VciHolderService$1.resolveCredentialOffer (file:///app/node_modules/@credo-ts/openid4vc/build/openid4vc-holder/OpenId4VciHolderService.mjs:29:46)\n    at OpenId4VcHolderApi$1.resolveCredentialOffer (file:///app/node_modules/@credo-ts/openid4vc/build/openid4vc-holder/OpenId4VcHolderApi.mjs:76:45)\n    at file:///app/dist/issuance.js:16:60\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at next (/app/node_modules/express/lib/router/route.js:149:13)\n    at Route.dispatch (/app/node_modules/express/lib/router/route.js:119:3)\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at /app/node_modules/express/lib/router/index.js:284:15"}</failure></testcase><testcase classname="tests.flows.test_example_sdjwt.TestSDJWTFlow" name="test_multiple_credentials_same_holder" time="0.114"><failure message="AssertionError: Credential issuance failed: {&quot;error&quot;:&quot;Failed to accept credential offer&quot;,&quot;details&quot;:&quot;Error parsing credential offer in draft 11, 13 or 14 format extracted from credential offer 'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%20%22%24%7BOID4VCI_ENDPOINT%3A-http%3A//localhost%3A8022%7D%22%2C%20%22credentials%22%3A%20%5B%22SDJWTCred_bc2f0b1f%22%5D%2C%20%22grants%22%3A%20%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%20%7B%22pre-authorized_code%22%3A%20%22X1a9GjXqO0iqyM2XBWDDIw%22%2C%20%22user_pin_required%22%3A%20false%7D%7D%7D'\n✖ Expected a URL at \&quot;credential_issuer\&quot;\n✖ Url must be an https:// url at \&quot;credential_issuer\&quot;\n✖ Expected array, received undefined at \&quot;credential_configuration_ids\&quot; or Expected a URL at \&quot;credential_issuer\&quot;\n✖ Url must be an https:// url at \&quot;credential_issuer\&quot;&quot;,&quot;stack&quot;:&quot;Error: Error parsing credential offer in draft 11, 13 or 14 format extracted from credential offer 'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%20%22%24%7BOID4VCI_ENDPOINT%3A-http%3A//localhost%3A8022%7D%22%2C%20%22credentials%22%3A%20%5B%22SDJWTCred_bc2f0b1f%22%5D%2C%20%22grants%22%3A%20%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%20%7B%22pre-authorized_code%22%3A%20%22X1a9GjXqO0iqyM2XBWDDIw%22%2C%20%22user_pin_required%22%3A%20false%7D%7D%7D'\n✖ Expected a URL at \&quot;credential_issuer\&quot;\n✖ Url must be an https:// url at \&quot;credential_issuer\&quot;\n✖ Expected array, received undefined at \&quot;credential_configuration_ids\&quot; or Expected a URL at \&quot;credential_issuer\&quot;\n✖ Url must be an https:// url at \&quot;credential_issuer\&quot;\n    at resolveCredentialOffer (file:///app/node_modules/@openid4vc/openid4vci/dist/index.mjs:89:46)\n    at Openid4vciClient.resolveCredentialOffer (file:///app/node_modules/@openid4vc/openid4vci/dist/index.mjs:1627:10)\n    at OpenId4VciHolderService$1.resolveCredentialOffer (file:///app/node_modules/@credo-ts/openid4vc/build/openid4vc-holder/OpenId4VciHolderService.mjs:29:46)\n    at OpenId4VcHolderApi$1.resolveCredentialOffer (file:///app/node_modules/@credo-ts/openid4vc/build/openid4vc-holder/OpenId4VcHolderApi.mjs:76:45)\n    at file:///app/dist/issuance.js:16:60\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at next (/app/node_modules/express/lib/router/route.js:149:13)\n    at Route.dispatch (/app/node_modules/express/lib/router/route.js:119:3)\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at /app/node_modules/express/lib/router/index.js:284:15&quot;}">tests/flows/test_example_sdjwt.py:93: in test_multiple_credentials_same_holder
+    identity = await credential_flow.issue_sd_jwt(
+tests/helpers/flow_helpers.py:109: in issue_sd_jwt
+    assert credential_response.status_code == 200, (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: Credential issuance failed: {"error":"Failed to accept credential offer","details":"Error parsing credential offer in draft 11, 13 or 14 format extracted from credential offer 'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%20%22%24%7BOID4VCI_ENDPOINT%3A-http%3A//localhost%3A8022%7D%22%2C%20%22credentials%22%3A%20%5B%22SDJWTCred_bc2f0b1f%22%5D%2C%20%22grants%22%3A%20%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%20%7B%22pre-authorized_code%22%3A%20%22X1a9GjXqO0iqyM2XBWDDIw%22%2C%20%22user_pin_required%22%3A%20false%7D%7D%7D'\n✖ Expected a URL at \"credential_issuer\"\n✖ Url must be an https:// url at \"credential_issuer\"\n✖ Expected array, received undefined at \"credential_configuration_ids\" or Expected a URL at \"credential_issuer\"\n✖ Url must be an https:// url at \"credential_issuer\"","stack":"Error: Error parsing credential offer in draft 11, 13 or 14 format extracted from credential offer 'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%20%22%24%7BOID4VCI_ENDPOINT%3A-http%3A//localhost%3A8022%7D%22%2C%20%22credentials%22%3A%20%5B%22SDJWTCred_bc2f0b1f%22%5D%2C%20%22grants%22%3A%20%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%20%7B%22pre-authorized_code%22%3A%20%22X1a9GjXqO0iqyM2XBWDDIw%22%2C%20%22user_pin_required%22%3A%20false%7D%7D%7D'\n✖ Expected a URL at \"credential_issuer\"\n✖ Url must be an https:// url at \"credential_issuer\"\n✖ Expected array, received undefined at \"credential_configuration_ids\" or Expected a URL at \"credential_issuer\"\n✖ Url must be an https:// url at \"credential_issuer\"\n    at resolveCredentialOffer (file:///app/node_modules/@openid4vc/openid4vci/dist/index.mjs:89:46)\n    at Openid4vciClient.resolveCredentialOffer (file:///app/node_modules/@openid4vc/openid4vci/dist/index.mjs:1627:10)\n    at OpenId4VciHolderService$1.resolveCredentialOffer (file:///app/node_modules/@credo-ts/openid4vc/build/openid4vc-holder/OpenId4VciHolderService.mjs:29:46)\n    at OpenId4VcHolderApi$1.resolveCredentialOffer (file:///app/node_modules/@credo-ts/openid4vc/build/openid4vc-holder/OpenId4VcHolderApi.mjs:76:45)\n    at file:///app/dist/issuance.js:16:60\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at next (/app/node_modules/express/lib/router/route.js:149:13)\n    at Route.dispatch (/app/node_modules/express/lib/router/route.js:119:3)\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at /app/node_modules/express/lib/router/index.js:284:15"}</failure></testcase><testcase classname="tests.flows.test_example_sdjwt.TestSDJWTAlgorithms" name="test_ed25519_algorithm" time="0.136"><failure message="AssertionError: Credential issuance failed: {&quot;error&quot;:&quot;Failed to accept credential offer&quot;,&quot;details&quot;:&quot;Error parsing credential offer in draft 11, 13 or 14 format extracted from credential offer 'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%20%22%24%7BOID4VCI_ENDPOINT%3A-http%3A//localhost%3A8022%7D%22%2C%20%22credentials%22%3A%20%5B%22SDJWTCred_4ddbb0d0%22%5D%2C%20%22grants%22%3A%20%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%20%7B%22pre-authorized_code%22%3A%20%22OIC5cw6L2ZpDPnR1zATMcQ%22%2C%20%22user_pin_required%22%3A%20false%7D%7D%7D'\n✖ Expected a URL at \&quot;credential_issuer\&quot;\n✖ Url must be an https:// url at \&quot;credential_issuer\&quot;\n✖ Expected array, received undefined at \&quot;credential_configuration_ids\&quot; or Expected a URL at \&quot;credential_issuer\&quot;\n✖ Url must be an https:// url at \&quot;credential_issuer\&quot;&quot;,&quot;stack&quot;:&quot;Error: Error parsing credential offer in draft 11, 13 or 14 format extracted from credential offer 'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%20%22%24%7BOID4VCI_ENDPOINT%3A-http%3A//localhost%3A8022%7D%22%2C%20%22credentials%22%3A%20%5B%22SDJWTCred_4ddbb0d0%22%5D%2C%20%22grants%22%3A%20%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%20%7B%22pre-authorized_code%22%3A%20%22OIC5cw6L2ZpDPnR1zATMcQ%22%2C%20%22user_pin_required%22%3A%20false%7D%7D%7D'\n✖ Expected a URL at \&quot;credential_issuer\&quot;\n✖ Url must be an https:// url at \&quot;credential_issuer\&quot;\n✖ Expected array, received undefined at \&quot;credential_configuration_ids\&quot; or Expected a URL at \&quot;credential_issuer\&quot;\n✖ Url must be an https:// url at \&quot;credential_issuer\&quot;\n    at resolveCredentialOffer (file:///app/node_modules/@openid4vc/openid4vci/dist/index.mjs:89:46)\n    at Openid4vciClient.resolveCredentialOffer (file:///app/node_modules/@openid4vc/openid4vci/dist/index.mjs:1627:10)\n    at OpenId4VciHolderService$1.resolveCredentialOffer (file:///app/node_modules/@credo-ts/openid4vc/build/openid4vc-holder/OpenId4VciHolderService.mjs:29:46)\n    at OpenId4VcHolderApi$1.resolveCredentialOffer (file:///app/node_modules/@credo-ts/openid4vc/build/openid4vc-holder/OpenId4VcHolderApi.mjs:76:45)\n    at file:///app/dist/issuance.js:16:60\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at next (/app/node_modules/express/lib/router/route.js:149:13)\n    at Route.dispatch (/app/node_modules/express/lib/router/route.js:119:3)\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at /app/node_modules/express/lib/router/index.js:284:15&quot;}">tests/flows/test_example_sdjwt.py:138: in test_ed25519_algorithm
+    result = await credential_flow.issue_sd_jwt(
+tests/helpers/flow_helpers.py:109: in issue_sd_jwt
+    assert credential_response.status_code == 200, (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: Credential issuance failed: {"error":"Failed to accept credential offer","details":"Error parsing credential offer in draft 11, 13 or 14 format extracted from credential offer 'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%20%22%24%7BOID4VCI_ENDPOINT%3A-http%3A//localhost%3A8022%7D%22%2C%20%22credentials%22%3A%20%5B%22SDJWTCred_4ddbb0d0%22%5D%2C%20%22grants%22%3A%20%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%20%7B%22pre-authorized_code%22%3A%20%22OIC5cw6L2ZpDPnR1zATMcQ%22%2C%20%22user_pin_required%22%3A%20false%7D%7D%7D'\n✖ Expected a URL at \"credential_issuer\"\n✖ Url must be an https:// url at \"credential_issuer\"\n✖ Expected array, received undefined at \"credential_configuration_ids\" or Expected a URL at \"credential_issuer\"\n✖ Url must be an https:// url at \"credential_issuer\"","stack":"Error: Error parsing credential offer in draft 11, 13 or 14 format extracted from credential offer 'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%20%22%24%7BOID4VCI_ENDPOINT%3A-http%3A//localhost%3A8022%7D%22%2C%20%22credentials%22%3A%20%5B%22SDJWTCred_4ddbb0d0%22%5D%2C%20%22grants%22%3A%20%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%20%7B%22pre-authorized_code%22%3A%20%22OIC5cw6L2ZpDPnR1zATMcQ%22%2C%20%22user_pin_required%22%3A%20false%7D%7D%7D'\n✖ Expected a URL at \"credential_issuer\"\n✖ Url must be an https:// url at \"credential_issuer\"\n✖ Expected array, received undefined at \"credential_configuration_ids\" or Expected a URL at \"credential_issuer\"\n✖ Url must be an https:// url at \"credential_issuer\"\n    at resolveCredentialOffer (file:///app/node_modules/@openid4vc/openid4vci/dist/index.mjs:89:46)\n    at Openid4vciClient.resolveCredentialOffer (file:///app/node_modules/@openid4vc/openid4vci/dist/index.mjs:1627:10)\n    at OpenId4VciHolderService$1.resolveCredentialOffer (file:///app/node_modules/@credo-ts/openid4vc/build/openid4vc-holder/OpenId4VciHolderService.mjs:29:46)\n    at OpenId4VcHolderApi$1.resolveCredentialOffer (file:///app/node_modules/@credo-ts/openid4vc/build/openid4vc-holder/OpenId4VcHolderApi.mjs:76:45)\n    at file:///app/dist/issuance.js:16:60\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at next (/app/node_modules/express/lib/router/route.js:149:13)\n    at Route.dispatch (/app/node_modules/express/lib/router/route.js:119:3)\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at /app/node_modules/express/lib/router/index.js:284:15"}</failure></testcase><testcase classname="tests.flows.test_example_sdjwt.TestSDJWTErrors" name="test_invalid_vct_rejected" time="0.133"><failure message="AssertionError: Credential issuance failed: {&quot;error&quot;:&quot;Failed to accept credential offer&quot;,&quot;details&quot;:&quot;Error parsing credential offer in draft 11, 13 or 14 format extracted from credential offer 'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%20%22%24%7BOID4VCI_ENDPOINT%3A-http%3A//localhost%3A8022%7D%22%2C%20%22credentials%22%3A%20%5B%22SDJWTCred_be040fc2%22%5D%2C%20%22grants%22%3A%20%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%20%7B%22pre-authorized_code%22%3A%20%22TvHqY3ZokfMCnj2jwUji1A%22%2C%20%22user_pin_required%22%3A%20false%7D%7D%7D'\n✖ Expected a URL at \&quot;credential_issuer\&quot;\n✖ Url must be an https:// url at \&quot;credential_issuer\&quot;\n✖ Expected array, received undefined at \&quot;credential_configuration_ids\&quot; or Expected a URL at \&quot;credential_issuer\&quot;\n✖ Url must be an https:// url at \&quot;credential_issuer\&quot;&quot;,&quot;stack&quot;:&quot;Error: Error parsing credential offer in draft 11, 13 or 14 format extracted from credential offer 'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%20%22%24%7BOID4VCI_ENDPOINT%3A-http%3A//localhost%3A8022%7D%22%2C%20%22credentials%22%3A%20%5B%22SDJWTCred_be040fc2%22%5D%2C%20%22grants%22%3A%20%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%20%7B%22pre-authorized_code%22%3A%20%22TvHqY3ZokfMCnj2jwUji1A%22%2C%20%22user_pin_required%22%3A%20false%7D%7D%7D'\n✖ Expected a URL at \&quot;credential_issuer\&quot;\n✖ Url must be an https:// url at \&quot;credential_issuer\&quot;\n✖ Expected array, received undefined at \&quot;credential_configuration_ids\&quot; or Expected a URL at \&quot;credential_issuer\&quot;\n✖ Url must be an https:// url at \&quot;credential_issuer\&quot;\n    at resolveCredentialOffer (file:///app/node_modules/@openid4vc/openid4vci/dist/index.mjs:89:46)\n    at Openid4vciClient.resolveCredentialOffer (file:///app/node_modules/@openid4vc/openid4vci/dist/index.mjs:1627:10)\n    at OpenId4VciHolderService$1.resolveCredentialOffer (file:///app/node_modules/@credo-ts/openid4vc/build/openid4vc-holder/OpenId4VciHolderService.mjs:29:46)\n    at OpenId4VcHolderApi$1.resolveCredentialOffer (file:///app/node_modules/@credo-ts/openid4vc/build/openid4vc-holder/OpenId4VcHolderApi.mjs:76:45)\n    at file:///app/dist/issuance.js:16:60\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at next (/app/node_modules/express/lib/router/route.js:149:13)\n    at Route.dispatch (/app/node_modules/express/lib/router/route.js:119:3)\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at /app/node_modules/express/lib/router/index.js:284:15&quot;}">tests/flows/test_example_sdjwt.py:160: in test_invalid_vct_rejected
+    result = await credential_flow.issue_sd_jwt(
+tests/helpers/flow_helpers.py:109: in issue_sd_jwt
+    assert credential_response.status_code == 200, (
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   AssertionError: Credential issuance failed: {"error":"Failed to accept credential offer","details":"Error parsing credential offer in draft 11, 13 or 14 format extracted from credential offer 'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%20%22%24%7BOID4VCI_ENDPOINT%3A-http%3A//localhost%3A8022%7D%22%2C%20%22credentials%22%3A%20%5B%22SDJWTCred_be040fc2%22%5D%2C%20%22grants%22%3A%20%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%20%7B%22pre-authorized_code%22%3A%20%22TvHqY3ZokfMCnj2jwUji1A%22%2C%20%22user_pin_required%22%3A%20false%7D%7D%7D'\n✖ Expected a URL at \"credential_issuer\"\n✖ Url must be an https:// url at \"credential_issuer\"\n✖ Expected array, received undefined at \"credential_configuration_ids\" or Expected a URL at \"credential_issuer\"\n✖ Url must be an https:// url at \"credential_issuer\"","stack":"Error: Error parsing credential offer in draft 11, 13 or 14 format extracted from credential offer 'openid-credential-offer://?credential_offer=%7B%22credential_issuer%22%3A%20%22%24%7BOID4VCI_ENDPOINT%3A-http%3A//localhost%3A8022%7D%22%2C%20%22credentials%22%3A%20%5B%22SDJWTCred_be040fc2%22%5D%2C%20%22grants%22%3A%20%7B%22urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Apre-authorized_code%22%3A%20%7B%22pre-authorized_code%22%3A%20%22TvHqY3ZokfMCnj2jwUji1A%22%2C%20%22user_pin_required%22%3A%20false%7D%7D%7D'\n✖ Expected a URL at \"credential_issuer\"\n✖ Url must be an https:// url at \"credential_issuer\"\n✖ Expected array, received undefined at \"credential_configuration_ids\" or Expected a URL at \"credential_issuer\"\n✖ Url must be an https:// url at \"credential_issuer\"\n    at resolveCredentialOffer (file:///app/node_modules/@openid4vc/openid4vci/dist/index.mjs:89:46)\n    at Openid4vciClient.resolveCredentialOffer (file:///app/node_modules/@openid4vc/openid4vci/dist/index.mjs:1627:10)\n    at OpenId4VciHolderService$1.resolveCredentialOffer (file:///app/node_modules/@credo-ts/openid4vc/build/openid4vc-holder/OpenId4VciHolderService.mjs:29:46)\n    at OpenId4VcHolderApi$1.resolveCredentialOffer (file:///app/node_modules/@credo-ts/openid4vc/build/openid4vc-holder/OpenId4VcHolderApi.mjs:76:45)\n    at file:///app/dist/issuance.js:16:60\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at next (/app/node_modules/express/lib/router/route.js:149:13)\n    at Route.dispatch (/app/node_modules/express/lib/router/route.js:119:3)\n    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)\n    at /app/node_modules/express/lib/router/index.js:284:15"}</failure></testcase><testcase classname="tests.flows.test_pre_auth_code_flow" name="test_pre_auth_code_flow_ed25519" time="0.115"><failure message="KeyError: 'credential_offer'">tests/flows/test_pre_auth_code_flow.py:17: in test_pre_auth_code_flow_ed25519
+    await test_client.receive_offer(offer["credential_offer"], did)
+oid4vci_client/client.py:169: in receive_offer
+    offer = CredentialOffer.from_dict(offer_in)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+oid4vci_client/client.py:49: in from_dict
+    offer = value["credential_offer"]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'credential_offer'</failure></testcase><testcase classname="tests.flows.test_pre_auth_code_flow" name="test_pre_auth_code_flow_secp256k1" time="0.088"><failure message="KeyError: 'credential_offer'">tests/flows/test_pre_auth_code_flow.py:24: in test_pre_auth_code_flow_secp256k1
+    await test_client.receive_offer(offer["credential_offer"], did)
+oid4vci_client/client.py:169: in receive_offer
+    offer = CredentialOffer.from_dict(offer_in)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+oid4vci_client/client.py:49: in from_dict
+    offer = value["credential_offer"]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'credential_offer'</failure></testcase><testcase classname="tests.mdoc.test_credo_mdoc_interop.TestCredoMdocInterop" name="test_mdoc_issuance_did_based" time="0.059"><failure message="AttributeError: 'TestCredoMdocInterop' object has no attribute 'random_id'">tests/mdoc/test_credo_mdoc_interop.py:48: in test_mdoc_issuance_did_based
+    "id": f"mDL_{self.random_id()}",
+                 ^^^^^^^^^^^^^^
+E   AttributeError: 'TestCredoMdocInterop' object has no attribute 'random_id'</failure></testcase><testcase classname="tests.mdoc.test_credo_mdoc_interop.TestCredoMdocInterop" name="test_mdoc_selective_disclosure" time="0.125"><error message="failed on setup with &quot;httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404&quot;">tests/conftest.py:388: in setup_issuer_certs
+    default_cert = await acapy_issuer_admin.get("/mso_mdoc/certificates/default")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates/default'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+During handling of the above exception, another exception occurred:
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:463: in setup
+    return super().setup()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:748: in pytest_fixture_setup
+    hook_result = yield
+                  ^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:318: in _asyncgen_fixture_wrapper
+    result = runner.run(setup(), context=context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:314: in setup
+    res = await gen_obj.__anext__()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/conftest.py:403: in setup_issuer_certs
+    certs_response = await acapy_issuer_admin.get(
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404</error></testcase><testcase classname="tests.mdoc.test_credo_mdoc_interop.TestCredoMdocInterop" name="test_mdoc_age_predicate_no_birth_date" time="0.105"><error message="failed on setup with &quot;httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404&quot;">tests/conftest.py:388: in setup_issuer_certs
+    default_cert = await acapy_issuer_admin.get("/mso_mdoc/certificates/default")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates/default'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+During handling of the above exception, another exception occurred:
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:463: in setup
+    return super().setup()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:748: in pytest_fixture_setup
+    hook_result = yield
+                  ^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:318: in _asyncgen_fixture_wrapper
+    result = runner.run(setup(), context=context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:314: in setup
+    res = await gen_obj.__anext__()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/conftest.py:403: in setup_issuer_certs
+    certs_response = await acapy_issuer_admin.get(
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404</error></testcase><testcase classname="tests.mdoc.test_example_mdoc.TestMdocFlow" name="test_issue_and_verify_mdl" time="0.235"><error message="failed on setup with &quot;httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404&quot;">tests/conftest.py:388: in setup_issuer_certs
+    default_cert = await acapy_issuer_admin.get("/mso_mdoc/certificates/default")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates/default'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+During handling of the above exception, another exception occurred:
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:463: in setup
+    return super().setup()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:748: in pytest_fixture_setup
+    hook_result = yield
+                  ^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:318: in _asyncgen_fixture_wrapper
+    result = runner.run(setup(), context=context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:314: in setup
+    res = await gen_obj.__anext__()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/conftest.py:403: in setup_issuer_certs
+    certs_response = await acapy_issuer_admin.get(
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404</error></testcase><testcase classname="tests.mdoc.test_example_mdoc.TestMdocFlow" name="test_mdoc_selective_disclosure" time="0.087"><error message="failed on setup with &quot;httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404&quot;">tests/conftest.py:388: in setup_issuer_certs
+    default_cert = await acapy_issuer_admin.get("/mso_mdoc/certificates/default")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates/default'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+During handling of the above exception, another exception occurred:
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:463: in setup
+    return super().setup()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:748: in pytest_fixture_setup
+    hook_result = yield
+                  ^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:318: in _asyncgen_fixture_wrapper
+    result = runner.run(setup(), context=context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:314: in setup
+    res = await gen_obj.__anext__()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/conftest.py:403: in setup_issuer_certs
+    certs_response = await acapy_issuer_admin.get(
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404</error></testcase><testcase classname="tests.mdoc.test_example_mdoc.TestMdocAgePredicates" name="test_age_over_18_without_revealing_birthdate" time="0.152"><error message="failed on setup with &quot;httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404&quot;">tests/conftest.py:388: in setup_issuer_certs
+    default_cert = await acapy_issuer_admin.get("/mso_mdoc/certificates/default")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates/default'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+During handling of the above exception, another exception occurred:
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:463: in setup
+    return super().setup()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:748: in pytest_fixture_setup
+    hook_result = yield
+                  ^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:318: in _asyncgen_fixture_wrapper
+    result = runner.run(setup(), context=context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:314: in setup
+    res = await gen_obj.__anext__()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/conftest.py:403: in setup_issuer_certs
+    certs_response = await acapy_issuer_admin.get(
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404</error></testcase><testcase classname="tests.mdoc.test_mdoc_age_predicates.TestMdocAgePredicates" name="test_age_over_18_with_birth_date" time="0.064"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/mdoc/test_mdoc_age_predicates.py:82: in test_age_over_18_with_birth_date
+    config_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.mdoc.test_mdoc_age_predicates.TestMdocAgePredicates" name="test_age_over_without_birth_date_disclosure" time="0.022"><failure message="httpx.HTTPStatusError: Client error '422 {'json': {'credentials': {0: {'meta': {'doctype_value': ['Unknown field.']}}}}}' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422">tests/mdoc/test_mdoc_age_predicates.py:171: in test_age_over_without_birth_date_disclosure
+    dcql_response = await acapy_verifier_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '422 {'json': {'credentials': {0: {'meta': {'doctype_value': ['Unknown field.']}}}}}' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422</failure></testcase><testcase classname="tests.mdoc.test_mdoc_age_predicates.TestMdocAgePredicates" name="test_multiple_age_predicates" time="0.022"><failure message="httpx.HTTPStatusError: Client error '422 {'json': {'credentials': {0: {'meta': {'doctype_value': ['Unknown field.']}}}}}' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422">tests/mdoc/test_mdoc_age_predicates.py:214: in test_multiple_age_predicates
+    dcql_response = await acapy_verifier_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '422 {'json': {'credentials': {0: {'meta': {'doctype_value': ['Unknown field.']}}}}}' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422</failure></testcase><testcase classname="tests.mdoc.test_mdoc_age_predicates.TestMdocAgePredicates" name="test_age_predicate_values" time="0.025"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/mdoc/test_mdoc_age_predicates.py:263: in test_age_predicate_values
+    await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.mdoc.test_mdoc_age_predicates.TestMdocAamvaAgePredicates" name="test_aamva_age_predicates" time="0.022"><failure message="httpx.HTTPStatusError: Client error '422 {'json': {'credentials': {0: {'meta': {'doctype_value': ['Unknown field.']}}}}}' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422">tests/mdoc/test_mdoc_age_predicates.py:334: in test_aamva_age_predicates
+    dcql_response = await acapy_verifier_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '422 {'json': {'credentials': {0: {'meta': {'doctype_value': ['Unknown field.']}}}}}' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422</failure></testcase><testcase classname="tests.mdoc.test_mdoc_age_predicates.TestMdocAgePredicateEdgeCases" name="test_age_boundary_exactly_18" time="0.000" /><testcase classname="tests.mdoc.test_mdoc_age_predicates.TestMdocAgePredicateEdgeCases" name="test_age_boundary_one_day_before_18" time="0.000" /><testcase classname="tests.mdoc.test_mdoc_age_predicates.TestMdocAgePredicateEdgeCases" name="test_age_predicate_leap_year_birthday" time="0.000" /><testcase classname="tests.mdoc.test_oid4vc_mdoc_compliance.TestOID4VCMdocCompliance" name="test_mdoc_credential_issuer_metadata" time="0.000"><skipped type="pytest.skip" message="Legacy test needing refactor">/usr/src/app/tests/mdoc/test_oid4vc_mdoc_compliance.py:30: Legacy test needing refactor</skipped></testcase><testcase classname="tests.mdoc.test_oid4vc_mdoc_compliance.TestOID4VCMdocCompliance" name="test_mdoc_credential_request_flow" time="0.000"><skipped type="pytest.skip" message="Legacy test needing refactor">/usr/src/app/tests/mdoc/test_oid4vc_mdoc_compliance.py:82: Legacy test needing refactor</skipped></testcase><testcase classname="tests.mdoc.test_oid4vc_mdoc_compliance.TestOID4VCMdocCompliance" name="test_mdoc_presentation_workflow" time="0.000"><skipped type="pytest.skip" message="Legacy test needing refactor">/usr/src/app/tests/mdoc/test_oid4vc_mdoc_compliance.py:196: Legacy test needing refactor</skipped></testcase><testcase classname="tests.mdoc.test_oid4vc_mdoc_compliance.TestOID4VCMdocCompliance" name="test_mdoc_interoperability_reader_sessions" time="0.000"><skipped type="pytest.skip" message="Legacy test needing refactor">/usr/src/app/tests/mdoc/test_oid4vc_mdoc_compliance.py:275: Legacy test needing refactor</skipped></testcase><testcase classname="tests.mdoc.test_pki" name="test_mdoc_pki_trust_chain" time="0.070"><error message="failed on setup with &quot;httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-verifier:8031/mso_mdoc/trust-anchors'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404&quot;">tests/conftest.py:555: in setup_pki_chain_trust_anchor
+    result = await acapy_verifier_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-verifier:8031/mso_mdoc/trust-anchors'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+During handling of the above exception, another exception occurred:
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:463: in setup
+    return super().setup()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:748: in pytest_fixture_setup
+    hook_result = yield
+                  ^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:318: in _asyncgen_fixture_wrapper
+    result = runner.run(setup(), context=context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:314: in setup
+    res = await gen_obj.__anext__()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/conftest.py:578: in setup_pki_chain_trust_anchor
+    anchors = await acapy_verifier_admin.get("/mso_mdoc/trust-anchors")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-verifier:8031/mso_mdoc/trust-anchors'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404</error></testcase><testcase classname="tests.mdoc.test_trust_anchor_validation.TestTrustAnchorManagement" name="test_create_trust_anchor" time="0.022"><failure message="assert 404 in [200, 201]&#10; +  where 404 = &lt;Response [404 Not Found]&gt;.status_code">tests/mdoc/test_trust_anchor_validation.py:72: in test_create_trust_anchor
+    assert response.status_code in [200, 201]
+E   assert 404 in [200, 201]
+E    +  where 404 = &lt;Response [404 Not Found]&gt;.status_code</failure></testcase><testcase classname="tests.mdoc.test_trust_anchor_validation.TestTrustAnchorManagement" name="test_get_trust_anchor" time="0.021"><skipped type="pytest.skip" message="Trust anchor creation endpoint not available">/usr/src/app/tests/mdoc/test_trust_anchor_validation.py:91: Trust anchor creation endpoint not available</skipped></testcase><testcase classname="tests.mdoc.test_trust_anchor_validation.TestTrustAnchorManagement" name="test_list_trust_anchors" time="0.021"><skipped type="pytest.skip" message="Trust anchor listing endpoint not available">/usr/src/app/tests/mdoc/test_trust_anchor_validation.py:107: Trust anchor listing endpoint not available</skipped></testcase><testcase classname="tests.mdoc.test_trust_anchor_validation.TestTrustAnchorManagement" name="test_delete_trust_anchor" time="0.023"><skipped type="pytest.skip" message="Trust anchor creation endpoint not available">/usr/src/app/tests/mdoc/test_trust_anchor_validation.py:128: Trust anchor creation endpoint not available</skipped></testcase><testcase classname="tests.mdoc.test_trust_anchor_validation.TestTrustAnchorManagement" name="test_duplicate_trust_anchor_id" time="0.022"><skipped type="pytest.skip" message="Trust anchor creation endpoint not available">/usr/src/app/tests/mdoc/test_trust_anchor_validation.py:154: Trust anchor creation endpoint not available</skipped></testcase><testcase classname="tests.mdoc.test_trust_anchor_validation.TestCertificateValidation" name="test_invalid_certificate_format" time="0.022"><failure message="assert 404 in [200, 400, 422]&#10; +  where 404 = &lt;Response [404 Not Found]&gt;.status_code">tests/mdoc/test_trust_anchor_validation.py:189: in test_invalid_certificate_format
+    assert response.status_code in [200, 400, 422]
+E   assert 404 in [200, 400, 422]
+E    +  where 404 = &lt;Response [404 Not Found]&gt;.status_code</failure></testcase><testcase classname="tests.mdoc.test_trust_anchor_validation.TestCertificateValidation" name="test_empty_certificate" time="0.023"><failure message="assert 404 in [400, 422]&#10; +  where 404 = &lt;Response [404 Not Found]&gt;.status_code">tests/mdoc/test_trust_anchor_validation.py:202: in test_empty_certificate
+    assert response.status_code in [400, 422]
+E   assert 404 in [400, 422]
+E    +  where 404 = &lt;Response [404 Not Found]&gt;.status_code</failure></testcase><testcase classname="tests.mdoc.test_trust_anchor_validation.TestCertificateValidation" name="test_certificate_with_invalid_pem_markers" time="0.022"><failure message="assert 404 in [200, 400, 422]&#10; +  where 404 = &lt;Response [404 Not Found]&gt;.status_code">tests/mdoc/test_trust_anchor_validation.py:222: in test_certificate_with_invalid_pem_markers
+    assert response.status_code in [200, 400, 422]
+E   assert 404 in [200, 400, 422]
+E    +  where 404 = &lt;Response [404 Not Found]&gt;.status_code</failure></testcase><testcase classname="tests.mdoc.test_trust_anchor_validation.TestChainValidation" name="test_verification_without_trust_anchor" time="0.023"><failure message="httpx.HTTPStatusError: Client error '422 {'json': {'credentials': {0: {'meta': {'doctype_value': ['Unknown field.']}}}}}' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422">tests/mdoc/test_trust_anchor_validation.py:257: in test_verification_without_trust_anchor
+    query_response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '422 {'json': {'credentials': {0: {'meta': {'doctype_value': ['Unknown field.']}}}}}' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422</failure></testcase><testcase classname="tests.mdoc.test_trust_anchor_validation.TestChainValidation" name="test_verification_with_trust_anchor" time="0.022" /><testcase classname="tests.mdoc.test_trust_anchor_validation.TestTrustStoreConfiguration" name="test_file_based_trust_store" time="0.020" /><testcase classname="tests.mdoc.test_trust_anchor_validation.TestTrustStoreConfiguration" name="test_wallet_based_trust_store" time="0.022" /><testcase classname="tests.mdoc.test_trust_anchor_validation.TestIssuerCertificates" name="test_generate_issuer_key" time="0.022"><skipped type="pytest.skip" message="mDOC key generation endpoint not available">/usr/src/app/tests/mdoc/test_trust_anchor_validation.py:351: mDOC key generation endpoint not available</skipped></testcase><testcase classname="tests.mdoc.test_trust_anchor_validation.TestIssuerCertificates" name="test_list_issuer_keys" time="0.024"><skipped type="pytest.skip" message="mDOC key listing endpoint not available">/usr/src/app/tests/mdoc/test_trust_anchor_validation.py:363: mDOC key listing endpoint not available</skipped></testcase><testcase classname="tests.mdoc.test_trust_anchor_validation.TestIssuerCertificates" name="test_get_issuer_certificate_chain" time="0.023"><skipped type="pytest.skip" message="mDOC key endpoints not available">/usr/src/app/tests/mdoc/test_trust_anchor_validation.py:381: mDOC key endpoints not available</skipped></testcase><testcase classname="tests.mdoc.test_trust_anchor_validation.TestEndToEndTrustChain" name="test_complete_trust_chain_flow" time="0.038"><failure message="AssertionError: Failed to generate key: 404: Not Found&#10;assert 404 in [200, 201]&#10; +  where 404 = &lt;Response [404 Not Found]&gt;.status_code">tests/mdoc/test_trust_anchor_validation.py:458: in test_complete_trust_chain_flow
+    assert key_response.status_code in [
+E   AssertionError: Failed to generate key: 404: Not Found
+E   assert 404 in [200, 201]
+E    +  where 404 = &lt;Response [404 Not Found]&gt;.status_code</failure></testcase><testcase classname="tests.revocation.test_credo_revocation.TestCredoRevocationFlow" name="test_issue_revoke_verify_jwt_vc" time="0.082"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/revocation/test_credo_revocation.py:65: in test_issue_revoke_verify_jwt_vc
+    config_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.revocation.test_credo_revocation.TestCredoRevocationFlow" name="test_issue_revoke_verify_sd_jwt" time="0.025"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/revocation/test_credo_revocation.py:200: in test_issue_revoke_verify_sd_jwt
+    config_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.revocation.test_credo_revocation.TestCredoRevocationFlow" name="test_presentation_with_revoked_credential" time="0.023"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/revocation/test_credo_revocation.py:329: in test_presentation_with_revoked_credential
+    config_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.revocation.test_credo_revocation.TestRevocationEdgeCases" name="test_revoke_nonexistent_credential" time="0.115"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/revocation/test_credo_revocation.py:582: in test_revoke_nonexistent_credential
+    config_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.revocation.test_credo_revocation.TestRevocationEdgeCases" name="test_unrevoke_credential" time="0.023"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/revocation/test_credo_revocation.py:637: in test_unrevoke_credential
+    config_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.revocation.test_credo_revocation.TestRevocationEdgeCases" name="test_suspension_vs_revocation" time="0.030"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/revocation/test_credo_revocation.py:734: in test_suspension_vs_revocation
+    config_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.revocation.test_oid4vci_revocation.TestOID4VCIRevocation" name="test_revocation_status_in_credential" time="0.000"><skipped type="pytest.skip" message="Legacy test needing refactor">/usr/src/app/tests/revocation/test_oid4vci_revocation.py:27: Legacy test needing refactor</skipped></testcase><testcase classname="tests.test_interop.test_credo_mdoc" name="test_mdoc_credential_config_creation" time="0.024"><error message="failed on setup with &quot;httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500&quot;">tests/test_interop/test_credo_mdoc.py:116: in mdoc_credential_config
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</error></testcase><testcase classname="tests.test_interop.test_credo_mdoc" name="test_mdoc_issuer_key_generation" time="0.024"><error message="failed on setup with &quot;httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/generate-keys'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404&quot;">tests/test_interop/test_credo_mdoc.py:150: in mdoc_issuer_key
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/generate-keys'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404</error></testcase><testcase classname="tests.test_interop.test_credo_mdoc" name="test_mdoc_offer_creation_did_based" time="0.024"><error message="failed on setup with &quot;httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500&quot;">tests/test_interop/test_credo_mdoc.py:116: in mdoc_credential_config
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</error></testcase><testcase classname="tests.test_interop.test_credo_mdoc" name="test_mdoc_offer_creation_verification_method" time="0.024"><error message="failed on setup with &quot;httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500&quot;">tests/test_interop/test_credo_mdoc.py:116: in mdoc_credential_config
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</error></testcase><testcase classname="tests.test_interop.test_credo_mdoc" name="test_mdoc_credential_acceptance_did_based" time="0.044"><error message="failed on setup with &quot;httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500&quot;">tests/test_interop/test_credo_mdoc.py:116: in mdoc_credential_config
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</error></testcase><testcase classname="tests.test_interop.test_credo_mdoc" name="test_mdoc_credential_acceptance_verification_method" time="0.042"><error message="failed on setup with &quot;httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500&quot;">tests/test_interop/test_credo_mdoc.py:116: in mdoc_credential_config
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</error></testcase><testcase classname="tests.test_interop.test_credo_mdoc" name="test_mdoc_presentation_request_creation" time="0.022"><error message="failed on setup with &quot;httpx.HTTPStatusError: Client error '422 {'json': {'credentials': {0: {'meta': {'doctype_value': ['Unknown field.']}}}}}' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422&quot;">tests/test_interop/test_credo_mdoc.py:303: in mdoc_presentation_request
+    return await create_dcql_request(acapy_verifier, dcql_query)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_interop/test_credo_mdoc.py:57: in create_dcql_request
+    query_response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '422 {'json': {'credentials': {0: {'meta': {'doctype_value': ['Unknown field.']}}}}}' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422</error></testcase><testcase classname="tests.test_interop.test_credo_mdoc" name="test_mdoc_selective_disclosure_presentation" time="0.107"><error message="failed on setup with &quot;httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500&quot;">tests/test_interop/test_credo_mdoc.py:116: in mdoc_credential_config
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</error></testcase><testcase classname="tests.test_interop.test_credo_mdoc" name="test_mdoc_age_predicate_verification" time="0.046"><error message="failed on setup with &quot;httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500&quot;">tests/test_interop/test_credo_mdoc.py:116: in mdoc_credential_config
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</error></testcase><testcase classname="tests.test_interop.test_credo_mdoc" name="test_mdoc_presentation_verification_method_flow" time="0.045"><error message="failed on setup with &quot;httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500&quot;">tests/test_interop/test_credo_mdoc.py:116: in mdoc_credential_config
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</error></testcase><testcase classname="tests.test_interop.test_credo_mdoc" name="test_mdoc_wrong_doctype_rejected" time="0.023"><failure message="httpx.HTTPStatusError: Client error '422 {'json': {'credentials': {0: {'meta': {'doctype_value': ['Unknown field.']}}}}}' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422">tests/test_interop/test_credo_mdoc.py:543: in test_mdoc_wrong_doctype_rejected
+    query_response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '422 {'json': {'credentials': {0: {'meta': {'doctype_value': ['Unknown field.']}}}}}' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422</failure></testcase><testcase classname="tests.test_interop.test_credo_mdoc" name="test_mdoc_missing_required_claim_handling" time="0.024"><error message="failed on setup with &quot;httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500&quot;">tests/test_interop/test_credo_mdoc.py:116: in mdoc_credential_config
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</error></testcase><testcase classname="tests.test_interop.test_credo_mdoc" name="test_dcql_credential_sets_request" time="0.022"><failure message="httpx.HTTPStatusError: Client error '422 {'json': {'credentials': {0: {'meta': {'doctype_value': ['Unknown field.']}}, 1: {'meta': {'doctype_value': ['Unknown field.']}}}}}' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422">tests/test_interop/test_credo_mdoc.py:639: in test_dcql_credential_sets_request
+    request_uri = await create_dcql_request(acapy_verifier, dcql_query)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_interop/test_credo_mdoc.py:57: in create_dcql_request
+    query_response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '422 {'json': {'credentials': {0: {'meta': {'doctype_value': ['Unknown field.']}}, 1: {'meta': {'doctype_value': ['Unknown field.']}}}}}' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422</failure></testcase><testcase classname="tests.test_interop.test_credo_mdoc" name="test_dcql_claim_sets_request" time="0.023"><failure message="httpx.HTTPStatusError: Client error '422 {'json': {'credentials': {0: {'meta': {'doctype_value': ['Unknown field.']}}}}}' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422">tests/test_interop/test_credo_mdoc.py:688: in test_dcql_claim_sets_request
+    request_uri = await create_dcql_request(acapy_verifier, dcql_query)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_interop/test_credo_mdoc.py:57: in create_dcql_request
+    query_response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '422 {'json': {'credentials': {0: {'meta': {'doctype_value': ['Unknown field.']}}}}}' for url 'http://acapy-verifier:8031/oid4vp/dcql/queries'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/422</failure></testcase><testcase classname="tests.validation.test_compatibility_edge_cases" name="test_credo_empty_claim_values" time="0.082"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/validation/test_compatibility_edge_cases.py:53: in test_credo_empty_claim_values
+    config = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.validation.test_compatibility_edge_cases" name="test_credo_special_characters_in_claims" time="0.025"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/validation/test_compatibility_edge_cases.py:188: in test_credo_special_characters_in_claims
+    config = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.validation.test_compatibility_edge_cases" name="test_large_credential_subject" time="0.025"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/validation/test_compatibility_edge_cases.py:315: in test_large_credential_subject
+    config = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.validation.test_docker_connectivity" name="test_docker_network_connectivity" time="0.058" /><testcase classname="tests.validation.test_docker_connectivity" name="test_oid4vci_well_known_endpoint" time="0.032" /><testcase classname="tests.validation.test_negative_errors.TestOID4VCIErrors" name="test_invalid_supported_cred_id" time="0.024" /><testcase classname="tests.validation.test_negative_errors.TestOID4VCIErrors" name="test_missing_credential_subject" time="0.039" /><testcase classname="tests.validation.test_negative_errors.TestOID4VCIErrors" name="test_invalid_exchange_id_for_offer" time="0.023" /><testcase classname="tests.validation.test_negative_errors.TestOID4VCIErrors" name="test_duplicate_credential_config_id" time="0.033" /><testcase classname="tests.validation.test_negative_errors.TestOID4VCIErrors" name="test_unsupported_credential_format" time="0.023" /><testcase classname="tests.validation.test_negative_errors.TestOID4VPErrors" name="test_invalid_presentation_definition_id" time="0.056" /><testcase classname="tests.validation.test_negative_errors.TestOID4VPErrors" name="test_empty_input_descriptors" time="0.026" /><testcase classname="tests.validation.test_negative_errors.TestOID4VPErrors" name="test_missing_format_in_descriptor" time="0.027" /><testcase classname="tests.validation.test_negative_errors.TestDCQLErrors" name="test_dcql_empty_credentials" time="0.022" /><testcase classname="tests.validation.test_negative_errors.TestDCQLErrors" name="test_dcql_invalid_format" time="0.023" /><testcase classname="tests.validation.test_negative_errors.TestDCQLErrors" name="test_dcql_path_and_namespace_conflict" time="0.021" /><testcase classname="tests.validation.test_negative_errors.TestDCQLErrors" name="test_dcql_namespace_without_claim_name" time="0.022" /><testcase classname="tests.validation.test_negative_errors.TestDCQLErrors" name="test_dcql_invalid_credential_set_reference" time="0.028" /><testcase classname="tests.validation.test_negative_errors.TestMDocErrors" name="test_mdoc_invalid_doctype_format" time="0.023" /><testcase classname="tests.validation.test_negative_errors.TestMDocErrors" name="test_mdoc_both_doctype_value_and_values" time="0.024" /><testcase classname="tests.validation.test_negative_errors.TestMDocErrors" name="test_mdoc_vct_with_doctype" time="0.022" /><testcase classname="tests.validation.test_negative_errors.TestTokenErrors" name="test_expired_pre_authorized_code" time="0.021" /><testcase classname="tests.validation.test_negative_errors.TestTokenErrors" name="test_invalid_grant_type" time="0.022" /><testcase classname="tests.validation.test_negative_errors.TestFormatErrors" name="test_sdjwt_without_vct" time="0.023" /><testcase classname="tests.validation.test_negative_errors.TestFormatErrors" name="test_jwt_vc_without_types" time="0.035" /><testcase classname="tests.validation.test_oid4vci_10_compliance.TestOID4VCI10Compliance" name="test_oid4vci_10_metadata" time="0.023"><failure message="httpx.ConnectError: [Errno -2] Name or service not known">.venv/lib/python3.12/site-packages/httpx/_transports/default.py:101: in map_httpcore_exceptions
+    yield
+.venv/lib/python3.12/site-packages/httpx/_transports/default.py:394: in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py:256: in handle_async_request
+    raise exc from None
+.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py:236: in handle_async_request
+    response = await connection.handle_async_request(
+.venv/lib/python3.12/site-packages/httpcore/_async/connection.py:101: in handle_async_request
+    raise exc
+.venv/lib/python3.12/site-packages/httpcore/_async/connection.py:78: in handle_async_request
+    stream = await self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/httpcore/_async/connection.py:124: in _connect
+    stream = await self._network_backend.connect_tcp(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/httpcore/_backends/auto.py:31: in connect_tcp
+    return await self._backend.connect_tcp(
+.venv/lib/python3.12/site-packages/httpcore/_backends/anyio.py:113: in connect_tcp
+    with map_exceptions(exc_map):
+         ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/contextlib.py:158: in __exit__
+    self.gen.throw(value)
+.venv/lib/python3.12/site-packages/httpcore/_exceptions.py:14: in map_exceptions
+    raise to_exc(exc) from exc
+E   httpcore.ConnectError: [Errno -2] Name or service not known
+
+The above exception was the direct cause of the following exception:
+tests/validation/test_oid4vci_10_compliance.py:29: in test_oid4vci_10_metadata
+    response = await client.get(
+.venv/lib/python3.12/site-packages/httpx/_client.py:1768: in get
+    return await self.request(
+.venv/lib/python3.12/site-packages/httpx/_client.py:1540: in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/httpx/_client.py:1629: in send
+    response = await self._send_handling_auth(
+.venv/lib/python3.12/site-packages/httpx/_client.py:1657: in _send_handling_auth
+    response = await self._send_handling_redirects(
+.venv/lib/python3.12/site-packages/httpx/_client.py:1694: in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/httpx/_client.py:1730: in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/httpx/_transports/default.py:393: in handle_async_request
+    with map_httpcore_exceptions():
+         ^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/contextlib.py:158: in __exit__
+    self.gen.throw(value)
+.venv/lib/python3.12/site-packages/httpx/_transports/default.py:118: in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+E   httpx.ConnectError: [Errno -2] Name or service not known</failure></testcase><testcase classname="tests.validation.test_oid4vci_10_compliance.TestOID4VCI10Compliance" name="test_oid4vci_10_credential_request_with_identifier" time="0.000"><error message="failed on setup with &quot;file /usr/src/app/tests/validation/test_oid4vci_10_compliance.py, line 85&#10;      @pytest.mark.asyncio&#10;      async def test_oid4vci_10_credential_request_with_identifier(self, test_runner):&#10;          &quot;&quot;&quot;Test OID4VCI 1.0 § 7.2: Credential Request with credential_identifier.&quot;&quot;&quot;&#10;          LOGGER.info(&#10;              &quot;Testing OID4VCI 1.0 credential request with credential_identifier...&quot;&#10;          )&#10;&#10;          # Setup supported credential&#10;          supported_cred_result = await test_runner.setup_supported_credential()&#10;          supported_cred_id = supported_cred_result[&quot;supported_cred_id&quot;]&#10;          credential_identifier = supported_cred_result[&quot;identifier&quot;]&#10;          offer_data = await test_runner.create_credential_offer(supported_cred_id)&#10;&#10;          # Get access token&#10;          grants = offer_data[&quot;offer&quot;][&quot;grants&quot;]&#10;          pre_auth_grant = grants[&quot;urn:ietf:params:oauth:grant-type:pre-authorized_code&quot;]&#10;          pre_authorized_code = pre_auth_grant[&quot;pre-authorized_code&quot;]&#10;&#10;          async with httpx.AsyncClient() as client:&#10;              token_response = await client.post(&#10;                  f&quot;{TEST_CONFIG['oid4vci_endpoint']}/token&quot;,&#10;                  data={&#10;                      &quot;grant_type&quot;: &quot;urn:ietf:params:oauth:grant-type:pre-authorized_code&quot;,&#10;                      &quot;pre-authorized_code&quot;: pre_authorized_code,&#10;                  },&#10;                  headers={&quot;Content-Type&quot;: &quot;application/x-www-form-urlencoded&quot;},&#10;              )&#10;              assert token_response.status_code == 200&#10;              token_data = token_response.json()&#10;              access_token = token_data[&quot;access_token&quot;]&#10;              c_nonce = token_data.get(&quot;c_nonce&quot;)&#10;&#10;              # Generate proof&#10;              key = Key.generate(KeyAlg.ED25519)&#10;              jwk = json.loads(key.get_jwk_public())&#10;&#10;              header = {&quot;typ&quot;: &quot;openid4vci-proof+jwt&quot;, &quot;alg&quot;: &quot;EdDSA&quot;, &quot;jwk&quot;: jwk}&#10;&#10;              payload = {&#10;                  &quot;nonce&quot;: c_nonce,&#10;                  &quot;aud&quot;: f&quot;{TEST_CONFIG['oid4vci_endpoint']}&quot;,&#10;                  &quot;iat&quot;: int(time.time()),&#10;              }&#10;&#10;              encoded_header = (&#10;                  base64.urlsafe_b64encode(json.dumps(header).encode())&#10;                  .decode()&#10;                  .rstrip(&quot;=&quot;)&#10;              )&#10;              encoded_payload = (&#10;                  base64.urlsafe_b64encode(json.dumps(payload).encode())&#10;                  .decode()&#10;                  .rstrip(&quot;=&quot;)&#10;              )&#10;&#10;              sig_input = f&quot;{encoded_header}.{encoded_payload}&quot;.encode()&#10;              signature = key.sign_message(sig_input)&#10;              encoded_signature = base64.urlsafe_b64encode(signature).decode().rstrip(&quot;=&quot;)&#10;&#10;              proof_jwt = f&quot;{encoded_header}.{encoded_payload}.{encoded_signature}&quot;&#10;&#10;              # Test credential request with credential_identifier (OID4VCI 1.0 format)&#10;              # Use a credential that maps to jwt_vc_json to avoid mso_mdoc dependency issues&#10;              credential_request = {&#10;                  &quot;credential_identifier&quot;: credential_identifier,&#10;                  &quot;proof&quot;: {&quot;jwt&quot;: proof_jwt},&#10;              }&#10;&#10;              cred_response = await client.post(&#10;                  f&quot;{TEST_CONFIG['oid4vci_endpoint']}/credential&quot;,&#10;                  json=credential_request,&#10;                  headers={&quot;Authorization&quot;: f&quot;Bearer {access_token}&quot;},&#10;              )&#10;&#10;              # Should succeed with OID4VCI 1.0 format&#10;              assert cred_response.status_code == 200&#10;              cred_data = cred_response.json()&#10;&#10;              # Validate response structure&#10;              assert &quot;format&quot; in cred_data&#10;              assert &quot;credential&quot; in cred_data&#10;              assert cred_data[&quot;format&quot;] == &quot;jwt_vc_json&quot;&#10;&#10;              test_runner.test_results[&quot;credential_request_identifier&quot;] = {&#10;                  &quot;status&quot;: &quot;PASS&quot;,&#10;                  &quot;response&quot;: cred_data,&#10;                  &quot;validation&quot;: &quot;OID4VCI 1.0 § 7.2 credential_identifier compliant&quot;,&#10;              }&#10;E       fixture 'test_runner' not found&#10;&gt;       available fixtures: _class_scoped_runner, _function_scoped_runner, _module_scoped_runner, _package_scoped_runner, _session_scoped_runner, acapy_admin, acapy_issuer_admin, acapy_verifier_admin, anyio_backend, anyio_backend_name, anyio_backend_options, cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, controller, credo, credo_client, doctest_namespace, event_loop_policy, extra, extras, free_tcp_port, free_tcp_port_factory, free_udp_port, free_udp_port_factory, generated_test_certs, include_metadata_in_junit_xml, issuer_ed25519_did, issuer_p256_did, mdoc_credential_config, metadata, monkeypatch, offer, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, sd_jwt_credential_config, setup_all_trust_anchors, setup_credo_trust_anchors, setup_issuer_certs, setup_pki_chain_trust_anchor, setup_verifier_trust_anchors, sphereon, sphereon_client, testrun_uid, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory, worker_id&#10;&gt;       use 'pytest --fixtures [testpath]' for help on them.&#10;&#10;/usr/src/app/tests/validation/test_oid4vci_10_compliance.py:85&quot;">file /usr/src/app/tests/validation/test_oid4vci_10_compliance.py, line 85
+      @pytest.mark.asyncio
+      async def test_oid4vci_10_credential_request_with_identifier(self, test_runner):
+          """Test OID4VCI 1.0 § 7.2: Credential Request with credential_identifier."""
+          LOGGER.info(
+              "Testing OID4VCI 1.0 credential request with credential_identifier..."
+          )
+
+          # Setup supported credential
+          supported_cred_result = await test_runner.setup_supported_credential()
+          supported_cred_id = supported_cred_result["supported_cred_id"]
+          credential_identifier = supported_cred_result["identifier"]
+          offer_data = await test_runner.create_credential_offer(supported_cred_id)
+
+          # Get access token
+          grants = offer_data["offer"]["grants"]
+          pre_auth_grant = grants["urn:ietf:params:oauth:grant-type:pre-authorized_code"]
+          pre_authorized_code = pre_auth_grant["pre-authorized_code"]
+
+          async with httpx.AsyncClient() as client:
+              token_response = await client.post(
+                  f"{TEST_CONFIG['oid4vci_endpoint']}/token",
+                  data={
+                      "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+                      "pre-authorized_code": pre_authorized_code,
+                  },
+                  headers={"Content-Type": "application/x-www-form-urlencoded"},
+              )
+              assert token_response.status_code == 200
+              token_data = token_response.json()
+              access_token = token_data["access_token"]
+              c_nonce = token_data.get("c_nonce")
+
+              # Generate proof
+              key = Key.generate(KeyAlg.ED25519)
+              jwk = json.loads(key.get_jwk_public())
+
+              header = {"typ": "openid4vci-proof+jwt", "alg": "EdDSA", "jwk": jwk}
+
+              payload = {
+                  "nonce": c_nonce,
+                  "aud": f"{TEST_CONFIG['oid4vci_endpoint']}",
+                  "iat": int(time.time()),
+              }
+
+              encoded_header = (
+                  base64.urlsafe_b64encode(json.dumps(header).encode())
+                  .decode()
+                  .rstrip("=")
+              )
+              encoded_payload = (
+                  base64.urlsafe_b64encode(json.dumps(payload).encode())
+                  .decode()
+                  .rstrip("=")
+              )
+
+              sig_input = f"{encoded_header}.{encoded_payload}".encode()
+              signature = key.sign_message(sig_input)
+              encoded_signature = base64.urlsafe_b64encode(signature).decode().rstrip("=")
+
+              proof_jwt = f"{encoded_header}.{encoded_payload}.{encoded_signature}"
+
+              # Test credential request with credential_identifier (OID4VCI 1.0 format)
+              # Use a credential that maps to jwt_vc_json to avoid mso_mdoc dependency issues
+              credential_request = {
+                  "credential_identifier": credential_identifier,
+                  "proof": {"jwt": proof_jwt},
+              }
+
+              cred_response = await client.post(
+                  f"{TEST_CONFIG['oid4vci_endpoint']}/credential",
+                  json=credential_request,
+                  headers={"Authorization": f"Bearer {access_token}"},
+              )
+
+              # Should succeed with OID4VCI 1.0 format
+              assert cred_response.status_code == 200
+              cred_data = cred_response.json()
+
+              # Validate response structure
+              assert "format" in cred_data
+              assert "credential" in cred_data
+              assert cred_data["format"] == "jwt_vc_json"
+
+              test_runner.test_results["credential_request_identifier"] = {
+                  "status": "PASS",
+                  "response": cred_data,
+                  "validation": "OID4VCI 1.0 § 7.2 credential_identifier compliant",
+              }
+E       fixture 'test_runner' not found
+&gt;       available fixtures: _class_scoped_runner, _function_scoped_runner, _module_scoped_runner, _package_scoped_runner, _session_scoped_runner, acapy_admin, acapy_issuer_admin, acapy_verifier_admin, anyio_backend, anyio_backend_name, anyio_backend_options, cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, controller, credo, credo_client, doctest_namespace, event_loop_policy, extra, extras, free_tcp_port, free_tcp_port_factory, free_udp_port, free_udp_port_factory, generated_test_certs, include_metadata_in_junit_xml, issuer_ed25519_did, issuer_p256_did, mdoc_credential_config, metadata, monkeypatch, offer, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, sd_jwt_credential_config, setup_all_trust_anchors, setup_credo_trust_anchors, setup_issuer_certs, setup_pki_chain_trust_anchor, setup_verifier_trust_anchors, sphereon, sphereon_client, testrun_uid, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory, worker_id
+&gt;       use 'pytest --fixtures [testpath]' for help on them.
+
+/usr/src/app/tests/validation/test_oid4vci_10_compliance.py:85</error></testcase><testcase classname="tests.validation.test_oid4vci_10_compliance.TestOID4VCI10Compliance" name="test_oid4vci_10_mutual_exclusion" time="0.000"><error message="failed on setup with &quot;file /usr/src/app/tests/validation/test_oid4vci_10_compliance.py, line 174&#10;      @pytest.mark.asyncio&#10;      async def test_oid4vci_10_mutual_exclusion(self, test_runner):&#10;          &quot;&quot;&quot;Test OID4VCI 1.0 § 7.2: credential_identifier and format mutual exclusion.&quot;&quot;&quot;&#10;          LOGGER.info(&quot;Testing credential_identifier and format mutual exclusion...&quot;)&#10;&#10;          # Setup&#10;          supported_cred_result = await test_runner.setup_supported_credential()&#10;          supported_cred_id = supported_cred_result[&quot;supported_cred_id&quot;]&#10;          offer_data = await test_runner.create_credential_offer(supported_cred_id)&#10;&#10;          # Extract pre-authorized code from credential offer&#10;          grants = offer_data[&quot;offer&quot;][&quot;grants&quot;]&#10;          pre_auth_grant = grants[&quot;urn:ietf:params:oauth:grant-type:pre-authorized_code&quot;]&#10;          pre_authorized_code = pre_auth_grant[&quot;pre-authorized_code&quot;]&#10;&#10;          async with httpx.AsyncClient() as client:&#10;              # Get access token&#10;              token_response = await client.post(&#10;                  f&quot;{TEST_CONFIG['oid4vci_endpoint']}/token&quot;,&#10;                  data={&#10;                      &quot;grant_type&quot;: &quot;urn:ietf:params:oauth:grant-type:pre-authorized_code&quot;,&#10;                      &quot;pre-authorized_code&quot;: pre_authorized_code,&#10;                  },&#10;                  headers={&quot;Content-Type&quot;: &quot;application/x-www-form-urlencoded&quot;},&#10;                  timeout=30,&#10;              )&#10;              try:&#10;                  token_data = token_response.json()&#10;                  access_token = token_data[&quot;access_token&quot;]&#10;              except json.JSONDecodeError as e:&#10;                  LOGGER.error(&quot;Failed to parse token response as JSON: %s&quot;, e)&#10;                  LOGGER.error(&quot;Response content: %s&quot;, token_response.text)&#10;                  raise&#10;&#10;              # Test with both parameters (should fail)&#10;              invalid_request = {&#10;                  &quot;credential_identifier&quot;: &quot;org.iso.18013.5.1.mDL&quot;,&#10;                  &quot;format&quot;: &quot;jwt_vc_json&quot;,  # Both present - violation of OID4VCI 1.0 § 7.2&#10;                  &quot;proof&quot;: {&quot;jwt&quot;: &quot;test_jwt&quot;},&#10;              }&#10;&#10;              response = await client.post(&#10;                  f&quot;{TEST_CONFIG['oid4vci_endpoint']}/credential&quot;,&#10;                  json=invalid_request,&#10;                  headers={&quot;Authorization&quot;: f&quot;Bearer {access_token}&quot;},&#10;              )&#10;&#10;              # Should fail with 400 Bad Request&#10;              assert response.status_code == 400&#10;              error_msg = response.json().get(&quot;message&quot;, &quot;&quot;)&#10;              assert &quot;mutually exclusive&quot; in error_msg.lower()&#10;&#10;              # Test with neither parameter (should fail)&#10;              invalid_request2 = {&#10;                  &quot;proof&quot;: {&quot;jwt&quot;: &quot;test_jwt&quot;}&#10;                  # Neither credential_identifier nor format&#10;              }&#10;&#10;              response2 = await client.post(&#10;                  f&quot;{TEST_CONFIG['oid4vci_endpoint']}/credential&quot;,&#10;                  json=invalid_request2,&#10;                  headers={&quot;Authorization&quot;: f&quot;Bearer {access_token}&quot;},&#10;              )&#10;&#10;              assert response2.status_code == 400&#10;&#10;              test_runner.test_results[&quot;mutual_exclusion&quot;] = {&#10;                  &quot;status&quot;: &quot;PASS&quot;,&#10;                  &quot;validation&quot;: &quot;OID4VCI 1.0 § 7.2 mutual exclusion enforced&quot;,&#10;              }&#10;E       fixture 'test_runner' not found&#10;&gt;       available fixtures: _class_scoped_runner, _function_scoped_runner, _module_scoped_runner, _package_scoped_runner, _session_scoped_runner, acapy_admin, acapy_issuer_admin, acapy_verifier_admin, anyio_backend, anyio_backend_name, anyio_backend_options, cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, controller, credo, credo_client, doctest_namespace, event_loop_policy, extra, extras, free_tcp_port, free_tcp_port_factory, free_udp_port, free_udp_port_factory, generated_test_certs, include_metadata_in_junit_xml, issuer_ed25519_did, issuer_p256_did, mdoc_credential_config, metadata, monkeypatch, offer, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, sd_jwt_credential_config, setup_all_trust_anchors, setup_credo_trust_anchors, setup_issuer_certs, setup_pki_chain_trust_anchor, setup_verifier_trust_anchors, sphereon, sphereon_client, testrun_uid, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory, worker_id&#10;&gt;       use 'pytest --fixtures [testpath]' for help on them.&#10;&#10;/usr/src/app/tests/validation/test_oid4vci_10_compliance.py:174&quot;">file /usr/src/app/tests/validation/test_oid4vci_10_compliance.py, line 174
+      @pytest.mark.asyncio
+      async def test_oid4vci_10_mutual_exclusion(self, test_runner):
+          """Test OID4VCI 1.0 § 7.2: credential_identifier and format mutual exclusion."""
+          LOGGER.info("Testing credential_identifier and format mutual exclusion...")
+
+          # Setup
+          supported_cred_result = await test_runner.setup_supported_credential()
+          supported_cred_id = supported_cred_result["supported_cred_id"]
+          offer_data = await test_runner.create_credential_offer(supported_cred_id)
+
+          # Extract pre-authorized code from credential offer
+          grants = offer_data["offer"]["grants"]
+          pre_auth_grant = grants["urn:ietf:params:oauth:grant-type:pre-authorized_code"]
+          pre_authorized_code = pre_auth_grant["pre-authorized_code"]
+
+          async with httpx.AsyncClient() as client:
+              # Get access token
+              token_response = await client.post(
+                  f"{TEST_CONFIG['oid4vci_endpoint']}/token",
+                  data={
+                      "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+                      "pre-authorized_code": pre_authorized_code,
+                  },
+                  headers={"Content-Type": "application/x-www-form-urlencoded"},
+                  timeout=30,
+              )
+              try:
+                  token_data = token_response.json()
+                  access_token = token_data["access_token"]
+              except json.JSONDecodeError as e:
+                  LOGGER.error("Failed to parse token response as JSON: %s", e)
+                  LOGGER.error("Response content: %s", token_response.text)
+                  raise
+
+              # Test with both parameters (should fail)
+              invalid_request = {
+                  "credential_identifier": "org.iso.18013.5.1.mDL",
+                  "format": "jwt_vc_json",  # Both present - violation of OID4VCI 1.0 § 7.2
+                  "proof": {"jwt": "test_jwt"},
+              }
+
+              response = await client.post(
+                  f"{TEST_CONFIG['oid4vci_endpoint']}/credential",
+                  json=invalid_request,
+                  headers={"Authorization": f"Bearer {access_token}"},
+              )
+
+              # Should fail with 400 Bad Request
+              assert response.status_code == 400
+              error_msg = response.json().get("message", "")
+              assert "mutually exclusive" in error_msg.lower()
+
+              # Test with neither parameter (should fail)
+              invalid_request2 = {
+                  "proof": {"jwt": "test_jwt"}
+                  # Neither credential_identifier nor format
+              }
+
+              response2 = await client.post(
+                  f"{TEST_CONFIG['oid4vci_endpoint']}/credential",
+                  json=invalid_request2,
+                  headers={"Authorization": f"Bearer {access_token}"},
+              )
+
+              assert response2.status_code == 400
+
+              test_runner.test_results["mutual_exclusion"] = {
+                  "status": "PASS",
+                  "validation": "OID4VCI 1.0 § 7.2 mutual exclusion enforced",
+              }
+E       fixture 'test_runner' not found
+&gt;       available fixtures: _class_scoped_runner, _function_scoped_runner, _module_scoped_runner, _package_scoped_runner, _session_scoped_runner, acapy_admin, acapy_issuer_admin, acapy_verifier_admin, anyio_backend, anyio_backend_name, anyio_backend_options, cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, controller, credo, credo_client, doctest_namespace, event_loop_policy, extra, extras, free_tcp_port, free_tcp_port_factory, free_udp_port, free_udp_port_factory, generated_test_certs, include_metadata_in_junit_xml, issuer_ed25519_did, issuer_p256_did, mdoc_credential_config, metadata, monkeypatch, offer, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, sd_jwt_credential_config, setup_all_trust_anchors, setup_credo_trust_anchors, setup_issuer_certs, setup_pki_chain_trust_anchor, setup_verifier_trust_anchors, sphereon, sphereon_client, testrun_uid, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory, worker_id
+&gt;       use 'pytest --fixtures [testpath]' for help on them.
+
+/usr/src/app/tests/validation/test_oid4vci_10_compliance.py:174</error></testcase><testcase classname="tests.validation.test_oid4vci_10_compliance.TestOID4VCI10Compliance" name="test_oid4vci_10_proof_of_possession" time="0.000"><error message="failed on setup with &quot;file /usr/src/app/tests/validation/test_oid4vci_10_compliance.py, line 245&#10;      @pytest.mark.asyncio&#10;      async def test_oid4vci_10_proof_of_possession(self, test_runner):&#10;          &quot;&quot;&quot;Test OID4VCI 1.0 § 7.2.1: Proof of Possession validation.&quot;&quot;&quot;&#10;          LOGGER.info(&quot;Testing OID4VCI 1.0 proof of possession...&quot;)&#10;&#10;          # Setup&#10;          supported_cred_result = await test_runner.setup_supported_credential()&#10;          supported_cred_id = supported_cred_result[&quot;supported_cred_id&quot;]&#10;          offer_data = await test_runner.create_credential_offer(supported_cred_id)&#10;&#10;          # Extract pre-authorized code from credential offer&#10;          grants = offer_data[&quot;offer&quot;][&quot;grants&quot;]&#10;          pre_auth_grant = grants[&quot;urn:ietf:params:oauth:grant-type:pre-authorized_code&quot;]&#10;          pre_authorized_code = pre_auth_grant[&quot;pre-authorized_code&quot;]&#10;&#10;          async with httpx.AsyncClient() as client:&#10;              # Get access token&#10;              token_response = await client.post(&#10;                  f&quot;{TEST_CONFIG['oid4vci_endpoint']}/token&quot;,&#10;                  data={&#10;                      &quot;grant_type&quot;: &quot;urn:ietf:params:oauth:grant-type:pre-authorized_code&quot;,&#10;                      &quot;pre-authorized_code&quot;: pre_authorized_code,&#10;                  },&#10;                  headers={&quot;Content-Type&quot;: &quot;application/x-www-form-urlencoded&quot;},&#10;              )&#10;              try:&#10;                  token_data = token_response.json()&#10;                  access_token = token_data[&quot;access_token&quot;]&#10;              except json.JSONDecodeError as e:&#10;                  LOGGER.error(&quot;Failed to parse token response as JSON: %s&quot;, e)&#10;                  LOGGER.error(&quot;Response content: %s&quot;, token_response.text)&#10;                  raise&#10;&#10;              # Test with invalid proof type&#10;              invalid_proof_request = {&#10;                  &quot;credential_identifier&quot;: offer_data[&quot;offer&quot;][&#10;                      &quot;credential_configuration_ids&quot;&#10;                  ][0],&#10;                  &quot;proof&quot;: {&#10;                      &quot;jwt&quot;: (&#10;                          &quot;eyJ0eXAiOiJpbnZhbGlkIiwiYWxnIjoiRVMyNTYifQ.&quot;&#10;                          &quot;eyJub25jZSI6InRlc3QifQ.sig&quot;&#10;                      )&#10;                  },&#10;              }&#10;&#10;              response = await client.post(&#10;                  f&quot;{TEST_CONFIG['oid4vci_endpoint']}/credential&quot;,&#10;                  json=invalid_proof_request,&#10;                  headers={&quot;Authorization&quot;: f&quot;Bearer {access_token}&quot;},&#10;              )&#10;&#10;              # Should fail due to wrong typ header&#10;              assert response.status_code == 400&#10;              error_msg = response.json().get(&quot;message&quot;, &quot;&quot;)&#10;              assert &quot;openid4vci-proof+jwt&quot; in error_msg&#10;&#10;              test_runner.test_results[&quot;proof_of_possession&quot;] = {&#10;                  &quot;status&quot;: &quot;PASS&quot;,&#10;                  &quot;validation&quot;: &quot;OID4VCI 1.0 § 7.2.1 proof validation enforced&quot;,&#10;              }&#10;E       fixture 'test_runner' not found&#10;&gt;       available fixtures: _class_scoped_runner, _function_scoped_runner, _module_scoped_runner, _package_scoped_runner, _session_scoped_runner, acapy_admin, acapy_issuer_admin, acapy_verifier_admin, anyio_backend, anyio_backend_name, anyio_backend_options, cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, controller, credo, credo_client, doctest_namespace, event_loop_policy, extra, extras, free_tcp_port, free_tcp_port_factory, free_udp_port, free_udp_port_factory, generated_test_certs, include_metadata_in_junit_xml, issuer_ed25519_did, issuer_p256_did, mdoc_credential_config, metadata, monkeypatch, offer, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, sd_jwt_credential_config, setup_all_trust_anchors, setup_credo_trust_anchors, setup_issuer_certs, setup_pki_chain_trust_anchor, setup_verifier_trust_anchors, sphereon, sphereon_client, testrun_uid, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory, worker_id&#10;&gt;       use 'pytest --fixtures [testpath]' for help on them.&#10;&#10;/usr/src/app/tests/validation/test_oid4vci_10_compliance.py:245&quot;">file /usr/src/app/tests/validation/test_oid4vci_10_compliance.py, line 245
+      @pytest.mark.asyncio
+      async def test_oid4vci_10_proof_of_possession(self, test_runner):
+          """Test OID4VCI 1.0 § 7.2.1: Proof of Possession validation."""
+          LOGGER.info("Testing OID4VCI 1.0 proof of possession...")
+
+          # Setup
+          supported_cred_result = await test_runner.setup_supported_credential()
+          supported_cred_id = supported_cred_result["supported_cred_id"]
+          offer_data = await test_runner.create_credential_offer(supported_cred_id)
+
+          # Extract pre-authorized code from credential offer
+          grants = offer_data["offer"]["grants"]
+          pre_auth_grant = grants["urn:ietf:params:oauth:grant-type:pre-authorized_code"]
+          pre_authorized_code = pre_auth_grant["pre-authorized_code"]
+
+          async with httpx.AsyncClient() as client:
+              # Get access token
+              token_response = await client.post(
+                  f"{TEST_CONFIG['oid4vci_endpoint']}/token",
+                  data={
+                      "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+                      "pre-authorized_code": pre_authorized_code,
+                  },
+                  headers={"Content-Type": "application/x-www-form-urlencoded"},
+              )
+              try:
+                  token_data = token_response.json()
+                  access_token = token_data["access_token"]
+              except json.JSONDecodeError as e:
+                  LOGGER.error("Failed to parse token response as JSON: %s", e)
+                  LOGGER.error("Response content: %s", token_response.text)
+                  raise
+
+              # Test with invalid proof type
+              invalid_proof_request = {
+                  "credential_identifier": offer_data["offer"][
+                      "credential_configuration_ids"
+                  ][0],
+                  "proof": {
+                      "jwt": (
+                          "eyJ0eXAiOiJpbnZhbGlkIiwiYWxnIjoiRVMyNTYifQ."
+                          "eyJub25jZSI6InRlc3QifQ.sig"
+                      )
+                  },
+              }
+
+              response = await client.post(
+                  f"{TEST_CONFIG['oid4vci_endpoint']}/credential",
+                  json=invalid_proof_request,
+                  headers={"Authorization": f"Bearer {access_token}"},
+              )
+
+              # Should fail due to wrong typ header
+              assert response.status_code == 400
+              error_msg = response.json().get("message", "")
+              assert "openid4vci-proof+jwt" in error_msg
+
+              test_runner.test_results["proof_of_possession"] = {
+                  "status": "PASS",
+                  "validation": "OID4VCI 1.0 § 7.2.1 proof validation enforced",
+              }
+E       fixture 'test_runner' not found
+&gt;       available fixtures: _class_scoped_runner, _function_scoped_runner, _module_scoped_runner, _package_scoped_runner, _session_scoped_runner, acapy_admin, acapy_issuer_admin, acapy_verifier_admin, anyio_backend, anyio_backend_name, anyio_backend_options, cache, capfd, capfdbinary, caplog, capsys, capsysbinary, capteesys, controller, credo, credo_client, doctest_namespace, event_loop_policy, extra, extras, free_tcp_port, free_tcp_port_factory, free_udp_port, free_udp_port_factory, generated_test_certs, include_metadata_in_junit_xml, issuer_ed25519_did, issuer_p256_did, mdoc_credential_config, metadata, monkeypatch, offer, pytestconfig, record_property, record_testsuite_property, record_xml_attribute, recwarn, sd_jwt_credential_config, setup_all_trust_anchors, setup_credo_trust_anchors, setup_issuer_certs, setup_pki_chain_trust_anchor, setup_verifier_trust_anchors, sphereon, sphereon_client, testrun_uid, tmp_path, tmp_path_factory, tmpdir, tmpdir_factory, unused_tcp_port, unused_tcp_port_factory, unused_udp_port, unused_udp_port_factory, worker_id
+&gt;       use 'pytest --fixtures [testpath]' for help on them.
+
+/usr/src/app/tests/validation/test_oid4vci_10_compliance.py:245</error></testcase><testcase classname="tests.validation.test_validation" name="test_mso_mdoc_validation" time="0.044"><failure message="assert 500 == 400&#10; +  where 500 = &lt;Response [500 Internal Server Error]&gt;.status_code&#10; +    where &lt;Response [500 Internal Server Error]&gt; = HTTPStatusError(&quot;Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500&quot;).response&#10; +      where HTTPStatusError(&quot;Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500&quot;) = &lt;ExceptionInfo HTTPStatusError(&quot;Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500&quot;) tblen=3&gt;.value">tests/validation/test_validation.py:28: in test_mso_mdoc_validation
+    assert excinfo.value.response.status_code == 400
+E   assert 500 == 400
+E    +  where 500 = &lt;Response [500 Internal Server Error]&gt;.status_code
+E    +    where &lt;Response [500 Internal Server Error]&gt; = HTTPStatusError("Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500").response
+E    +      where HTTPStatusError("Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500") = &lt;ExceptionInfo HTTPStatusError("Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500") tblen=3&gt;.value</failure></testcase><testcase classname="tests.wallets.test_cross_wallet_credo_jwt" name="test_issue_to_credo_verify_with_sphereon_jwt_vc" time="0.101"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/wallets/test_cross_wallet_credo_jwt.py:44: in test_issue_to_credo_verify_with_sphereon_jwt_vc
+    credential_config_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.wallets.test_cross_wallet_credo_jwt" name="test_credo_unsupported_algorithm_request" time="0.024"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/wallets/test_cross_wallet_credo_jwt.py:161: in test_credo_unsupported_algorithm_request
+    config_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.wallets.test_cross_wallet_credo_jwt" name="test_selective_disclosure_credo_vs_sphereon_parity" time="0.024"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/wallets/test_cross_wallet_credo_jwt.py:289: in test_selective_disclosure_credo_vs_sphereon_parity
+    config_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.wallets.test_cross_wallet_credo_jwt" name="test_selective_disclosure_all_claims_disclosed" time="0.024"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/wallets/test_cross_wallet_credo_jwt.py:413: in test_selective_disclosure_all_claims_disclosed
+    config_response = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.wallets.test_cross_wallet_mdoc" name="test_mdoc_issue_to_credo_verify_with_sphereon_patterns" time="0.161"><error message="failed on setup with &quot;httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404&quot;">tests/conftest.py:388: in setup_issuer_certs
+    default_cert = await acapy_issuer_admin.get("/mso_mdoc/certificates/default")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates/default'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+During handling of the above exception, another exception occurred:
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:463: in setup
+    return super().setup()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:748: in pytest_fixture_setup
+    hook_result = yield
+                  ^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:318: in _asyncgen_fixture_wrapper
+    result = runner.run(setup(), context=context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:314: in setup
+    res = await gen_obj.__anext__()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/conftest.py:403: in setup_issuer_certs
+    certs_response = await acapy_issuer_admin.get(
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404</error></testcase><testcase classname="tests.wallets.test_cross_wallet_mdoc" name="test_mdoc_issue_to_sphereon_verify_with_credo_patterns" time="0.084"><error message="failed on setup with &quot;httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404&quot;">tests/conftest.py:388: in setup_issuer_certs
+    default_cert = await acapy_issuer_admin.get("/mso_mdoc/certificates/default")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates/default'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404
+
+During handling of the above exception, another exception occurred:
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:463: in setup
+    return super().setup()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:748: in pytest_fixture_setup
+    hook_result = yield
+                  ^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:318: in _asyncgen_fixture_wrapper
+    result = runner.run(setup(), context=context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/pytest_asyncio/plugin.py:314: in setup
+    res = await gen_obj.__anext__()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/conftest.py:403: in setup_issuer_certs
+    certs_response = await acapy_issuer_admin.get(
+acapy_controller.py:24: in get
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Client error '404 Not Found' for url 'http://acapy-issuer:8021/mso_mdoc/certificates?include_pem=true'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404</error></testcase><testcase classname="tests.wallets.test_cross_wallet_multi_credential" name="test_credo_multi_credential_presentation" time="0.081"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/wallets/test_cross_wallet_multi_credential.py:50: in test_credo_multi_credential_presentation
+    config_1 = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.wallets.test_cross_wallet_sphereon_jwt" name="test_issue_to_sphereon_verify_with_credo_jwt_vc" time="0.183"><skipped type="pytest.skip" message="Sphereon failed to accept offer (status 500): {&quot;error&quot;:&quot;Only absolute URLs are supported&quot;,&quot;stack&quot;:&quot;TypeError: Only absolute URLs are supported\n    at getNodeRequestOptions (/usr/src/app/node_modules/node-fetch/lib/index.js:1327:9)\n    at /usr/src/app/node_modules/node-fetch/lib/index.js:1450:19\n    at new Promise (&lt;anonymous&gt;)\n    at fetch (/usr/src/app/node_modules/node-fetch/lib/index.js:1447:9)\n    at fetch (/usr/src/app/node_modules/cross-fetch/dist/node-ponyfill.js:10:20)\n    at /usr/src/app/node_modules/@sphereon/oid4vci-common/dist/functions/HttpUtils.js:64:56\n    at Generator.next (&lt;anonymous&gt;)\n    at /usr/src/app/node_modules/@sphereon/oid4vci-common/dist/functions/HttpUtils.js:8:71\n    at new Promise (&lt;anonymous&gt;)\n    at __awaiter (/usr/src/app/node_modules/@sphereon/oid4vci-common/dist/functions/HttpUtils.js:4:12)&quot;}">/usr/src/app/tests/conftest.py:609: Sphereon failed to accept offer (status 500): {"error":"Only absolute URLs are supported","stack":"TypeError: Only absolute URLs are supported\n    at getNodeRequestOptions (/usr/src/app/node_modules/node-fetch/lib/index.js:1327:9)\n    at /usr/src/app/node_modules/node-fetch/lib/index.js:1450:19\n    at new Promise (&lt;anonymous&gt;)\n    at fetch (/usr/src/app/node_modules/node-fetch/lib/index.js:1447:9)\n    at fetch (/usr/src/app/node_modules/cross-fetch/dist/node-ponyfill.js:10:20)\n    at /usr/src/app/node_modules/@sphereon/oid4vci-common/dist/functions/HttpUtils.js:64:56\n    at Generator.next (&lt;anonymous&gt;)\n    at /usr/src/app/node_modules/@sphereon/oid4vci-common/dist/functions/HttpUtils.js:8:71\n    at new Promise (&lt;anonymous&gt;)\n    at __awaiter (/usr/src/app/node_modules/@sphereon/oid4vci-common/dist/functions/HttpUtils.js:4:12)"}</skipped></testcase><testcase classname="tests.wallets.test_cross_wallet_sphereon_jwt" name="test_sphereon_jwt_vp_with_constraints_pattern" time="0.116"><skipped type="pytest.skip" message="Sphereon failed to accept offer (status 500): {&quot;error&quot;:&quot;Only absolute URLs are supported&quot;,&quot;stack&quot;:&quot;TypeError: Only absolute URLs are supported\n    at getNodeRequestOptions (/usr/src/app/node_modules/node-fetch/lib/index.js:1327:9)\n    at /usr/src/app/node_modules/node-fetch/lib/index.js:1450:19\n    at new Promise (&lt;anonymous&gt;)\n    at fetch (/usr/src/app/node_modules/node-fetch/lib/index.js:1447:9)\n    at fetch (/usr/src/app/node_modules/cross-fetch/dist/node-ponyfill.js:10:20)\n    at /usr/src/app/node_modules/@sphereon/oid4vci-common/dist/functions/HttpUtils.js:64:56\n    at Generator.next (&lt;anonymous&gt;)\n    at /usr/src/app/node_modules/@sphereon/oid4vci-common/dist/functions/HttpUtils.js:8:71\n    at new Promise (&lt;anonymous&gt;)\n    at __awaiter (/usr/src/app/node_modules/@sphereon/oid4vci-common/dist/functions/HttpUtils.js:4:12)&quot;}">/usr/src/app/tests/conftest.py:609: Sphereon failed to accept offer (status 500): {"error":"Only absolute URLs are supported","stack":"TypeError: Only absolute URLs are supported\n    at getNodeRequestOptions (/usr/src/app/node_modules/node-fetch/lib/index.js:1327:9)\n    at /usr/src/app/node_modules/node-fetch/lib/index.js:1450:19\n    at new Promise (&lt;anonymous&gt;)\n    at fetch (/usr/src/app/node_modules/node-fetch/lib/index.js:1447:9)\n    at fetch (/usr/src/app/node_modules/cross-fetch/dist/node-ponyfill.js:10:20)\n    at /usr/src/app/node_modules/@sphereon/oid4vci-common/dist/functions/HttpUtils.js:64:56\n    at Generator.next (&lt;anonymous&gt;)\n    at /usr/src/app/node_modules/@sphereon/oid4vci-common/dist/functions/HttpUtils.js:8:71\n    at new Promise (&lt;anonymous&gt;)\n    at __awaiter (/usr/src/app/node_modules/@sphereon/oid4vci-common/dist/functions/HttpUtils.js:4:12)"}</skipped></testcase><testcase classname="tests.wallets.test_cross_wallet_sphereon_jwt" name="test_sphereon_unsupported_format_request" time="0.133"><skipped type="pytest.skip" message="Sphereon failed to accept offer (status 500): {&quot;error&quot;:&quot;Only absolute URLs are supported&quot;,&quot;stack&quot;:&quot;TypeError: Only absolute URLs are supported\n    at getNodeRequestOptions (/usr/src/app/node_modules/node-fetch/lib/index.js:1327:9)\n    at /usr/src/app/node_modules/node-fetch/lib/index.js:1450:19\n    at new Promise (&lt;anonymous&gt;)\n    at fetch (/usr/src/app/node_modules/node-fetch/lib/index.js:1447:9)\n    at fetch (/usr/src/app/node_modules/cross-fetch/dist/node-ponyfill.js:10:20)\n    at /usr/src/app/node_modules/@sphereon/oid4vci-common/dist/functions/HttpUtils.js:64:56\n    at Generator.next (&lt;anonymous&gt;)\n    at /usr/src/app/node_modules/@sphereon/oid4vci-common/dist/functions/HttpUtils.js:8:71\n    at new Promise (&lt;anonymous&gt;)\n    at __awaiter (/usr/src/app/node_modules/@sphereon/oid4vci-common/dist/functions/HttpUtils.js:4:12)&quot;}">/usr/src/app/tests/conftest.py:609: Sphereon failed to accept offer (status 500): {"error":"Only absolute URLs are supported","stack":"TypeError: Only absolute URLs are supported\n    at getNodeRequestOptions (/usr/src/app/node_modules/node-fetch/lib/index.js:1327:9)\n    at /usr/src/app/node_modules/node-fetch/lib/index.js:1450:19\n    at new Promise (&lt;anonymous&gt;)\n    at fetch (/usr/src/app/node_modules/node-fetch/lib/index.js:1447:9)\n    at fetch (/usr/src/app/node_modules/cross-fetch/dist/node-ponyfill.js:10:20)\n    at /usr/src/app/node_modules/@sphereon/oid4vci-common/dist/functions/HttpUtils.js:64:56\n    at Generator.next (&lt;anonymous&gt;)\n    at /usr/src/app/node_modules/@sphereon/oid4vci-common/dist/functions/HttpUtils.js:8:71\n    at new Promise (&lt;anonymous&gt;)\n    at __awaiter (/usr/src/app/node_modules/@sphereon/oid4vci-common/dist/functions/HttpUtils.js:4:12)"}</skipped></testcase><testcase classname="tests.wallets.test_sphereon" name="test_sphereon_health" time="0.020" /><testcase classname="tests.wallets.test_sphereon" name="test_sphereon_accept_credential_offer" time="0.171"><failure message="assert 500 == 200&#10; +  where 500 = &lt;Response [500 Internal Server Error]&gt;.status_code">tests/wallets/test_sphereon.py:78: in test_sphereon_accept_credential_offer
+    assert response.status_code == 200
+E   assert 500 == 200
+E    +  where 500 = &lt;Response [500 Internal Server Error]&gt;.status_code</failure></testcase><testcase classname="tests.wallets.test_sphereon" name="test_sphereon_accept_mdoc_credential_offer" time="0.024"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/wallets/test_sphereon.py:95: in test_sphereon_accept_mdoc_credential_offer
+    supported = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.wallets.test_sphereon" name="test_sphereon_present_mdoc_credential" time="0.043"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/wallets/test_sphereon.py:206: in test_sphereon_present_mdoc_credential
+    supported = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.wallets.test_sphereon" name="test_sphereon_accept_credential_offer_by_ref" time="0.148"><failure message="assert 500 == 200&#10; +  where 500 = &lt;Response [500 Internal Server Error]&gt;.status_code">tests/wallets/test_sphereon.py:376: in test_sphereon_accept_credential_offer_by_ref
+    assert response.status_code == 200
+E   assert 500 == 200
+E    +  where 500 = &lt;Response [500 Internal Server Error]&gt;.status_code</failure></testcase><testcase classname="tests.wallets.test_sphereon" name="test_sphereon_revocation_flow" time="0.032"><failure message="httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'&#10;For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500">tests/wallets/test_sphereon.py:402: in test_sphereon_revocation_flow
+    supported = await acapy_issuer_admin.post(
+acapy_controller.py:33: in post
+    response.raise_for_status()
+.venv/lib/python3.12/site-packages/httpx/_models.py:829: in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+E   httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'http://acapy-issuer:8021/oid4vci/credential-supported/create'
+E   For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500</failure></testcase><testcase classname="tests.wallets.test_sphereon_negative" name="test_sphereon_accept_offer_invalid_proof" time="0.152" /></testsuite></testsuites>
