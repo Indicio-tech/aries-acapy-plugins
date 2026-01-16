@@ -57,10 +57,13 @@ async def test_create_pre_auth_code(monkeypatch, profile, config):
     mock_response = MagicMock()
     mock_response.json = AsyncMock(return_value={"pre_authorized_code": "code123"})
     mock_client.post = AsyncMock(return_value=mock_response)
-    monkeypatch.setattr("oid4vc.routes.helpers.AppResources.get_http_client", lambda: mock_client)
+    monkeypatch.setattr(
+        "oid4vc.routes.helpers.AppResources.get_http_client", lambda: mock_client
+    )
     # Patch get_auth_header to return a dummy header
     monkeypatch.setattr(
-        "oid4vc.routes.helpers.get_auth_header", AsyncMock(return_value="Bearer dummyheader")
+        "oid4vc.routes.helpers.get_auth_header",
+        AsyncMock(return_value="Bearer dummyheader"),
     )
     code = await _create_pre_auth_code(
         profile, config, "subject_id", "cred_config_id", "1234"
