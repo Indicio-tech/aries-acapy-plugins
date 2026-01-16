@@ -156,11 +156,15 @@ class BaseCrossWalletTest(BaseOID4VCTest):
         }
 
     @pytest_asyncio.fixture
-    async def sphereon_flow(self, acapy_issuer_admin, acapy_verifier_admin, sphereon_client):
+    async def sphereon_flow(
+        self, acapy_issuer_admin, acapy_verifier_admin, sphereon_client
+    ):
         """Combined credential and presentation flows for Sphereon."""
         return {
             "credential": CredentialFlowHelper(acapy_issuer_admin, sphereon_client),
-            "presentation": PresentationFlowHelper(acapy_verifier_admin, sphereon_client),
+            "presentation": PresentationFlowHelper(
+                acapy_verifier_admin, sphereon_client
+            ),
         }
 
 

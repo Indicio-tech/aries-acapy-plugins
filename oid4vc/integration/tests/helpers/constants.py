@@ -79,7 +79,10 @@ class ClaimPaths:
     EMAIL: Final[list[str]] = ["$.email", "$.credentialSubject.email"]
 
     # Address claims
-    STREET_ADDRESS: Final[list[str]] = ["$.street_address", "$.credentialSubject.street_address"]
+    STREET_ADDRESS: Final[list[str]] = [
+        "$.street_address",
+        "$.credentialSubject.street_address",
+    ]
     LOCALITY: Final[list[str]] = ["$.locality", "$.credentialSubject.locality"]
     POSTAL_CODE: Final[list[str]] = ["$.postal_code", "$.credentialSubject.postal_code"]
     COUNTRY: Final[list[str]] = ["$.country", "$.credentialSubject.country"]
@@ -92,6 +95,7 @@ class ClaimPaths:
 # Endpoint configuration (from environment)
 class ENDPOINTS:
     """Service endpoint URLs - typically loaded from environment."""
+
     # These are defaults; tests should use fixtures that read from environment
     pass
 

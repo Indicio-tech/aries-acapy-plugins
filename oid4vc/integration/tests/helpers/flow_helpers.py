@@ -307,7 +307,9 @@ class CredentialFlowHelper:
         elif "w3c_credential" in credential_result:
             return credential_result["w3c_credential"]
         else:
-            raise ValueError(f"Cannot find credential in response: {credential_result.keys()}")
+            raise ValueError(
+                f"Cannot find credential in response: {credential_result.keys()}"
+            )
 
 
 class PresentationFlowHelper:
@@ -347,10 +349,15 @@ class PresentationFlowHelper:
             "input_descriptors": [
                 {
                     "id": str(uuid.uuid4()),
-                    "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ALGORITHMS.SD_JWT_ALGS}},
+                    "format": {
+                        "vc+sd-jwt": {"sd-jwt_alg_values": ALGORITHMS.SD_JWT_ALGS}
+                    },
                     "constraints": {
                         "fields": [
-                            {"path": ["$.vct"], "filter": {"type": "string", "const": vct}},
+                            {
+                                "path": ["$.vct"],
+                                "filter": {"type": "string", "const": vct},
+                            },
                             *[{"path": [f"$.{claim}"]} for claim in required_claims],
                         ]
                     },
@@ -359,7 +366,8 @@ class PresentationFlowHelper:
         }
 
         pres_def_response = await self.verifier_admin.post(
-            "/oid4vp/presentation-definition", json={"pres_def": presentation_definition}
+            "/oid4vp/presentation-definition",
+            json={"pres_def": presentation_definition},
         )
         pres_def_id = pres_def_response["pres_def_id"]
 
@@ -368,7 +376,9 @@ class PresentationFlowHelper:
             "/oid4vp/request",
             json={
                 "pres_def_id": pres_def_id,
-                "vp_formats": {"vc+sd-jwt": {"sd-jwt_alg_values": ALGORITHMS.SD_JWT_ALGS}},
+                "vp_formats": {
+                    "vc+sd-jwt": {"sd-jwt_alg_values": ALGORITHMS.SD_JWT_ALGS}
+                },
             },
         )
         request_uri = presentation_request["request_uri"]
@@ -392,7 +402,9 @@ class PresentationFlowHelper:
             "pres_def_id": pres_def_id,
             "request_uri": request_uri,
             "presentation": validated_presentation,
-            "matched_credentials": validated_presentation.get("matched_credentials", {}),
+            "matched_credentials": validated_presentation.get(
+                "matched_credentials", {}
+            ),
         }
 
     async def verify_mdoc(
@@ -424,7 +436,10 @@ class PresentationFlowHelper:
                     "format": {"mso_mdoc": {"alg": ALGORITHMS.MDOC_ALGS}},
                     "constraints": {
                         "fields": [
-                            {"path": ["$.doctype"], "filter": {"type": "string", "const": doctype}},
+                            {
+                                "path": ["$.doctype"],
+                                "filter": {"type": "string", "const": doctype},
+                            },
                             *[
                                 {"path": [f"$['{namespace}']['{claim}']"]}
                                 for claim in required_claims
@@ -436,7 +451,8 @@ class PresentationFlowHelper:
         }
 
         pres_def_response = await self.verifier_admin.post(
-            "/oid4vp/presentation-definition", json={"pres_def": presentation_definition}
+            "/oid4vp/presentation-definition",
+            json={"pres_def": presentation_definition},
         )
         pres_def_id = pres_def_response["pres_def_id"]
 
@@ -469,7 +485,9 @@ class PresentationFlowHelper:
             "pres_def_id": pres_def_id,
             "request_uri": request_uri,
             "presentation": validated_presentation,
-            "matched_credentials": validated_presentation.get("matched_credentials", {}),
+            "matched_credentials": validated_presentation.get(
+                "matched_credentials", {}
+            ),
         }
 
     async def verify_dcql(
@@ -519,7 +537,9 @@ class PresentationFlowHelper:
             "dcql_query_id": dcql_query_id,
             "request_uri": request_uri,
             "presentation": validated_presentation,
-            "matched_credentials": validated_presentation.get("matched_credentials", {}),
+            "matched_credentials": validated_presentation.get(
+                "matched_credentials", {}
+            ),
         }
 
     async def wait_for_validation(
@@ -546,7 +566,10 @@ class PresentationFlowHelper:
                 f"/oid4vp/presentations/{presentation_id}"
             )
 
-            if presentation.get("verified") == "true" or presentation.get("verified") is True:
+            if (
+                presentation.get("verified") == "true"
+                or presentation.get("verified") is True
+            ):
                 return presentation
 
             if presentation.get("state") == "abandoned":

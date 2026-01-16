@@ -175,7 +175,10 @@ class TestMdocAgePredicates(BaseMdocTest):
         disclosed_data = matched_creds[query_id]
 
         # age_over_18 should be present
-        assert "age_over_18" in str(disclosed_data) or "true" in str(disclosed_data).lower()
+        assert (
+            "age_over_18" in str(disclosed_data)
+            or "true" in str(disclosed_data).lower()
+        )
 
         # birth_date should NOT be disclosed
         assert "1990-01-01" not in str(disclosed_data)

@@ -178,8 +178,14 @@ class TestCredoMdocInterop(BaseMdocTest):
                     "format": "mso_mdoc",
                     "meta": {"doctype_value": Doctype.MDL},
                     "claims": [
-                        {"namespace": Doctype.MDL_NAMESPACE, "claim_name": "family_name"},
-                        {"namespace": Doctype.MDL_NAMESPACE, "claim_name": "given_name"},
+                        {
+                            "namespace": Doctype.MDL_NAMESPACE,
+                            "claim_name": "family_name",
+                        },
+                        {
+                            "namespace": Doctype.MDL_NAMESPACE,
+                            "claim_name": "given_name",
+                        },
                     ],
                 }
             ]

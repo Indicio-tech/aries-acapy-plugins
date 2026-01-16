@@ -28,7 +28,9 @@ class CredoWrapper:
 
     def _client(self) -> httpx.AsyncClient:
         if not self.client:
-            raise RuntimeError("CredoWrapper not started; use within an async context manager")
+            raise RuntimeError(
+                "CredoWrapper not started; use within an async context manager"
+            )
         return self.client
 
     async def __aenter__(self):

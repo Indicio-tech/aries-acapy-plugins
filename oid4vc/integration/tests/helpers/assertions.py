@@ -122,7 +122,9 @@ def assert_selective_disclosure(
         )
 
 
-def assert_valid_sd_jwt(credential: str, expected_claims: list[str] | None = None) -> dict:
+def assert_valid_sd_jwt(
+    credential: str, expected_claims: list[str] | None = None
+) -> dict:
     """Assert that credential is a valid SD-JWT and optionally check claims.
 
     Args:
@@ -140,12 +142,16 @@ def assert_valid_sd_jwt(credential: str, expected_claims: list[str] | None = Non
 
     # SD-JWT format: <issuer-jwt>~<disclosure>~<disclosure>...~<kb-jwt>
     parts = credential.split("~")
-    assert len(parts) >= 2, f"Invalid SD-JWT format: expected at least 2 parts, got {len(parts)}"
+    assert len(parts) >= 2, (
+        f"Invalid SD-JWT format: expected at least 2 parts, got {len(parts)}"
+    )
 
     # Decode the issuer JWT (first part)
     issuer_jwt = parts[0]
     jwt_parts = issuer_jwt.split(".")
-    assert len(jwt_parts) == 3, f"Invalid JWT format: expected 3 parts, got {len(jwt_parts)}"
+    assert len(jwt_parts) == 3, (
+        f"Invalid JWT format: expected 3 parts, got {len(jwt_parts)}"
+    )
 
     # Decode payload (add padding if needed)
     payload_b64 = jwt_parts[1]
@@ -158,16 +164,24 @@ def assert_valid_sd_jwt(credential: str, expected_claims: list[str] | None = Non
 
     # Basic SD-JWT checks
     assert "iss" in payload, "Missing 'iss' claim in SD-JWT"
-    assert "_sd" in payload or "_sd_alg" in payload, "Missing SD-JWT selective disclosure claims"
+    assert "_sd" in payload or "_sd_alg" in payload, (
+        "Missing SD-JWT selective disclosure claims"
+    )
 
     if expected_claims:
         # Note: With selective disclosure, claims may be in disclosures, not payload
         # This is a basic check - full verification needs disclosure parsing
         disclosed = set(payload.keys())
-        missing = [c for c in expected_claims if c not in disclosed and c not in ["_sd", "_sd_alg"]]
+        missing = [
+            c
+            for c in expected_claims
+            if c not in disclosed and c not in ["_sd", "_sd_alg"]
+        ]
         # Allow missing if they're selectively disclosed
         if missing and "_sd" not in payload:
-            assert False, f"Expected claims not in payload and no selective disclosures: {missing}"
+            assert False, (
+                f"Expected claims not in payload and no selective disclosures: {missing}"
+            )
 
     return payload
 
@@ -186,6 +200,7 @@ def assert_mdoc_structure(mdoc_data: bytes | dict, doctype: str) -> None:
         # If bytes, it should be CBOR-encoded
         try:
             import cbor2
+
             mdoc_data = cbor2.loads(mdoc_data)
         except Exception as e:
             assert False, f"Failed to decode mDOC CBOR: {e}"
@@ -194,10 +209,14 @@ def assert_mdoc_structure(mdoc_data: bytes | dict, doctype: str) -> None:
     assert "docType" in mdoc_data or "doctype" in mdoc_data, "Missing docType in mDOC"
 
     actual_doctype = mdoc_data.get("docType") or mdoc_data.get("doctype")
-    assert actual_doctype == doctype, f"Expected doctype {doctype}, got {actual_doctype}"
+    assert actual_doctype == doctype, (
+        f"Expected doctype {doctype}, got {actual_doctype}"
+    )
 
     # Check for namespaced data
-    assert "nameSpaces" in mdoc_data or "namespaces" in mdoc_data, "Missing nameSpaces in mDOC"
+    assert "nameSpaces" in mdoc_data or "namespaces" in mdoc_data, (
+        "Missing nameSpaces in mDOC"
+    )
 
 
 def assert_presentation_successful(presentation_result: dict) -> None:
@@ -210,7 +229,9 @@ def assert_presentation_successful(presentation_result: dict) -> None:
         AssertionError: If presentation failed
     """
     assert presentation_result is not None, "Presentation result is None"
-    assert "success" in presentation_result, "Missing 'success' field in presentation result"
+    assert "success" in presentation_result, (
+        "Missing 'success' field in presentation result"
+    )
     assert presentation_result["success"] is True, (
         f"Presentation failed: {presentation_result.get('error', 'Unknown error')}"
     )

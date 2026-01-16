@@ -50,6 +50,7 @@ async def sphereon():
     """Sphereon wrapper - kept for legacy interop tests."""
     # Import moved here to avoid circular dependencies
     from sphereon_wrapper import SphereaonWrapper
+
     sphereon_wrapper_url = getenv("SPHEREON_WRAPPER_URL", "http://localhost:3030")
     wrapper = SphereaonWrapper(sphereon_wrapper_url)
     async with wrapper:

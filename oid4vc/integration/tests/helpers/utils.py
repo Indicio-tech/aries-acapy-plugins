@@ -85,7 +85,9 @@ def assert_claims_present(
                 return any(find_claim(v, claim_name) for v in data.values())
         return False
 
-    missing_claims = [claim for claim in expected_claims if not find_claim(disclosed_payload, claim)]
+    missing_claims = [
+        claim for claim in expected_claims if not find_claim(disclosed_payload, claim)
+    ]
 
     assert not missing_claims, (
         f"Expected claims missing from disclosure: {missing_claims}. "
