@@ -28,17 +28,15 @@ class AppResources:
             if cls._http_client is not None:
                 LOGGER.debug("HTTP client already initialized")
                 return
-            
+
             if config and config.auth_server_url:
                 cls._auth_server_url = config.auth_server_url
                 LOGGER.info("Initializing HTTP client...")
                 cls._http_client = aiohttp.ClientSession(
                     timeout=aiohttp.ClientTimeout(total=30, connect=10),
                     connector=aiohttp.TCPConnector(
-                        limit=100,
-                        limit_per_host=10,
-                        ttl_dns_cache=300
-                    )
+                        limit=100, limit_per_host=10, ttl_dns_cache=300
+                    ),
                 )
                 # LOGGER.info("Starting up cleanup task...")
                 # cls._cleanup_task = asyncio.create_task(cls._background_cleanup())
@@ -72,10 +70,8 @@ class AppResources:
                     cls._http_client = aiohttp.ClientSession(
                         timeout=aiohttp.ClientTimeout(total=30, connect=10),
                         connector=aiohttp.TCPConnector(
-                            limit=100,
-                            limit_per_host=10,
-                            ttl_dns_cache=300
-                        )
+                            limit=100, limit_per_host=10, ttl_dns_cache=300
+                        ),
                     )
         if cls._http_client is None:
             raise RuntimeError("HTTP client is not initialized")
