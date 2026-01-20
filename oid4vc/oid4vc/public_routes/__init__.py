@@ -11,6 +11,7 @@ import sys
 # To avoid circular import (since package and module have the same name),
 # we access it via sys.modules after Python has already loaded it.
 
+
 def __getattr__(name):
     """Lazy import to avoid circular dependency."""
     if name == "register":
@@ -22,6 +23,7 @@ def __getattr__(name):
         # So we reload the .py file explicitly.
         import importlib.util
         from pathlib import Path
+
         _module_path = Path(__file__).parent.parent / "public_routes.py"
         _spec = importlib.util.spec_from_file_location(
             "oid4vc._public_routes_py", _module_path
