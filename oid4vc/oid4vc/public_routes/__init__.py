@@ -35,8 +35,12 @@ def __getattr__(name):
     """Lazy import to avoid circular dependency.
 
     Re-export all public symbols from the parallel public_routes.py module.
+    Cache them in this module's namespace so monkeypatching works.
     """
     module = _get_public_routes_module()
     if hasattr(module, name):
-        return getattr(module, name)
+        attr = getattr(module, name)
+        # Cache in this module's namespace so patches stick
+        globals()[name] = attr
+        return attr
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
