@@ -1,7 +1,7 @@
 """Tests for token endpoint."""
 
 from typing import cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from aiohttp import web
