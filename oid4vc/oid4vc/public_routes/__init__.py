@@ -33,7 +33,7 @@ def _get_public_routes_module():
 
 def __getattr__(name):
     """Lazy import to avoid circular dependency.
-    
+
     Re-export all public symbols from the parallel public_routes.py module.
     """
     module = _get_public_routes_module()
