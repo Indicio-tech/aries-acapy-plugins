@@ -126,6 +126,16 @@ async def token(request: web.Request):
                 status=400,
             )
 
+    # Check if pre-authorized code has already been used
+    if record.token is not None:
+        return web.json_response(
+            {
+                "error": "invalid_grant",
+                "error_description": "pre-authorized code has already been used",
+            },
+            status=400,
+        )
+
     payload = {
         "sub": record.refresh_id,
         "exp": int(time.time()) + EXPIRES_IN,
