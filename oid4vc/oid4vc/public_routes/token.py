@@ -3,23 +3,30 @@
 import datetime
 import time
 from secrets import token_urlsafe
+from typing import Any, Dict
 
 from acapy_agent.admin.request_context import AdminRequestContext
+from acapy_agent.core.profile import Profile
 from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from acapy_agent.wallet.base import WalletError
 from acapy_agent.wallet.error import WalletNotFoundError
+from acapy_agent.wallet.jwt import b64_to_dict
+from acapy_agent.wallet.util import b64_to_bytes
 from aiohttp import web
 from aiohttp_apispec import docs, form_schema
+from aries_askar import Key
 from marshmallow import fields, pre_load
 
 from oid4vc.did_utils import retrieve_or_create_did_jwk
-from oid4vc.jwt import JWTVerifyResult, jwt_sign, jwt_verify
+from oid4vc.jwt import JWTVerifyResult, jwt_sign, jwt_verify, key_material_for_kid
 
 from ..app_resources import AppResources
 from ..config import Config
 from ..models.exchange import OID4VCIExchangeRecord
+from ..models.nonce import Nonce
+from ..pop_result import PopResult
 from ..utils import get_auth_header, get_tenant_subpath
 from .constants import (
     EXPIRES_IN,
@@ -27,6 +34,7 @@ from .constants import (
     NONCE_BYTES,
     PRE_AUTHORIZED_CODE_GRANT_TYPE,
 )
+
 
 
 class GetTokenSchema(OpenAPISchema):
@@ -232,3 +240,51 @@ async def check_token(
         )
 
     return result
+
+
+async def handle_proof_of_posession(
+    profile: Profile, proof: Dict[str, Any], c_nonce: str | None = None
+):
+    """Handle proof of posession."""
+    encoded_headers, encoded_payload, encoded_signature = proof["jwt"].split(".", 3)
+    headers = b64_to_dict(encoded_headers)
+
+    if headers.get("typ") != "openid4vci-proof+jwt":
+        raise web.HTTPBadRequest(reason="Invalid proof: wrong typ.")
+
+    if "kid" in headers:
+        try:
+            key = await key_material_for_kid(profile, headers["kid"])
+        except ValueError as exc:
+            raise web.HTTPBadRequest(reason="Invalid kid") from exc
+    elif "jwk" in headers:
+        key = Key.from_jwk(headers["jwk"])
+    elif "x5c" in headers:
+        raise web.HTTPBadRequest(reason="x5c not supported")
+    else:
+        raise web.HTTPBadRequest(reason="No key material in proof")
+
+    payload = b64_to_dict(encoded_payload)
+    nonce = payload.get("nonce")
+    if c_nonce:
+        if c_nonce != nonce:
+            raise web.HTTPBadRequest(reason="Invalid proof: wrong nonce.")
+    else:
+        redeemed = await Nonce.redeem_by_value(profile.session(), nonce)
+        if not redeemed:
+            raise web.HTTPBadRequest(reason="Invalid proof: wrong or used nonce.")
+
+    decoded_signature = b64_to_bytes(encoded_signature, urlsafe=True)
+    verified = key.verify_signature(
+        f"{encoded_headers}.{encoded_payload}".encode(),
+        decoded_signature,
+        sig_type=headers.get("alg", ""),
+    )
+    return PopResult(
+        headers,
+        payload,
+        verified,
+        holder_kid=headers.get("kid"),
+        holder_jwk=headers.get("jwk"),
+    )
+

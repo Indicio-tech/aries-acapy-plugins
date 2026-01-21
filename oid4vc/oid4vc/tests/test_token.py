@@ -50,7 +50,7 @@ async def test_token_pre_authorized_code_reuse_prevented(
 
     # Mock the retrieve_by_code method
     monkeypatch.setattr(
-        "oid4vc.public_routes.token.OID4VCIExchangeRecord.retrieve_by_code",
+        "oid4vc.models.exchange.OID4VCIExchangeRecord.retrieve_by_code",
         AsyncMock(return_value=mock_record),
     )
 
@@ -58,7 +58,7 @@ async def test_token_pre_authorized_code_reuse_prevented(
     mock_config = MagicMock()
     mock_config.auth_server_url = None
     monkeypatch.setattr(
-        "oid4vc.public_routes.token.Config.from_settings",
+        "oid4vc.config.Config.from_settings",
         MagicMock(return_value=mock_config),
     )
 
@@ -92,7 +92,7 @@ async def test_token_pre_authorized_code_first_use_success(
 
     # Mock the retrieve_by_code method
     monkeypatch.setattr(
-        "oid4vc.public_routes.token.OID4VCIExchangeRecord.retrieve_by_code",
+        "oid4vc.models.exchange.OID4VCIExchangeRecord.retrieve_by_code",
         AsyncMock(return_value=mock_record),
     )
 
@@ -100,7 +100,7 @@ async def test_token_pre_authorized_code_first_use_success(
     mock_config = MagicMock()
     mock_config.auth_server_url = None
     monkeypatch.setattr(
-        "oid4vc.public_routes.token.Config.from_settings",
+        "oid4vc.config.Config.from_settings",
         MagicMock(return_value=mock_config),
     )
 
@@ -108,13 +108,13 @@ async def test_token_pre_authorized_code_first_use_success(
     mock_did_info = MagicMock()
     mock_did_info.did = "did:jwk:test123"
     monkeypatch.setattr(
-        "oid4vc.public_routes.token.retrieve_or_create_did_jwk",
+        "oid4vc.did_utils.retrieve_or_create_did_jwk",
         AsyncMock(return_value=mock_did_info),
     )
 
     # Mock jwt_sign
     monkeypatch.setattr(
-        "oid4vc.public_routes.token.jwt_sign",
+        "oid4vc.jwt.jwt_sign",
         AsyncMock(return_value="new_token_jwt"),
     )
 
@@ -151,7 +151,7 @@ async def test_token_with_pin_validation_before_reuse_check(
 
     # Mock the retrieve_by_code method
     monkeypatch.setattr(
-        "oid4vc.public_routes.token.OID4VCIExchangeRecord.retrieve_by_code",
+        "oid4vc.models.exchange.OID4VCIExchangeRecord.retrieve_by_code",
         AsyncMock(return_value=mock_record),
     )
 
@@ -159,7 +159,7 @@ async def test_token_with_pin_validation_before_reuse_check(
     mock_config = MagicMock()
     mock_config.auth_server_url = None
     monkeypatch.setattr(
-        "oid4vc.public_routes.token.Config.from_settings",
+        "oid4vc.config.Config.from_settings",
         MagicMock(return_value=mock_config),
     )
 
@@ -190,7 +190,7 @@ async def test_token_with_wrong_pin_before_reuse_check(
 
     # Mock the retrieve_by_code method
     monkeypatch.setattr(
-        "oid4vc.public_routes.token.OID4VCIExchangeRecord.retrieve_by_code",
+        "oid4vc.models.exchange.OID4VCIExchangeRecord.retrieve_by_code",
         AsyncMock(return_value=mock_record),
     )
 
@@ -198,7 +198,7 @@ async def test_token_with_wrong_pin_before_reuse_check(
     mock_config = MagicMock()
     mock_config.auth_server_url = None
     monkeypatch.setattr(
-        "oid4vc.public_routes.token.Config.from_settings",
+        "oid4vc.config.Config.from_settings",
         MagicMock(return_value=mock_config),
     )
 
@@ -237,7 +237,7 @@ async def test_token_with_correct_pin_but_code_reused(
 
     # Mock the retrieve_by_code method
     monkeypatch.setattr(
-        "oid4vc.public_routes.token.OID4VCIExchangeRecord.retrieve_by_code",
+        "oid4vc.models.exchange.OID4VCIExchangeRecord.retrieve_by_code",
         AsyncMock(return_value=mock_record),
     )
 
@@ -245,7 +245,7 @@ async def test_token_with_correct_pin_but_code_reused(
     mock_config = MagicMock()
     mock_config.auth_server_url = None
     monkeypatch.setattr(
-        "oid4vc.public_routes.token.Config.from_settings",
+        "oid4vc.config.Config.from_settings",
         MagicMock(return_value=mock_config),
     )
 

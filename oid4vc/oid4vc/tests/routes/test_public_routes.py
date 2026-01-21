@@ -10,15 +10,18 @@ from acapy_agent.wallet.did_method import KEY
 from acapy_agent.wallet.key_type import ED25519
 from aiohttp import web
 
-from oid4vc import public_routes as test_module
+from oid4vc.jwt import jwt_verify
 from oid4vc.models.exchange import OID4VCIExchangeRecord
 from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.public_routes import (
     JWTVerifyResult,
     check_token,
+    credential_issuer_metadata,
+    handle_proof_of_posession,
     issue_cred,
     receive_notification,
 )
+from oid4vc.utils import get_auth_header
 
 
 @pytest.fixture
@@ -38,7 +41,7 @@ def req(context: AdminRequestContext):
 @pytest.mark.asyncio
 async def test_issuer_metadata(context: AdminRequestContext, req: web.Request):
     """Test issuer metadata endpoint."""
-    supported = test_module.SupportedCredential(
+    supported = SupportedCredential(
         format="jwt_vc_json",
         identifier="MyCredential",
         format_data={
@@ -49,12 +52,12 @@ async def test_issuer_metadata(context: AdminRequestContext, req: web.Request):
     async with context.session() as session:
         await supported.save(session)
 
-    with patch.object(test_module, "web", autospec=True) as mock_web:
-        await test_module.credential_issuer_metadata(req)
+    with patch("aiohttp.web.json_response") as mock_json_response:
+        await credential_issuer_metadata(req)
         wallet_id = req.match_info.get(
             "wallet_id",
         )
-        mock_web.json_response.assert_called_once_with(
+        mock_json_response.assert_called_once_with(
             {
                 "credential_issuer": f"http://localhost:8020/tenant/{wallet_id}",
                 "authorization_servers": ["http://localhost:9001"],
@@ -84,7 +87,7 @@ async def test_handle_proof_of_posession(profile: Profile):
         "jwt": "eyJ0eXAiOiJvcGVuaWQ0dmNpLXByb29mK2p3dCIsImFsZyI6IkVTMjU2SyIsImtpZCI6ImRpZDpqd2s6ZXlKaGJHY2lPaUpGVXpJMU5rc2lMQ0oxYzJVaU9pSnphV2NpTENKcmRIa2lPaUpGUXlJc0ltTnlkaUk2SW5ObFkzQXlOVFpyTVNJc0luZ2lPaUpzTWtKbU1GVXlabHA1TFdaMVl6WkJOM3BxYmxwTVJXbFNiM2xzV0VsNWJrMUdOM1JHYUVOd2RqUm5JaXdpZVNJNklrYzBSRlJaUVhGZlEwZHdjVEJ2UkdKQmNVWkxWMWxLTFZoRmRDMUZiVFl6TXpGV2QwcHRjaTFpUkdNaWZRIzAifQ.eyJpYXQiOjE3MDExMjczMTUuMjQ3LCJleHAiOjE3MDExMjc5NzUuMjQ3LCJhdWQiOiJodHRwczovLzEzNTQtMTk4LTkxLTYyLTU4Lm5ncm9rLmlvIiwibm9uY2UiOiIySTF3LUVfNkUtczA3dkFJbzNxOThnIiwiaXNzIjoic3BoZXJlb246c3NpLXdhbGxldCIsImp0aSI6IjdjNzJmODg3LTI4YjQtNDg5Mi04MTUxLWNhZWMxNDRjMzBmMSJ9.XUfMcLMddw1DEqfQvQkk41FTwTmOk-dR3M51PsC76VWn3Ln3KlmPBUEwmFjEEqoEpVIm6kV7K_9svYNc2_ZX4w",
     }
     nonce = "2I1w-E_6E-s07vAIo3q98g"
-    result = await test_module.handle_proof_of_posession(profile, proof, nonce)
+    result = await handle_proof_of_posession(profile, proof, nonce)
     assert isinstance(result.verified, bool)
 
 
@@ -92,7 +95,7 @@ async def test_handle_proof_of_posession(profile: Profile):
 async def test_check_token_valid(monkeypatch, context):
     # Patch get_auth_header to return a dummy header
     monkeypatch.setattr(
-        "oid4vc.public_routes.get_auth_header",
+        "oid4vc.utils.get_auth_header",
         AsyncMock(return_value="Bearer dummyheader"),
     )
 
@@ -104,7 +107,7 @@ async def test_check_token_valid(monkeypatch, context):
     )
     mock_client.post = AsyncMock(return_value=mock_response)
     monkeypatch.setattr(
-        "oid4vc.public_routes.AppResources.get_http_client", lambda: mock_client
+        "oid4vc.app_resources.AppResources.get_http_client", lambda: mock_client
     )
 
     # Call check_token with a valid bearer token
@@ -124,7 +127,7 @@ async def test_check_token_invalid_scheme(context):
 async def test_check_token_expired(monkeypatch, context):
     # Patch jwt_verify to return an expired token
     monkeypatch.setattr(
-        "oid4vc.public_routes.jwt_verify",
+        "oid4vc.jwt.jwt_verify",
         AsyncMock(
             return_value=JWTVerifyResult(headers={}, payload={"exp": 1}, verified=True)
         ),
@@ -137,7 +140,7 @@ async def test_check_token_expired(monkeypatch, context):
 async def test_check_token_invalid_token(monkeypatch, context):
     # Patch jwt_verify to return not verified
     monkeypatch.setattr(
-        "oid4vc.public_routes.jwt_verify",
+        "oid4vc.jwt.jwt_verify",
         AsyncMock(
             return_value=JWTVerifyResult(
                 headers={}, payload={"exp": 9999999999}, verified=False
@@ -181,7 +184,7 @@ async def test_receive_notification(context):
         mock_record.notification_event = None
         mock_record.save = AsyncMock()
         with patch(
-            "oid4vc.public_routes.OID4VCIExchangeRecord.retrieve_by_notification_id",
+            "oid4vc.models.exchange.OID4VCIExchangeRecord.retrieve_by_notification_id",
             AsyncMock(return_value=mock_record),
         ):
             # Patch context.profile.session to return an async context manager
@@ -224,7 +227,7 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
     mock_ex_record.verification_method = "did:example:123#key-1"
     mock_ex_record.save = AsyncMock()
     monkeypatch.setattr(
-        "oid4vc.public_routes.OID4VCIExchangeRecord.retrieve_by_refresh_id",
+        "oid4vc.models.exchange.OID4VCIExchangeRecord.retrieve_by_refresh_id",
         AsyncMock(return_value=mock_ex_record),
     )
     # Patch wallet.get_local_did to return a dummy DIDInfo
@@ -252,7 +255,7 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
     mock_supported.to_issuer_metadata = MagicMock(return_value={})
     mock_supported.vc_additional_data = {}
     monkeypatch.setattr(
-        "oid4vc.public_routes.SupportedCredential.retrieve_by_id",
+        "oid4vc.models.supported_cred.SupportedCredential.retrieve_by_id",
         AsyncMock(return_value=mock_supported),
     )
 

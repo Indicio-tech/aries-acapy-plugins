@@ -1,46 +1,107 @@
-"""Public routes package.
+"""Public routes package for OID4VC.
 
-This package is being incrementally built to replace the monolithic
-public_routes.py module. For now, to avoid circular imports, exports from
-the .py module are lazily loaded via __getattr__.
+This package provides HTTP endpoints for OpenID4VC protocols:
+- Token endpoint for pre-authorized code flow
+- Credential issuance endpoints
+- Metadata endpoints
+- OID4VP verification endpoints
+- Status list endpoints
 """
 
-import sys
+# Constants
+from .constants import EXPIRES_IN, NONCE_BYTES, PRE_AUTHORIZED_CODE_GRANT_TYPE
 
-# Cache the loaded module to avoid reloading it multiple times
-_public_routes_py_module = None
+# Credential issuance
+from .credential import (
+    IssueCredentialRequestSchema,
+    dereference_cred_offer,
+    issue_cred,
+    types_are_subset,
+)
 
+# Metadata
+from .metadata import (
+    BatchCredentialIssuanceSchema,
+    CredentialIssuerMetadataSchema,
+    credential_issuer_metadata,
+)
 
-def _get_public_routes_module():
-    """Load the public_routes.py module once and cache it."""
-    global _public_routes_py_module
-    if _public_routes_py_module is None:
-        import importlib.util
-        from pathlib import Path
+# Nonce management
+from .nonce import create_nonce, get_nonce
 
-        _module_path = Path(__file__).parent.parent / "public_routes.py"
-        _spec = importlib.util.spec_from_file_location(
-            "oid4vc._public_routes_py", _module_path
-        )
-        _module = importlib.util.module_from_spec(_spec)
-        # Set package so relative imports work
-        _module.__package__ = "oid4vc"
-        sys.modules["oid4vc._public_routes_py"] = _module
-        _spec.loader.exec_module(_module)
-        _public_routes_py_module = _module
-    return _public_routes_py_module
+# Notification
+from .notification import NotificationSchema, receive_notification
 
+# Route registration
+from .registration import register
 
-def __getattr__(name):
-    """Lazy import to avoid circular dependency.
+# Status list
+from .status_list import StatusListMatchSchema, get_status_list
 
-    Re-export all public symbols from the parallel public_routes.py module.
-    Cache them in this module's namespace so monkeypatching works.
-    """
-    module = _get_public_routes_module()
-    if hasattr(module, name):
-        attr = getattr(module, name)
-        # Cache in this module's namespace so patches stick
-        globals()[name] = attr
-        return attr
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+# Token endpoint
+from .token import (
+    GetTokenSchema,
+    JWTVerifyResult,
+    check_token,
+    handle_proof_of_posession,
+    token,
+)
+
+# Verification
+from .verification import (
+    OID4VPPresentationIDMatchSchema,
+    OID4VPRequestIDMatchSchema,
+    PostOID4VPResponseSchema,
+    _create_default_did,
+    _retrieve_default_did,
+    get_request,
+    post_response,
+    retrieve_or_create_did_jwk,
+    verify_dcql_presentation,
+    verify_pres_def_presentation,
+)
+
+__all__ = [
+    # Constants
+    "EXPIRES_IN",
+    "NONCE_BYTES",
+    "PRE_AUTHORIZED_CODE_GRANT_TYPE",
+    # Credential issuance
+    "IssueCredentialRequestSchema",
+    "dereference_cred_offer",
+    "issue_cred",
+    "types_are_subset",
+    # Metadata
+    "BatchCredentialIssuanceSchema",
+    "CredentialIssuerMetadataSchema",
+    "credential_issuer_metadata",
+    # Nonce
+    "create_nonce",
+    "get_nonce",
+    # Notification
+    "NotificationSchema",
+    "receive_notification",
+    # Registration
+    "register",
+    # Status list
+    "StatusListMatchSchema",
+    "get_status_list",
+    # Token
+    "GetTokenSchema",
+    "JWTVerifyResult",
+    "check_token",
+    "handle_proof_of_posession",
+    "token",
+    # Verification
+    "OID4VPPresentationIDMatchSchema",
+    "OID4VPRequestIDMatchSchema",
+    "PostOID4VPResponseSchema",
+    "_create_default_did",
+    "_retrieve_default_did",
+    "get_request",
+    "post_response",
+    "retrieve_or_create_did_jwk",
+    "verify_dcql_presentation",
+    "verify_pres_def_presentation",
+]
+
