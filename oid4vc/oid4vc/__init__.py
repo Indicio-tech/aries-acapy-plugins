@@ -10,7 +10,6 @@ from acapy_agent.core.util import SHUTDOWN_EVENT_PATTERN, STARTUP_EVENT_PATTERN
 from acapy_agent.resolver.did_resolver import DIDResolver
 from acapy_agent.wallet.did_method import DIDMethods
 
-from jwt_vc_json.cred_processor import JwtVcJsonCredProcessor
 from oid4vc.cred_processor import CredProcessors
 
 from . import routes
@@ -26,6 +25,12 @@ LOGGER = logging.getLogger(__name__)
 
 async def setup(context: InjectionContext):
     """Setup the plugin."""
+    # TODO: Remove circular dependency between oid4vc and jwt_vc_json
+    # Import here to avoid circular dependency:
+    # jwt_vc_json.cred_processor imports from oid4vc.cred_processor
+    # which would cause oid4vc package to initialize and try to import jwt_vc_json
+    from jwt_vc_json.cred_processor import JwtVcJsonCredProcessor
+
     event_bus = context.inject(EventBus)
     event_bus.subscribe(STARTUP_EVENT_PATTERN, startup)
     event_bus.subscribe(SHUTDOWN_EVENT_PATTERN, shutdown)

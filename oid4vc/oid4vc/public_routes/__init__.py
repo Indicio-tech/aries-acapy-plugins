@@ -11,6 +11,9 @@ This package provides HTTP endpoints for OpenID4VC protocols:
 # Constants
 from .constants import EXPIRES_IN, NONCE_BYTES, PRE_AUTHORIZED_CODE_GRANT_TYPE
 
+# Pop Result
+from ..pop_result import PopResult
+
 # Credential issuance
 from .credential import (
     IssueCredentialRequestSchema,
@@ -66,6 +69,8 @@ __all__ = [
     "EXPIRES_IN",
     "NONCE_BYTES",
     "PRE_AUTHORIZED_CODE_GRANT_TYPE",
+    # Pop Result
+    "PopResult",
     # Credential issuance
     "IssueCredentialRequestSchema",
     "dereference_cred_offer",

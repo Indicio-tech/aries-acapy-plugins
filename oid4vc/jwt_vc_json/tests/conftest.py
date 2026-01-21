@@ -57,6 +57,9 @@ def pop():
 
 
 @pytest.fixture
-def context():
+async def context():
     """Test AdminRequestContext."""
-    yield AdminRequestContext.test_context()
+    from acapy_agent.utils.testing import create_test_profile
+
+    profile = await create_test_profile()
+    yield AdminRequestContext(profile)

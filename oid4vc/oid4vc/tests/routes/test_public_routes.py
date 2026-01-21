@@ -177,7 +177,9 @@ async def test_receive_notification(context):
     request = DummyRequest()
 
     # Patch check_token to always return True
-    with patch("oid4vc.public_routes.check_token", AsyncMock(return_value=True)):
+    with patch(
+        "oid4vc.public_routes.notification.check_token", AsyncMock(return_value=True)
+    ):
         # Patch OID4VCIExchangeRecord.retrieve_by_notification_id to return a mock record
         mock_record = AsyncMock()
         mock_record.state = None
@@ -211,7 +213,8 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
         "c_nonce": "test_nonce",
     }
     monkeypatch.setattr(
-        "oid4vc.public_routes.check_token", AsyncMock(return_value=mock_token_result)
+        "oid4vc.public_routes.credential.check_token",
+        AsyncMock(return_value=mock_token_result),
     )
 
     # Patch OID4VCIExchangeRecord.retrieve_by_refresh_id
@@ -264,7 +267,8 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
     mock_pop.verified = True
     mock_pop.holder_kid = "did:example:123#key-1"
     monkeypatch.setattr(
-        "oid4vc.public_routes.handle_proof_of_posession", AsyncMock(return_value=mock_pop)
+        "oid4vc.public_routes.credential.handle_proof_of_posession",
+        AsyncMock(return_value=mock_pop),
     )
 
     # Patch session context manager
