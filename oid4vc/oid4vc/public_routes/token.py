@@ -36,7 +36,6 @@ from .constants import (
 )
 
 
-
 class GetTokenSchema(OpenAPISchema):
     """Schema for the token endpoint.
 
@@ -287,4 +286,3 @@ async def handle_proof_of_posession(
         holder_kid=headers.get("kid"),
         holder_jwk=headers.get("jwk"),
     )
-

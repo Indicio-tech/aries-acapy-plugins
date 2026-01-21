@@ -41,7 +41,9 @@ class TestSdJwtCredIssueProcessor:
                 # Case 1: No vct in body -> Should pass validation
                 body_no_vct = {}
                 try:
-                    await processor.issue(body_no_vct, supported, ex_record, pop, context)
+                    await processor.issue(
+                        body_no_vct, supported, ex_record, pop, context
+                    )
                 except CredProcessorError as e:
                     pytest.fail(
                         f"Should not raise CredProcessorError for missing vct: {e}"
@@ -125,8 +127,8 @@ class TestValidateCredentialSubject:
 
     def test_missing_mandatory_non_sd_claim(self):
         """Test that non-SD mandatory claims are not currently validated.
-        
-        The current implementation only validates mandatory fields that are 
+
+        The current implementation only validates mandatory fields that are
         selectively disclosable (in sd_list). Non-SD mandatory field validation
         is TODO as noted in the code.
         """
@@ -185,7 +187,7 @@ class TestValidateCredentialSubject:
 
     def test_nested_mandatory_claim(self):
         """Test validation of nested mandatory claims.
-        
+
         The current implementation only validates mandatory fields that are
         selectively disclosable (in sd_list). Nested non-SD mandatory claims
         are not currently validated.

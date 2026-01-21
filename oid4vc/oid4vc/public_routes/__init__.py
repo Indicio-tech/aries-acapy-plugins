@@ -109,4 +109,3 @@ __all__ = [
     "verify_dcql_presentation",
     "verify_pres_def_presentation",
 ]
-
