@@ -78,7 +78,10 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
         sd_list = supported.vc_additional_data.get("sd_list") or []
         assert isinstance(sd_list, list)
 
-        if body.get("vct") != supported.format_data.get("vct"):
+        # Allow missing vct in body if format_data has vct
+        body_vct = body.get("vct")
+        supported_vct = supported.format_data.get("vct")
+        if body_vct is not None and body_vct != supported_vct:
             raise CredProcessorError("Requested vct does not match offer.")
 
         current_time = int(time.time())
@@ -147,7 +150,11 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
                 continue
             pointer = JsonPointer(sd)
 
-            metadata = pointer.resolve(claims_metadata)
+            # Skip if no claims metadata defined
+            if claims_metadata is None:
+                continue
+
+            metadata = pointer.resolve(claims_metadata, None)
             if metadata:
                 metadata = ClaimMetadata(**metadata)
             else:
@@ -161,7 +168,7 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
 
         if missing:
             raise CredProcessorError(
-                "Invalid credential subject; selectively discloseable claim is"
+                "Invalid credential subject; selectively disclosable claim is"
                 f" mandatory but missing: {missing}"
             )
 

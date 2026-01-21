@@ -29,7 +29,7 @@ docker-compose down -v  # Clean up
 If you're using Apple Silicon, you may have to separately build the image with the appropriate platform flag (from the `demo` directory):
 
 ```sh
-DOCKER_DEFAULT_PLATFORM=linux/amd64 docker build -f ../docker/Dockerfile --tag oid4vc ..
+DOCKER_DEFAULT_PLATFORM=linux/amd64 docker build -f docker/Dockerfile --tag oid4vc ../..
 ```
 
 ### Demo Flow

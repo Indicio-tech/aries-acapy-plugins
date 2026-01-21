@@ -88,11 +88,11 @@ ignore = [
 "**/{demo}/*" = ["F841", "D", "E501"]
 
 [tool.pytest.ini_options]
-testpaths = "oid4vc"
+testpaths = ["jwt_vc_json", "mso_mdoc", "oid4vc", "sd_jwt_vc"]
 addopts = """
     -p no:warnings
     --quiet --junitxml=./.test-reports/junit.xml
-    --cov-config .coveragerc --cov=oid4vc --cov-report term --cov-report xml
+    --cov-config .coveragerc --cov=oid4vc --cov=jwt_vc_json --cov=mso_mdoc --cov=sd_jwt_vc --cov-report term --cov-report xml
 """
 markers = []
 junit_family = "xunit1"
