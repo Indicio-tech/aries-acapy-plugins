@@ -10,7 +10,6 @@ from acapy_agent.wallet.did_method import KEY
 from acapy_agent.wallet.key_type import ED25519
 from aiohttp import web
 
-from oid4vc.jwt import jwt_verify
 from oid4vc.models.exchange import OID4VCIExchangeRecord
 from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.public_routes import (
@@ -21,7 +20,6 @@ from oid4vc.public_routes import (
     issue_cred,
     receive_notification,
 )
-from oid4vc.utils import get_auth_header
 
 
 @pytest.fixture

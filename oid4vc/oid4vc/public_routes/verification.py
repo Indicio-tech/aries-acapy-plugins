@@ -19,7 +19,7 @@ from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from acapy_agent.wallet.base import BaseWallet
 from acapy_agent.wallet.did_info import DIDInfo
 from acapy_agent.wallet.key_type import ED25519
-from acapy_agent.wallet.util import b64_to_bytes, bytes_to_b64
+from acapy_agent.wallet.util import bytes_to_b64
 from aiohttp import web
 from aiohttp_apispec import (
     docs,

@@ -1,7 +1,7 @@
 """Credential issuance endpoints for OID4VCI."""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from urllib.parse import quote
 import json
 
@@ -9,8 +9,6 @@ from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
-from acapy_agent.wallet.base import BaseWallet
-from acapy_agent.core.profile import Profile
 from aiohttp import web
 from aiohttp_apispec import (
     docs,
@@ -20,12 +18,9 @@ from aiohttp_apispec import (
 )
 from marshmallow import fields
 
-from ..app_resources import AppResources
-from ..config import Config
 from ..cred_processor import CredProcessorError, CredProcessors
 from ..models.exchange import OID4VCIExchangeRecord
 from ..models.supported_cred import SupportedCredential
-from ..pop_result import PopResult
 from ..routes import CredOfferQuerySchema, CredOfferResponseSchemaVal
 from ..routes.helpers import _parse_cred_offer
 from .token import check_token, handle_proof_of_posession
