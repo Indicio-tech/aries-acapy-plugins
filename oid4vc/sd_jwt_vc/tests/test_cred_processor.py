@@ -41,9 +41,7 @@ class TestSdJwtCredIssueProcessor:
                 # Case 1: No vct in body -> Should pass validation
                 body_no_vct = {}
                 try:
-                    await processor.issue(
-                        body_no_vct, supported, ex_record, pop, context
-                    )
+                    await processor.issue(body_no_vct, supported, ex_record, pop, context)
                 except CredProcessorError as e:
                     pytest.fail(
                         f"Should not raise CredProcessorError for missing vct: {e}"
