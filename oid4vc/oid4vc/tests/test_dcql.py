@@ -1,4 +1,5 @@
 from unittest import mock
+
 import pytest
 from acapy_agent.core.profile import Profile
 from acapy_agent.tests.mock import CoroutineMock
@@ -6,7 +7,6 @@ from acapy_agent.tests.mock import CoroutineMock
 from oid4vc.cred_processor import CredProcessors, VerifyResult
 from oid4vc.dcql import DCQLQueryEvaluator
 from oid4vc.models.dcql_query import CredentialQuery, DCQLQuery
-
 
 raw_query = {
     "credentials": [

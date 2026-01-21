@@ -2,6 +2,7 @@
 
 import logging
 
+from acapy_agent.admin.base_server import BaseAdminServer
 from acapy_agent.config.injection_context import InjectionContext
 from acapy_agent.core.event_bus import Event, EventBus
 from acapy_agent.core.profile import Profile
@@ -9,9 +10,9 @@ from acapy_agent.core.util import SHUTDOWN_EVENT_PATTERN, STARTUP_EVENT_PATTERN
 from acapy_agent.resolver.did_resolver import DIDResolver
 from acapy_agent.wallet.did_method import DIDMethods
 
-from jwt_vc_json.cred_processor import JwtVcJsonCredProcessor
 from oid4vc.cred_processor import CredProcessors
 
+from . import routes
 from .app_resources import AppResources
 from .config import Config
 from .jwk import DID_JWK
@@ -24,6 +25,12 @@ LOGGER = logging.getLogger(__name__)
 
 async def setup(context: InjectionContext):
     """Setup the plugin."""
+    # TODO: Remove circular dependency between oid4vc and jwt_vc_json
+    # Import here to avoid circular dependency:
+    # jwt_vc_json.cred_processor imports from oid4vc.cred_processor
+    # which would cause oid4vc package to initialize and try to import jwt_vc_json
+    from jwt_vc_json.cred_processor import JwtVcJsonCredProcessor
+
     event_bus = context.inject(EventBus)
     event_bus.subscribe(STARTUP_EVENT_PATTERN, startup)
     event_bus.subscribe(SHUTDOWN_EVENT_PATTERN, shutdown)
@@ -48,6 +55,11 @@ async def setup(context: InjectionContext):
 
     status_handler = StatusHandler(context)
     context.injector.bind_instance(StatusHandler, status_handler)
+
+    # Register admin routes
+    admin_server = context.inject_or(BaseAdminServer)
+    if admin_server:
+        await routes.register(admin_server.app)
 
 
 async def startup(profile: Profile, event: Event):
