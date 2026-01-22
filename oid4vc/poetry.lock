@@ -1514,6 +1514,27 @@ files = [
 ]
 
 [[package]]
+name = "isomdl-uniffi"
+version = "0.1.0"
+description = "Python bindings for the ISO 18013-5 Mobile Driver's License (mDL) library using UniFFI"
+optional = true
+python-versions = ">=3.9"
+groups = ["main"]
+markers = "extra == \"mso-mdoc\""
+files = []
+develop = false
+
+[package.extras]
+dev = ["build", "cryptography (>=39.0.0)", "pytest (>=7.0.0)", "pytest-cov", "setuptools (>=45)", "wheel"]
+
+[package.source]
+type = "git"
+url = "https://github.com/Indicio-tech/isomdl-uniffi"
+reference = "main"
+resolved_reference = "4010ec053996e95c36c61fd01f1c82de70f9db88"
+subdirectory = "python"
+
+[[package]]
 name = "jinja2"
 version = "3.1.6"
 description = "A very fast and expressive template engine."
@@ -3627,10 +3648,10 @@ propcache = ">=0.2.1"
 
 [extras]
 aca-py = ["acapy-agent"]
-mso-mdoc = ["cbor-diag", "cbor2", "cwt", "pycose"]
+mso-mdoc = ["cbor-diag", "cbor2", "cwt", "isomdl-uniffi", "pycose"]
 sd-jwt-vc = ["jsonpointer"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "ef56285fdda608e67c1fead342c5f8373aca32a7c13161a41cee2aa0699b53be"
+content-hash = "f2846531ab32e840f278f3241f84ed73300da143b0fa7d8fa160c36de1cdce2d"
