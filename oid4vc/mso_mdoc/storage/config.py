@@ -24,7 +24,7 @@ async def store_config(
     """Store configuration data."""
     try:
         storage = get_storage(session)
-    except InjectionError as e:
+    except Exception as e:
         LOGGER.warning("Storage not available for storing config %s: %s", config_id, e)
         return
 
@@ -55,7 +55,7 @@ async def get_config(session: ProfileSession, config_id: str) -> Optional[Dict]:
     """Retrieve configuration data."""
     try:
         storage = get_storage(session)
-    except InjectionError as e:
+    except Exception as e:
         LOGGER.warning("Storage not available for getting config %s: %s", config_id, e)
         return None
 

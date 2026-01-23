@@ -212,7 +212,7 @@ def _is_preverified_claims_dict(credential: Any) -> bool:
     )
 
 
-def _parse_string_credential(credential: str) -> Optional[Any]:
+def _parse_string_credential(credential: str) -> tuple[Optional[Any], Optional[str]]:
     """Parse a string credential into an Mdoc object.
 
     Tries multiple formats: hex, base64url IssuerSigned, base64url DeviceResponse.
@@ -221,23 +221,28 @@ def _parse_string_credential(credential: str) -> Optional[Any]:
         credential: String credential to parse
 
     Returns:
-        Parsed Mdoc object or None if parsing fails
+        Tuple of (Parsed Mdoc object or None if parsing fails, error message if any)
     """
+    last_error = None
+    
     # Try hex first (full DeviceResponse)
     try:
         if all(c in "0123456789abcdefABCDEF" for c in credential):
             LOGGER.debug("Trying to parse credential as hex DeviceResponse")
-            return isomdl_uniffi.Mdoc.from_string(credential)
+            return isomdl_uniffi.Mdoc.from_string(credential), None
     except Exception as hex_err:
+        last_error = str(hex_err)
         LOGGER.debug(f"Hex parsing failed: {hex_err}")
 
     # Try base64url-encoded IssuerSigned
     try:
         LOGGER.debug("Trying to parse credential as base64url IssuerSigned")
-        return isomdl_uniffi.Mdoc.new_from_base64url_encoded_issuer_signed(
+        mdoc = isomdl_uniffi.Mdoc.new_from_base64url_encoded_issuer_signed(
             credential, "verified-inner"
         )
+        return mdoc, None
     except Exception as issuer_signed_err:
+        last_error = str(issuer_signed_err)
         LOGGER.debug(f"IssuerSigned parsing failed: {issuer_signed_err}")
 
     # Try base64url decoding to hex, then DeviceResponse parsing
@@ -250,15 +255,19 @@ def _parse_string_credential(credential: str) -> Optional[Any]:
         )
         standard_b64 = padded.replace("-", "+").replace("_", "/")
         decoded_bytes = base64.b64decode(standard_b64)
-        return isomdl_uniffi.Mdoc.from_string(decoded_bytes.hex())
+        return isomdl_uniffi.Mdoc.from_string(decoded_bytes.hex()), None
     except Exception as b64_err:
+        last_error = str(b64_err)
         LOGGER.debug(f"Base64 parsing failed: {b64_err}")
 
     # Last resort: try direct string parsing
     try:
-        return isomdl_uniffi.Mdoc.from_string(credential)
-    except Exception:
-        return None
+        return isomdl_uniffi.Mdoc.from_string(credential), None
+    except Exception as final_err:
+        last_error = str(final_err)
+        return None, last_error
+    
+    return None, last_error
 
 
 def _extract_mdoc_claims(mdoc: Any) -> dict:
@@ -324,14 +333,19 @@ class MsoMdocCredVerifier(CredVerifier):
 
             # Parse credential to Mdoc object
             mdoc = None
+            parse_error = None
             if isinstance(credential, str):
-                mdoc = _parse_string_credential(credential)
+                mdoc, parse_error = _parse_string_credential(credential)
             elif isinstance(credential, bytes):
-                mdoc = isomdl_uniffi.Mdoc.from_string(credential.hex())
+                try:
+                    mdoc = isomdl_uniffi.Mdoc.from_string(credential.hex())
+                except Exception as e:
+                    parse_error = str(e)
 
             if not mdoc:
+                error_msg = f"Invalid credential format: {parse_error}" if parse_error else "Invalid credential format"
                 return VerifyResult(
-                    verified=False, payload={"error": "Invalid credential format"}
+                    verified=False, payload={"error": error_msg}
                 )
 
             # Refresh trust store cache if needed
