@@ -17,7 +17,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --pr
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Clone isomdl-uniffi with shallow clone
-ARG ISOMDL_BRANCH=main
+ARG ISOMDL_BRANCH=fix/python-build-system
 RUN git clone --depth 1 --branch ${ISOMDL_BRANCH} \
     https://github.com/Indicio-tech/isomdl-uniffi.git /build/isomdl-uniffi
 

@@ -367,10 +367,18 @@ When the Controller sets up a Supported Credential record using the Admin API, t
 This project is managed using Poetry. To get started:
 
 ```shell
-poetry install
+poetry install --all-extras
 poetry run pre-commit install
 poetry run pre-commit install --hook-type commit-msg
 ```
+
+#### Installing mso_mdoc Dependencies (Optional)
+
+The `mso_mdoc` module requires the `isomdl-uniffi` library, which needs Rust to compile. 
+
+**⚠️ Note**: Automated installation through Poetry/pip doesn't currently work due to build system limitations.
+
+For manual installation instructions, see [MSO_MDOC_TESTING.md](MSO_MDOC_TESTING.md).
 
 > TODO: Pre-commit should move to the repo root
 
@@ -379,8 +387,11 @@ poetry run pre-commit install --hook-type commit-msg
 To run unit tests:
 
 ```shell
-# Run only unit tests; leaving off the directory will attempt to run integration tests
-poetry run pytest tests/
+# Run all tests except mso_mdoc (which requires isomdl-uniffi)
+poetry run pytest jwt_vc_json/tests/ oid4vc/tests/ sd_jwt_vc/tests/
+
+# Or run all tests including mso_mdoc (requires isomdl-uniffi installed)
+poetry run pytest
 ```
 
 ### Integration Tests

@@ -75,7 +75,7 @@ async def get_key(session: ProfileSession, key_id: str) -> Optional[Dict]:
     """Retrieve a stored key by ID."""
     try:
         storage = get_storage(session)
-    except InjectionError as e:
+    except Exception as e:
         LOGGER.warning("Storage not available for getting key %s: %s", key_id, e)
         return None
 
@@ -97,7 +97,7 @@ async def list_keys(
     """List stored keys, optionally filtered by purpose."""
     try:
         storage = get_storage(session)
-    except InjectionError as e:
+    except Exception as e:
         LOGGER.warning("Storage not available for listing keys: %s", e)
         return []
 
@@ -133,7 +133,7 @@ async def delete_key(session: ProfileSession, key_id: str) -> bool:
     """Delete a stored key."""
     try:
         storage = get_storage(session)
-    except InjectionError as e:
+    except Exception as e:
         LOGGER.warning("Storage not available for deleting key %s: %s", key_id, e)
         return False
 

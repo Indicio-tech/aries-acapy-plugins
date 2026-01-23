@@ -29,7 +29,7 @@ async def store_certificate(
     """Store a PEM certificate."""
     try:
         storage = get_storage(session)
-    except InjectionError as e:
+    except Exception as e:
         LOGGER.warning(
             "Storage not available for storing certificate %s: %s",
             cert_id,
@@ -61,7 +61,7 @@ async def get_certificate(
     """Retrieve certificate PEM and associated key ID."""
     try:
         storage = get_storage(session)
-    except InjectionError as e:
+    except Exception as e:
         LOGGER.warning(
             "Storage not available for getting certificate %s: %s",
             cert_id,
@@ -95,7 +95,7 @@ async def list_certificates(
     """
     try:
         storage = get_storage(session)
-    except InjectionError as e:
+    except Exception as e:
         LOGGER.warning("Storage not available for listing certificates: %s", e)
         return []
 
