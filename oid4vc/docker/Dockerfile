@@ -4,11 +4,17 @@ WORKDIR /usr/src/app
 # Install and configure poetry
 USER root
 
-# Install and configure poetry
+# Install build dependencies (including Rust for isomdl-uniffi)
 WORKDIR /usr/src/app
 ENV POETRY_VERSION=2.1.2
 ENV POETRY_HOME=/opt/poetry
-RUN apt-get update && apt-get install -y curl jq && apt-get clean
+RUN apt-get update && apt-get install -y curl jq build-essential && apt-get clean
+
+# Install Rust toolchain (needed for building isomdl-uniffi)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install poetry
 RUN curl -sSL https://install.python-poetry.org | python -
 
 ENV PATH="/opt/poetry/bin:$PATH"

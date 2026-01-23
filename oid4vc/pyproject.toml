@@ -36,11 +36,16 @@ cwt = { version = "~2", optional = true }
 oscrypto = { git = "https://github.com/wbond/oscrypto.git", rev = "1547f53" }  # Resolves https://github.com/wbond/oscrypto/issues/78
 pycose = { version = "~1", optional = true }
 jsonpointer = { version = "^3.0.0", optional = true }
+# isomdl-uniffi for mDoc crypto operations
+isomdl-uniffi = { git = "https://github.com/Indicio-tech/isomdl-uniffi", subdirectory = "python", branch = "fix/python-build-system", optional = true }
 
 [tool.poetry.extras]
 aca-py = ["acapy-agent"]
-mso_mdoc = ["cbor2", "cbor-diag", "cwt", "pycose"]
+mso_mdoc = ["cbor2", "cbor-diag", "cwt", "pycose", "isomdl-uniffi"]
 sd_jwt_vc = ["jsonpointer"]
+
+# Note: isomdl-uniffi requires Rust toolchain for building
+# Install with: poetry install --extras mso_mdoc
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.14.7"
