@@ -8,7 +8,7 @@ services:
       context: ../../
       args:
         ACAPY_VERSION: 1.4.0
-        ISOMDL_BRANCH: main
+        ISOMDL_BRANCH: fix/python-build-system
     image: oid4vc-base:latest
     profiles:
       - base-only  # Only build when explicitly requested
@@ -50,7 +50,7 @@ services:
       context: ../../
       args:
         ACAPY_VERSION: 1.4.0
-        ISOMDL_BRANCH: main
+        ISOMDL_BRANCH: fix/python-build-system
     ports:
       - "8020:8020"  # inbound transport
       - "8083:8021"  # admin (mapped to 8083)
@@ -90,7 +90,7 @@ services:
       context: ../../
       args:
         ACAPY_VERSION: 1.4.0
-        ISOMDL_BRANCH: main
+        ISOMDL_BRANCH: fix/python-build-system
     ports:
       - "8030:8030"  # inbound transport
       - "8031:8031"  # admin
