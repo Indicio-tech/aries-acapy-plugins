@@ -3,12 +3,14 @@ services:
   # Shared Base Image - Built once, used by issuer and verifier
   # ==========================================================================
   oid4vc-base:
+    platform: linux/amd64
     build:
-      dockerfile: oid4vc/docker/Dockerfile.base
+      dockerfile: oid4vc/docker/Dockerfile
       context: ../../
+      target: base
       args:
         ACAPY_VERSION: 1.4.0
-        ISOMDL_BRANCH: fix/python-build-system
+        ISOMDL_BRANCH: main
     image: oid4vc-base:latest
     profiles:
       - base-only  # Only build when explicitly requested
@@ -18,13 +20,14 @@ services:
     build:
       context: ./credo
       # Use BuildKit cache from previous builds
+    platform: linux/amd64
     ports:
-      - "3020:3020"
+      - "${CREDO_PORT:-13021}:3021"
     environment:
       - NODE_ENV=development
-      - PORT=3020
-      - ACAPY_ISSUER_URL=http://acapy-issuer.local:8022
-      - ACAPY_VERIFIER_URL=http://acapy-verifier.local:8032
+      - PORT=3021
+      - ACAPY_ISSUER_URL=http://acapy-issuer:8021
+      - ACAPY_VERIFIER_URL=http://acapy-verifier:8032
       # Trust anchors are now uploaded via API - no filesystem path needed
     # Healthcheck defined in Dockerfile
     # No volume mounts for trust anchors - they are uploaded via API
@@ -38,23 +41,24 @@ services:
     build:
       context: ./sphereon
     ports:
-      - "3010:3010"
+      - "${SPHEREON_PORT:-13010}:3010"
     environment:
       - PORT=3010
     # Healthcheck defined in Dockerfile
 
   # ACA-Py Issuer - Issues credentials via OID4VCI
   acapy-issuer:
+    platform: linux/amd64
     build: 
       dockerfile: oid4vc/docker/Dockerfile
       context: ../../
       args:
         ACAPY_VERSION: 1.4.0
-        ISOMDL_BRANCH: fix/python-build-system
+        ISOMDL_BRANCH: main
     ports:
-      - "8020:8020"  # inbound transport
-      - "8083:8021"  # admin (mapped to 8083)
-      - "8022:8022"  # oid4vci endpoint
+      - "${ACAPY_ISSUER_INBOUND_PORT:-18020}:8020"  # inbound transport
+      - "${ACAPY_ISSUER_ADMIN_PORT:-18021}:8021"  # admin
+      - "${ACAPY_ISSUER_OID4VCI_PORT:-18022}:8022"  # oid4vci endpoint
     environment:
       - AGENT_ENDPOINT=http://acapy-issuer:8020
       - OID4VCI_ENDPOINT=http://acapy-issuer.local:8022
@@ -62,15 +66,10 @@ services:
       - WALLET_STORAGE_TYPE=${WALLET_STORAGE_TYPE:-sqlite}
       - PYTHONPATH=/usr/src/app/isomdl_wrapper:/usr/src/app
       - ACAPY_ADMIN_PORT=8021
+      - ADMIN_PORT=8021
       - LOG_LEVEL=DEBUG
       # Certificates are now stored in wallet, no file paths needed
       # Keys and certs are auto-generated on startup if not present
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8021/status/ready"]
-      interval: 10s
-      timeout: 10s
-      retries: 20
-      start_period: 300s
     volumes:
       - ../docker/dev.yml:/usr/src/app/docker/dev.yml
       - ../oid4vc:/usr/src/app/oid4vc
@@ -80,22 +79,23 @@ services:
       default:
         aliases:
           - acapy-issuer.local
-    command: start --arg-file /usr/src/app/docker/dev.yml --wallet-storage-type ${WALLET_STORAGE_TYPE:-sqlite} --log-level DEBUG
+    command: ["python", "-m", "acapy_agent", "start", "--arg-file", "/usr/src/app/docker/dev.yml", "--wallet-storage-type", "${WALLET_STORAGE_TYPE:-sqlite}", "--log-level", "DEBUG"]
     restart: unless-stopped
 
   # ACA-Py Verifier - Receives presentations from Credo
   acapy-verifier:
+    platform: linux/amd64
     build: 
       dockerfile: oid4vc/docker/Dockerfile
       context: ../../
       args:
         ACAPY_VERSION: 1.4.0
-        ISOMDL_BRANCH: fix/python-build-system
+        ISOMDL_BRANCH: main
     ports:
-      - "8030:8030"  # inbound transport
-      - "8031:8031"  # admin
-      - "8032:8032"  # oid4vp endpoint
-      - "8033:8033"  # oid4vci endpoint
+      - "${ACAPY_VERIFIER_INBOUND_PORT:-18030}:8030"  # inbound transport
+      - "${ACAPY_VERIFIER_ADMIN_PORT:-18031}:8031"  # admin
+      - "${ACAPY_VERIFIER_OID4VP_PORT:-18032}:8032"  # oid4vp endpoint
+      - "${ACAPY_VERIFIER_OID4VCI_PORT:-18033}:8033"  # oid4vci endpoint
     environment:
       - AGENT_ENDPOINT=http://acapy-verifier:8030
       - OID4VCI_ENDPOINT=http://acapy-verifier.local:8033
@@ -103,17 +103,12 @@ services:
       - WALLET_STORAGE_TYPE=${WALLET_STORAGE_TYPE:-sqlite}
       - PYTHONPATH=/usr/src/app/isomdl_wrapper:/usr/src/app
       - ACAPY_ADMIN_PORT=8031
+      - ADMIN_PORT=8031
       - LOG_LEVEL=DEBUG
       # Use wallet-based trust store instead of file-based
       - OID4VC_MDOC_TRUST_STORE_TYPE=${OID4VC_MDOC_TRUST_STORE_TYPE:-wallet}
       # Fallback path for file-based trust store (if OID4VC_MDOC_TRUST_STORE_TYPE=file)
       - OID4VC_MDOC_TRUST_ANCHORS_PATH=/etc/acapy/mdoc/trust-anchors/
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8031/status/ready"]
-      interval: 10s
-      timeout: 10s
-      retries: 20
-      start_period: 300s
     volumes:
       - ../../oid4vc/oid4vc:/usr/src/app/oid4vc
       - ../../oid4vc/mso_mdoc:/usr/src/app/mso_mdoc
@@ -124,7 +119,7 @@ services:
       default:
         aliases:
           - acapy-verifier.local
-    command: start --arg-file /usr/src/app/docker/dev-verifier.yml --wallet-storage-type ${WALLET_STORAGE_TYPE:-sqlite} --log-level DEBUG
+    command: ["python", "-m", "acapy_agent", "start", "--arg-file", "/usr/src/app/docker/dev-verifier.yml", "--wallet-storage-type", "${WALLET_STORAGE_TYPE:-sqlite}", "--log-level", "DEBUG"]
     restart: unless-stopped
 
   # Integration Test Runner
@@ -134,18 +129,17 @@ services:
       dockerfile: Dockerfile.test.runner
       args:
         ACAPY_VERSION: 1.4.0
+    platform: linux/amd64  # Force x86_64 for wheel compatibility
     working_dir: /usr/src/app
     environment:
       - REQUIRE_MDOC=false
-      - CREDO_AGENT_URL=http://credo-agent:3020
+      - CREDO_AGENT_URL=http://credo-agent:3021
       - SPHEREON_WRAPPER_URL=http://sphereon-wrapper:3010
       - ACAPY_ISSUER_ADMIN_URL=http://acapy-issuer:8021
-      - ACAPY_ISSUER_OID4VCI_URL=http://acapy-issuer.local:8022
+      - ACAPY_ISSUER_OID4VCI_URL=http://acapy-issuer:8022
       - ACAPY_VERIFIER_ADMIN_URL=http://acapy-verifier:8031
-      - ACAPY_VERIFIER_OID4VP_URL=http://acapy-verifier.local:8032
+      - ACAPY_VERIFIER_OID4VP_URL=http://acapy-verifier:8032
       - PYTHONPATH=/usr/src/app
-      - WAIT_HOSTS=credo-agent:3020,sphereon-wrapper:3010,acapy-issuer:8021,acapy-verifier:8031
-      - WAIT_HOSTS_TIMEOUT=300
     volumes:
       - ./test-results:/usr/src/app/test-results
       - ./tests:/usr/src/app/tests
@@ -162,10 +156,7 @@ services:
       acapy-verifier:
         condition: service_healthy
     command: >
-      /bin/sh -c "
-      /wait &&
       uv run pytest tests/ --verbose --tb=short --junit-xml=test-results/junit-quick.xml --durations=5
-      "
 
   # ============================================================================
   # Walt.id Web Wallet Stack - For Playwright E2E Testing

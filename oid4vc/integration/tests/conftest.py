@@ -29,7 +29,7 @@ from credo_wrapper import CredoWrapper
 from sphereon_wrapper import SphereaonWrapper
 
 # Environment configuration
-CREDO_AGENT_URL = os.getenv("CREDO_AGENT_URL", "http://localhost:3020")
+CREDO_AGENT_URL = os.getenv("CREDO_AGENT_URL", "http://localhost:3021")
 SPHEREON_WRAPPER_URL = os.getenv("SPHEREON_WRAPPER_URL", "http://localhost:3010")
 ACAPY_ISSUER_ADMIN_URL = os.getenv("ACAPY_ISSUER_ADMIN_URL", "http://localhost:8021")
 ACAPY_ISSUER_OID4VCI_URL = os.getenv(
