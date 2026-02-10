@@ -92,7 +92,8 @@ async def _parse_cred_offer(context: AdminRequestContext, exchange_id: str) -> d
     subpath = f"/tenant/{wallet_id}" if wallet_id else ""
     return {
         "credential_issuer": f"{config.endpoint}{subpath}",
-        "credentials": [supported.identifier],
+        "credential_configuration_ids": [supported.identifier],  # OID4VCI 1.0
+        "credentials": [supported.format],  # Draft spec (backward compatibility) - uses format, not identifier
         "grants": {
             "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
                 "pre-authorized_code": record.code,

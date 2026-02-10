@@ -248,8 +248,14 @@ async def handle_proof_of_posession(
     encoded_headers, encoded_payload, encoded_signature = proof["jwt"].split(".", 3)
     headers = b64_to_dict(encoded_headers)
 
-    if headers.get("typ") != "openid4vci-proof+jwt":
-        raise web.HTTPBadRequest(reason="Invalid proof: wrong typ.")
+    # OID4VCI 1.0 requires typ="openid4vci-proof+jwt"
+    # But accept common draft spec values for backward compatibility
+    typ = headers.get("typ")
+    valid_typ_values = ["openid4vci-proof+jwt", "JWT", "jwt", "openid4vci-jwt"]
+    if typ and typ not in valid_typ_values:
+        LOGGER.warning(f"Proof JWT has unexpected typ header: {typ}")
+        raise web.HTTPBadRequest(reason=f"Invalid proof: unsupported typ '{typ}'. Expected one of: {valid_typ_values}")
+
 
     if "kid" in headers:
         try:

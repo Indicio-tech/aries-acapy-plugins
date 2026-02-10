@@ -75,6 +75,7 @@ async def credential_issuer_metadata(request: web.Request):
             metadata["authorization_servers"] = [
                 f"{config.auth_server_url}{auth_tenant_subpath}"
             ]
+        metadata["token_endpoint"] = f"{public_url}{subpath}/token"
         metadata["credential_endpoint"] = f"{public_url}{subpath}/credential"
         metadata["notification_endpoint"] = f"{public_url}{subpath}/notification"
         metadata["credential_configurations_supported"] = {
@@ -83,5 +84,55 @@ async def credential_issuer_metadata(request: web.Request):
         }
 
     LOGGER.debug("METADATA: %s", metadata)
+
+    return web.json_response(metadata)
+
+
+@docs(tags=["oid4vc"], summary="Get OpenID Connect Discovery metadata with OID4VCI compatibility")
+async def openid_configuration(request: web.Request):
+    """OpenID Connect Discovery endpoint with OID4VCI compatibility.
+    
+    Returns combined OpenID Connect Discovery 1.0 metadata and OID4VCI 
+    credential issuer metadata for maximum interoperability.
+    """
+    context: AdminRequestContext = request["context"]
+    config = Config.from_settings(context.settings)
+    public_url = config.endpoint
+
+    async with context.session() as session:
+        # TODO If there's a lot, this will be a problem
+        credentials_supported = await SupportedCredential.query(session)
+
+        wallet_id = request.match_info.get("wallet_id")
+        subpath = f"/tenant/{wallet_id}" if wallet_id else ""
+        base_url = f"{public_url}{subpath}"
+        
+        # Combined OIDC Discovery + OID4VCI metadata
+        metadata: dict[str, Any] = {
+            # OIDC Discovery fields
+            "issuer": base_url,
+            "token_endpoint": f"{base_url}/token",
+            "response_types_supported": ["code"],
+            
+            # OAuth 2.0 AS Metadata fields
+            "grant_types_supported": ["urn:ietf:params:oauth:grant-type:pre-authorized_code"],
+            
+            # OID4VCI fields
+            "credential_issuer": base_url,
+            "credential_endpoint": f"{base_url}/credential",
+            "notification_endpoint": f"{base_url}/notification",
+            "credential_configurations_supported": {
+                supported.identifier: supported.to_issuer_metadata()
+                for supported in credentials_supported
+            }
+        }
+        
+        if config.auth_server_url:
+            auth_tenant_subpath = get_tenant_subpath(context.profile)
+            metadata["authorization_servers"] = [
+                f"{config.auth_server_url}{auth_tenant_subpath}"
+            ]
+
+    LOGGER.debug("OPENID CONFIG: %s", metadata)
 
     return web.json_response(metadata)
