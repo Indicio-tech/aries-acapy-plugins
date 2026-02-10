@@ -53,7 +53,7 @@ class GetTokenSchema(OpenAPISchema):
     user_pin = fields.Str(required=False)
 
     @pre_load
-    def normalize_fields(self, data, **kwargs):
+    def normalize_fields(self, data, **_kwargs):
         """Normalize legacy field names to OID4VCI v1.0 keys.
 
         Accept 'pre_authorized_code' by mapping it to 'pre-authorized_code'.
@@ -61,7 +61,7 @@ class GetTokenSchema(OpenAPISchema):
         # webargs may pass a MultiDictProxy; make a writable copy first
         try:
             mutable = dict(data)
-        except Exception:
+        except (TypeError, ValueError):
             mutable = data
         # Map legacy underscore field to the hyphenated v1.0 key if needed
         if "pre_authorized_code" in mutable and "pre-authorized_code" not in mutable:
@@ -253,7 +253,7 @@ async def handle_proof_of_posession(
     typ = headers.get("typ")
     valid_typ_values = ["openid4vci-proof+jwt", "JWT", "jwt", "openid4vci-jwt"]
     if typ and typ not in valid_typ_values:
-        LOGGER.warning(f"Proof JWT has unexpected typ header: {typ}")
+        LOGGER.warning("Proof JWT has unexpected typ header: %s", typ)
         raise web.HTTPBadRequest(reason=f"Invalid proof: unsupported typ '{typ}'. Expected one of: {valid_typ_values}")
 
 

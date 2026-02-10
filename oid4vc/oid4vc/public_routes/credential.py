@@ -101,7 +101,7 @@ async def issue_cred(request: web.Request):
     token_result = await check_token(context, request.headers.get("Authorization"))
     refresh_id = token_result.payload["sub"]
     body = await request.json()
-    LOGGER.info(f"request: {body}")
+    LOGGER.info("request: %s", body)
     
     # OID4VCI 1.0 § 7.2: credential_identifier and format are mutually exclusive
     credential_identifier = body.get("credential_identifier")
@@ -171,7 +171,7 @@ async def issue_cred(request: web.Request):
         )
 
     if supported.format_data is None:
-        LOGGER.error(f"No format_data for supported credential {supported.format}.")
+        LOGGER.error("No format_data for supported credential %s.", supported.format)
         raise web.HTTPInternalServerError()
 
     if "proof" not in body:
