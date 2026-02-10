@@ -27,6 +27,7 @@ from .metadata import (
     BatchCredentialIssuanceSchema,
     CredentialIssuerMetadataSchema,
     credential_issuer_metadata,
+    openid_configuration,
 )
 
 # Nonce management
@@ -80,6 +81,7 @@ __all__ = [
     "BatchCredentialIssuanceSchema",
     "CredentialIssuerMetadataSchema",
     "credential_issuer_metadata",
+    "openid_configuration",
     # Nonce
     "create_nonce",
     "get_nonce",

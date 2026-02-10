@@ -5,7 +5,7 @@ from aiohttp import web
 
 from ..status_handler import StatusHandler
 from .credential import dereference_cred_offer, issue_cred
-from .metadata import credential_issuer_metadata
+from .metadata import credential_issuer_metadata, openid_configuration
 from .notification import receive_notification
 from .status_list import get_status_list
 from .token import token
@@ -27,6 +27,11 @@ async def register(app: web.Application, multitenant: bool, context: InjectionCo
         web.get(
             f"{subpath}/.well-known/openid-credential-issuer",
             credential_issuer_metadata,
+            allow_head=False,
+        ),
+        web.get(
+            f"{subpath}/.well-known/openid-configuration",
+            openid_configuration,
             allow_head=False,
         ),
         # TODO Add .well-known/did-configuration.json
