@@ -1,6 +1,13 @@
 version = 1
 revision = 2
 requires-python = "==3.12.*"
+resolution-markers = [
+    "platform_machine == 'arm64' and sys_platform == 'darwin'",
+    "platform_machine == 'x86_64' and sys_platform == 'darwin'",
+    "sys_platform == 'linux'",
+    "sys_platform == 'win32'",
+    "(platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'darwin') or (sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32')",
+]
 
 [[package]]
 name = "acapy-agent"
@@ -770,6 +777,94 @@ wheels = [
 ]
 
 [[package]]
+name = "isomdl-uniffi"
+version = "0.1.0"
+source = { url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-macosx_10_12_x86_64.whl" }
+resolution-markers = [
+    "platform_machine == 'x86_64' and sys_platform == 'darwin'",
+]
+wheels = [
+    { url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:ca3c6b8a907c04c618c373566b9d63496ae5c3f6baf0a3965864f888ecff162e" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "build", marker = "extra == 'dev'" },
+    { name = "cryptography", marker = "extra == 'dev'", specifier = ">=39.0.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'" },
+    { name = "setuptools", marker = "extra == 'dev'", specifier = ">=45" },
+    { name = "wheel", marker = "extra == 'dev'" },
+]
+provides-extras = ["dev"]
+
+[[package]]
+name = "isomdl-uniffi"
+version = "0.1.0"
+source = { url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-macosx_11_0_arm64.whl" }
+resolution-markers = [
+    "platform_machine == 'arm64' and sys_platform == 'darwin'",
+]
+wheels = [
+    { url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:aab36f42574bb7e5e409391a73505ba6f5d8c633c17d3121baea06521d3fc095" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "build", marker = "extra == 'dev'" },
+    { name = "cryptography", marker = "extra == 'dev'", specifier = ">=39.0.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'" },
+    { name = "setuptools", marker = "extra == 'dev'", specifier = ">=45" },
+    { name = "wheel", marker = "extra == 'dev'" },
+]
+provides-extras = ["dev"]
+
+[[package]]
+name = "isomdl-uniffi"
+version = "0.1.0"
+source = { url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" }
+resolution-markers = [
+    "sys_platform == 'linux'",
+]
+wheels = [
+    { url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b2b7b0732e6d03af09483669f4b46d08267f2d64ff1d0237ca67ab370c1f8123" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "build", marker = "extra == 'dev'" },
+    { name = "cryptography", marker = "extra == 'dev'", specifier = ">=39.0.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'" },
+    { name = "setuptools", marker = "extra == 'dev'", specifier = ">=45" },
+    { name = "wheel", marker = "extra == 'dev'" },
+]
+provides-extras = ["dev"]
+
+[[package]]
+name = "isomdl-uniffi"
+version = "0.1.0"
+source = { url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-win_amd64.whl" }
+resolution-markers = [
+    "sys_platform == 'win32'",
+]
+wheels = [
+    { url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-win_amd64.whl", hash = "sha256:abf8cf7a5c7cf82a52912d7cca40b1bcc9077e016baf33d6bc9c5decab395f47" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "build", marker = "extra == 'dev'" },
+    { name = "cryptography", marker = "extra == 'dev'", specifier = ">=39.0.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'" },
+    { name = "setuptools", marker = "extra == 'dev'", specifier = ">=45" },
+    { name = "wheel", marker = "extra == 'dev'" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "jinja2"
 version = "3.1.6"
 source = { registry = "https://pypi.org/simple" }
@@ -985,6 +1080,10 @@ dependencies = [
     { name = "cwt" },
     { name = "did-peer-4" },
     { name = "httpx" },
+    { name = "isomdl-uniffi", version = "0.1.0", source = { url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-macosx_10_12_x86_64.whl" }, marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'" },
+    { name = "isomdl-uniffi", version = "0.1.0", source = { url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-macosx_11_0_arm64.whl" }, marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
+    { name = "isomdl-uniffi", version = "0.1.0", source = { url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" }, marker = "sys_platform == 'linux'" },
+    { name = "isomdl-uniffi", version = "0.1.0", source = { url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-win_amd64.whl" }, marker = "sys_platform == 'win32'" },
     { name = "jsonpointer" },
     { name = "jsonrpc-api-proxy-client" },
     { name = "pycose" },
@@ -1018,6 +1117,10 @@ requires-dist = [
     { name = "cwt", specifier = ">=1.6.0" },
     { name = "did-peer-4", specifier = ">=0.1.4" },
     { name = "httpx", specifier = ">=0.28.1" },
+    { name = "isomdl-uniffi", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-macosx_11_0_arm64.whl" },
+    { name = "isomdl-uniffi", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin'", url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-macosx_10_12_x86_64.whl" },
+    { name = "isomdl-uniffi", marker = "sys_platform == 'linux'", url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" },
+    { name = "isomdl-uniffi", marker = "sys_platform == 'win32'", url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-win_amd64.whl" },
     { name = "jsonpointer", specifier = ">=3.0.0,<4.0.0" },
     { name = "jsonrpc-api-proxy-client", git = "https://github.com/Indicio-tech/json-rpc-api-proxy.git?subdirectory=clients%2Fpython&rev=main" },
     { name = "pycose", specifier = ">=1.0.0" },
@@ -1655,7 +1758,7 @@ version = "0.32.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
-    { name = "cffi", marker = "implementation_name != 'pypy' and os_name == 'nt'" },
+    { name = "cffi", marker = "(implementation_name != 'pypy' and os_name == 'nt' and platform_machine != 'arm64' and platform_machine != 'x86_64' and sys_platform == 'darwin') or (implementation_name != 'pypy' and os_name == 'nt' and sys_platform != 'darwin' and sys_platform != 'linux')" },
     { name = "idna" },
     { name = "outcome" },
     { name = "sniffio" },
