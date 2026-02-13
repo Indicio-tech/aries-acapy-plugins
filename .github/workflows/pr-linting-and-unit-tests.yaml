@@ -63,19 +63,12 @@ jobs:
 
           echo "changed-plugins=${changed_dirs[*]}" >> $GITHUB_OUTPUT
       #----------------------------------------------
-      #       Install Rust toolchain (for isomdl-uniffi)
+      #       Install isomdl-uniffi (for oid4vc mso_mdoc support)
       #----------------------------------------------
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-      #----------------------------------------------
-      #       Install uniffi-bindgen (for isomdl-uniffi)
-      #----------------------------------------------
-      - name: Install uniffi-bindgen
-        run: cargo install uniffi-bindgen --version 0.28.3
+      - name: Install isomdl-uniffi
+        if: contains(steps.changed-plugins.outputs.changed-plugins, 'oid4vc')
+        run: |
+          pip install https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       #----------------------------------------------
       #       Install dependencies
       #----------------------------------------------
