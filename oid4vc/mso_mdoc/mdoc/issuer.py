@@ -35,9 +35,28 @@ import cbor2
 # - mDoc creation and signing (ISO 18013-5 § 8.3)
 # - Presentation protocols (ISO 18013-5 § 8.4)
 # - P-256 elliptic curve cryptography (ISO 18013-5 § 9.1.3.5)
-from isomdl_uniffi import Mdoc  # ISO 18013-5 § 8.3: Mobile document structure
+
+# Conditional import for isomdl_uniffi - may not be available in all environments
+try:
+    from isomdl_uniffi import Mdoc  # ISO 18013-5 § 8.3: Mobile document structure
+
+    ISOMDL_AVAILABLE = True
+except ImportError:
+    Mdoc = None  # type: ignore
+    ISOMDL_AVAILABLE = False
 
 LOGGER = logging.getLogger(__name__)
+
+
+class IsomdlNotAvailableError(Exception):
+    """Raised when isomdl_uniffi is required but not available."""
+
+    def __init__(self):
+        """Initialize the exception."""
+        super().__init__(
+            "isomdl_uniffi library is not installed. "
+            "Install it from https://github.com/Indicio-tech/isomdl-uniffi/releases"
+        )
 
 
 def _prepare_mdl_namespaces(payload: Mapping[str, Any]) -> dict:
@@ -162,6 +181,9 @@ def isomdl_mdoc_sign(
     Returns:
         CBOR-encoded mDoc as string
     """
+    if not ISOMDL_AVAILABLE:
+        raise IsomdlNotAvailableError()
+
     if not isinstance(headers, dict):
         raise ValueError("missing headers.")
 
@@ -207,8 +229,10 @@ def isomdl_mdoc_sign(
         raise ValueError(f"Failed to create mdoc: {ex}") from ex
 
 
-def parse_mdoc(cbor_data: str) -> Mdoc:
+def parse_mdoc(cbor_data: str) -> Any:
     """Parse a CBOR-encoded mDoc string into an Mdoc object."""
+    if not ISOMDL_AVAILABLE:
+        raise IsomdlNotAvailableError()
     try:
         return Mdoc.from_string(cbor_data)
     except Exception as ex:

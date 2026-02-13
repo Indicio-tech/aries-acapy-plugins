@@ -8,8 +8,15 @@ import os
 from abc import abstractmethod
 from typing import Any, List, Optional, Protocol
 
-# Import isomdl_uniffi library directly
-import isomdl_uniffi
+# Conditional import for isomdl_uniffi - may not be available in all environments
+try:
+    import isomdl_uniffi
+
+    ISOMDL_AVAILABLE = True
+except ImportError:
+    isomdl_uniffi = None  # type: ignore
+    ISOMDL_AVAILABLE = False
+
 from acapy_agent.core.profile import Profile
 
 from oid4vc.config import Config
@@ -22,6 +29,17 @@ from oid4vc.cred_processor import (
 from oid4vc.models.presentation import OID4VPPresentation
 
 LOGGER = logging.getLogger(__name__)
+
+
+class IsomdlNotAvailableError(Exception):
+    """Raised when isomdl_uniffi is required but not available."""
+
+    def __init__(self):
+        """Initialize the exception."""
+        super().__init__(
+            "isomdl_uniffi library is not installed. "
+            "Install it from https://github.com/Indicio-tech/isomdl-uniffi/releases"
+        )
 
 
 def extract_mdoc_item_value(item: Any) -> Any:
@@ -304,6 +322,8 @@ class MsoMdocCredVerifier(CredVerifier):
 
     def __init__(self, trust_store: Optional[TrustStore] = None):
         """Initialize the credential verifier."""
+        if not ISOMDL_AVAILABLE:
+            raise IsomdlNotAvailableError()
         self.trust_store = trust_store
 
     async def verify_credential(
@@ -556,6 +576,8 @@ class MsoMdocPresVerifier(PresVerifier):
 
     def __init__(self, trust_store: Optional[TrustStore] = None):
         """Initialize the presentation verifier."""
+        if not ISOMDL_AVAILABLE:
+            raise IsomdlNotAvailableError()
         self.trust_store = trust_store
 
     def _parse_jsonpath(self, path: str) -> List[str]:
@@ -726,6 +748,8 @@ def mdoc_verify(
     Returns:
         MdocVerifyResult: The verification result.
     """
+    if not ISOMDL_AVAILABLE:
+        raise IsomdlNotAvailableError()
     try:
         # Parse the mdoc
         mdoc = isomdl_uniffi.Mdoc.from_string(mso_mdoc)
