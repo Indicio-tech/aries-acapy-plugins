@@ -343,7 +343,10 @@ class MsoMdocCredVerifier(CredVerifier):
                     parse_error = str(e)
 
             if not mdoc:
-                error_msg = f"Invalid credential format: {parse_error}" if parse_error else "Invalid credential format"
+                if parse_error:
+                    error_msg = f"Invalid credential format: {parse_error}"
+                else:
+                    error_msg = "Invalid credential format"
                 return VerifyResult(
                     verified=False, payload={"error": error_msg}
                 )

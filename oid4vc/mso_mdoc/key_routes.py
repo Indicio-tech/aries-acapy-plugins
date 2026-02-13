@@ -284,7 +284,8 @@ async def generate_keys(request: web.BaseRequest):
                             "key_id": key_id,
                             "cert_id": cert_id or f"cert-for-{key_id}",
                             "message": (
-                                "Existing mDoc signing key found (use ?force=true to generate new)"
+                                "Existing mDoc signing key found "
+                                "(use ?force=true to generate new)"
                             ),
                         }
                     )

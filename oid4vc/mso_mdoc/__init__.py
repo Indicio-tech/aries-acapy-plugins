@@ -14,6 +14,7 @@ from mso_mdoc.key_generation import generate_default_keys_and_certs
 from mso_mdoc.mdoc.verifier import FileTrustStore, WalletTrustStore
 from mso_mdoc.storage import MdocStorageManager
 from oid4vc.cred_processor import CredProcessors
+from . import routes as routes
 
 LOGGER = logging.getLogger(__name__)
 
@@ -35,7 +36,8 @@ def create_trust_store(
     - OID4VC_MDOC_TRUST_ANCHORS_PATH: Path for file-based trust store
 
     Args:
-        profile: ACA-Py profile for wallet-based trust store (optional, required for wallet type)
+        profile: ACA-Py profile for wallet-based trust store
+            (optional, required for wallet type)
 
     Returns:
         Configured trust store instance or None if disabled

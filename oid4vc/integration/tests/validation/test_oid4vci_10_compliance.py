@@ -19,12 +19,12 @@ LOGGER = logging.getLogger(__name__)
 
 class OID4VCTestRunner:
     """Helper class for OID4VCI 1.0 compliance tests."""
-    
+
     def __init__(self, acapy_issuer_admin, issuer_did):
         self.acapy_issuer_admin = acapy_issuer_admin
         self.issuer_did = issuer_did
         self.test_results = {}
-    
+
     async def setup_supported_credential(self):
         """Create a supported credential configuration."""
         # Create a simple vc+sd-jwt credential configuration with proper sd_list
@@ -47,20 +47,20 @@ class OID4VCTestRunner:
             },
             "vc_additional_data": {"sd_list": ["/test_claim"]}
         }
-        
+
         response = await self.acapy_issuer_admin.post(
             "/oid4vci/credential-supported/create",
             json=config
         )
-        
+
         supported_cred_id = response["supported_cred_id"]
         identifier = response.get("identifier", supported_cred_id)
-        
+
         return {
             "supported_cred_id": supported_cred_id,
             "identifier": identifier
         }
-    
+
     async def create_credential_offer(self, supported_cred_id):
         """Create a credential offer for testing."""
         # First create the exchange
@@ -72,13 +72,13 @@ class OID4VCTestRunner:
                 "did": self.issuer_did
             }
         )
-        
+
         # Then get the credential offer
         offer_response = await self.acapy_issuer_admin.get(
             "/oid4vci/credential-offer",
             params={"exchange_id": exchange["exchange_id"]}
         )
-        
+
         return {
             "exchange_id": exchange["exchange_id"],
             "offer": offer_response["offer"],
@@ -168,7 +168,7 @@ class TestOID4VCI10Compliance:
         supported_cred_id = supported_cred_result["supported_cred_id"]
         credential_identifier = supported_cred_result["identifier"]
         offer_data = await test_runner.create_credential_offer(supported_cred_id)
-        
+
         # Verify offer has credential_configuration_ids (OID4VCI 1.0)
         assert "credential_configuration_ids" in offer_data["offer"], \
             "Offer must contain credential_configuration_ids per OID4VCI 1.0"
@@ -235,7 +235,7 @@ class TestOID4VCI10Compliance:
                 json=credential_request,
                 headers={"Authorization": f"Bearer {access_token}"},
             )
-            
+
             LOGGER.info(f"Credential response status: {cred_response.status_code}")
             if cred_response.status_code != 200:
                 LOGGER.error(f"Credential request failed: {cred_response.text}")
@@ -258,9 +258,10 @@ class TestOID4VCI10Compliance:
 
     @pytest.mark.asyncio
     async def test_oid4vci_10_mutual_exclusion(self, test_runner):
-        """Test OID4VCI 1.0 § 7.2: credential_identifier and format mutual exclusion.
-        
-        Per OID4VCI 1.0 § 7.2: credential_identifier and format MUST be mutually exclusive.
+        """Test OID4VCI 1.0 § 7.2: credential_identifier and format exclusion.
+
+        Per OID4VCI 1.0 § 7.2: credential_identifier and format MUST be
+        mutually exclusive.
         """
         LOGGER.info("Testing credential_identifier and format mutual exclusion...")
 
@@ -311,9 +312,9 @@ class TestOID4VCI10Compliance:
             LOGGER.info(f"Mutual exclusion test response: {response.status_code}")
             if response.status_code != 400:
                 LOGGER.error(f"Expected 400, got {response.status_code}: {response.text}")
-            
+
             assert response.status_code == 400
-            
+
             # Verify error message mentions mutual exclusivity
             error_text = response.text.lower()
             assert "mutually exclusive" in error_text, \
@@ -379,9 +380,9 @@ class TestOID4VCI10Compliance:
             offer = offer_data["offer"]
             assert "credential_configuration_ids" in offer, \
                 "Offer must have credential_configuration_ids per OID4VCI 1.0"
-            
+
             credential_identifier = offer["credential_configuration_ids"][0]
-            
+
             invalid_proof_request = {
                 "credential_identifier": credential_identifier,  # OID4VCI 1.0
                 "proof": {
@@ -400,16 +401,16 @@ class TestOID4VCI10Compliance:
 
             # Should fail due to wrong typ header or invalid JWT
             assert response.status_code == 400
-            
+
             # Handle different error response formats
             try:
                 error_data = response.json()
                 error_msg = error_data.get("message", str(error_data))
             except Exception:
                 error_msg = response.text
-            
+
             # Check for proof validation error
-            assert ("openid4vci-proof+jwt" in error_msg or 
+            assert ("openid4vci-proof+jwt" in error_msg or
                     "proof" in error_msg.lower() or
                     "invalid" in error_msg.lower()), \
                 f"Error should mention proof validation, got: {error_msg}"
