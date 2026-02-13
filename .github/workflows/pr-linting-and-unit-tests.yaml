@@ -63,13 +63,6 @@ jobs:
 
           echo "changed-plugins=${changed_dirs[*]}" >> $GITHUB_OUTPUT
       #----------------------------------------------
-      #       Install isomdl-uniffi (for oid4vc mso_mdoc support)
-      #----------------------------------------------
-      - name: Install isomdl-uniffi
-        if: contains(steps.changed-plugins.outputs.changed-plugins, 'oid4vc')
-        run: |
-          pip install https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
-      #----------------------------------------------
       #       Install dependencies
       #----------------------------------------------
       - name: Install dependencies
@@ -81,6 +74,15 @@ jobs:
             poetry install --no-interaction --no-root --all-extras
             cd ..
           done
+      #----------------------------------------------
+      #       Install isomdl-uniffi (for oid4vc mso_mdoc support)
+      #----------------------------------------------
+      - name: Install isomdl-uniffi
+        if: contains(steps.changed-plugins.outputs.changed-plugins, 'oid4vc')
+        run: |
+          cd oid4vc
+          poetry run pip install https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+          cd ..
       #----------------------------------------------
       #       Lint plugins
       #----------------------------------------------
