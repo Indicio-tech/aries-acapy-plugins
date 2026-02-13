@@ -254,7 +254,9 @@ async def handle_proof_of_posession(
     valid_typ_values = ["openid4vci-proof+jwt", "JWT", "jwt", "openid4vci-jwt"]
     if typ and typ not in valid_typ_values:
         LOGGER.warning("Proof JWT has unexpected typ header: %s", typ)
-        raise web.HTTPBadRequest(reason=f"Invalid proof: unsupported typ '{typ}'. Expected one of: {valid_typ_values}")
+        raise web.HTTPBadRequest(
+            reason=f"Invalid proof: unsupported typ '{typ}'"
+        )
 
 
     if "kid" in headers:

@@ -88,7 +88,7 @@ async def credential_issuer_metadata(request: web.Request):
     return web.json_response(metadata)
 
 
-@docs(tags=["oid4vc"], summary="Get OpenID Connect Discovery metadata with OID4VCI compatibility")
+@docs(tags=["oid4vc"], summary="OpenID Connect Discovery with OID4VCI")
 async def openid_configuration(request: web.Request):
     """OpenID Connect Discovery endpoint with OID4VCI compatibility.
     
@@ -115,7 +115,9 @@ async def openid_configuration(request: web.Request):
             "response_types_supported": ["code"],
             
             # OAuth 2.0 AS Metadata fields
-            "grant_types_supported": ["urn:ietf:params:oauth:grant-type:pre-authorized_code"],
+            "grant_types_supported": [
+                "urn:ietf:params:oauth:grant-type:pre-authorized_code"
+            ],
             
             # OID4VCI fields
             "credential_issuer": base_url,

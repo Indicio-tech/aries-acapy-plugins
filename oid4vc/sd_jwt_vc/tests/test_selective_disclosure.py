@@ -1,6 +1,6 @@
 """Tests for selective disclosure functionality in SD-JWT credentials."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from acapy_agent.admin.request_context import AdminRequestContext
@@ -8,7 +8,7 @@ from acapy_agent.admin.request_context import AdminRequestContext
 from oid4vc.models.exchange import OID4VCIExchangeRecord
 from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.pop_result import PopResult
-from sd_jwt_vc.cred_processor import CredProcessorError, SdJwtCredIssueProcessor
+from sd_jwt_vc.cred_processor import SdJwtCredIssueProcessor
 
 
 @pytest.mark.asyncio

@@ -9,7 +9,6 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
-from acapy_agent.config.base import InjectionError
 from acapy_agent.core.profile import ProfileSession
 from acapy_agent.storage.base import StorageRecord
 from acapy_agent.storage.error import StorageError, StorageNotFoundError

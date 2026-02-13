@@ -75,7 +75,7 @@ class IssueCredentialRequestSchema(OpenAPISchema):
     format = fields.Str(
         required=False,
         metadata={
-            "description": "Draft spec: Credential format (use credential_identifier in 1.0).",
+            "description": "Draft spec: Credential format.",
             "example": "jwt_vc_json"
         },
     )
@@ -109,12 +109,12 @@ async def issue_cred(request: web.Request):
     
     if credential_identifier and format_field:
         raise web.HTTPBadRequest(
-            reason="credential_identifier and format are mutually exclusive per OID4VCI 1.0 § 7.2"
+            reason="credential_identifier and format are mutually exclusive"
         )
     
     if not credential_identifier and not format_field:
         raise web.HTTPBadRequest(
-            reason="Either credential_identifier (OID4VCI 1.0) or format (draft) is required"
+            reason="credential_identifier or format is required"
         )
     
     try:
@@ -145,7 +145,7 @@ async def issue_cred(request: web.Request):
         # OID4VCI 1.0: Match by credential_identifier (supported.identifier)
         if supported.identifier != credential_identifier:
             raise web.HTTPBadRequest(
-                reason=f"credential_identifier '{credential_identifier}' does not match offer"
+                reason="credential_identifier does not match offer"
             )
     else:
         # Draft spec: Match by format
