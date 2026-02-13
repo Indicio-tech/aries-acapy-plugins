@@ -59,6 +59,7 @@ async def test_issuer_metadata(context: AdminRequestContext, req: web.Request):
             {
                 "credential_issuer": f"http://localhost:8020/tenant/{wallet_id}",
                 "authorization_servers": ["http://localhost:9001"],
+                "token_endpoint": f"http://localhost:8020/tenant/{wallet_id}/token",
                 "credential_endpoint": f"http://localhost:8020/tenant/{wallet_id}/credential",
                 "notification_endpoint": f"http://localhost:8020/tenant/{wallet_id}/notification",
                 "credential_configurations_supported": {
@@ -258,6 +259,12 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
     monkeypatch.setattr(
         "oid4vc.models.supported_cred.SupportedCredential.retrieve_by_id",
         AsyncMock(return_value=mock_supported),
+    )
+
+    # Patch signing to avoid depending on wallet implementation details
+    monkeypatch.setattr(
+        "jwt_vc_json.cred_processor.jwt_sign",
+        AsyncMock(return_value="header.payload.signature"),
     )
 
     # Patch handle_proof_of_posession to return a verified PopResult
