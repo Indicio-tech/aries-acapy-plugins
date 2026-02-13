@@ -79,9 +79,7 @@ class TestKeysModule:
         }
 
     @pytest.mark.asyncio
-    async def test_store_key_with_metadata(
-        self, mock_session, mock_storage, sample_jwk
-    ):
+    async def test_store_key_with_metadata(self, mock_session, mock_storage, sample_jwk):
         """Test storing key with custom metadata."""
         with patch.object(keys, "get_storage", return_value=mock_storage):
             await keys.store_key(
@@ -304,9 +302,7 @@ class TestCertificatesModule:
         mock_storage.find_all_records = AsyncMock(return_value=records)
 
         with patch.object(certificates, "get_storage", return_value=mock_storage):
-            result = await certificates.list_certificates(
-                mock_session, include_pem=True
-            )
+            result = await certificates.list_certificates(mock_session, include_pem=True)
 
             assert len(result) == 1
             assert "certificate_pem" in result[0]
@@ -335,9 +331,7 @@ class TestCertificatesModule:
         mock_storage.find_all_records = AsyncMock(return_value=records)
 
         with patch.object(certificates, "get_storage", return_value=mock_storage):
-            result = await certificates.list_certificates(
-                mock_session, include_pem=False
-            )
+            result = await certificates.list_certificates(mock_session, include_pem=False)
 
             assert len(result) == 1
             assert "certificate_pem" not in result[0]
@@ -433,9 +427,7 @@ class TestTrustAnchorsModule:
             assert result is None
 
     @pytest.mark.asyncio
-    async def test_get_trust_anchor_handles_json_error(
-        self, mock_session, mock_storage
-    ):
+    async def test_get_trust_anchor_handles_json_error(self, mock_session, mock_storage):
         """Test get_trust_anchor returns None on invalid JSON."""
         record = StorageRecord(
             type=MDOC_TRUST_ANCHOR_RECORD_TYPE,
@@ -512,9 +504,7 @@ class TestTrustAnchorsModule:
             tags={},
         )
         mock_storage.get_record = AsyncMock(return_value=record)
-        mock_storage.delete_record = AsyncMock(
-            side_effect=StorageError("delete failed")
-        )
+        mock_storage.delete_record = AsyncMock(side_effect=StorageError("delete failed"))
 
         with patch.object(trust_anchors, "get_storage", return_value=mock_storage):
             result = await trust_anchors.delete_trust_anchor(mock_session, "anchor-1")
@@ -557,9 +547,7 @@ class TestConfigModule:
             assert json.loads(record.value) == {"key": "value"}
 
     @pytest.mark.asyncio
-    async def test_store_config_updates_existing_record(
-        self, mock_session, mock_storage
-    ):
+    async def test_store_config_updates_existing_record(self, mock_session, mock_storage):
         """Test store_config updates when record exists."""
         mock_storage.add_record = AsyncMock(side_effect=StorageError("duplicate"))
         mock_storage.update_record = AsyncMock()
@@ -575,9 +563,7 @@ class TestConfigModule:
     ):
         """Test store_config raises when both add and update fail."""
         mock_storage.add_record = AsyncMock(side_effect=StorageError("duplicate"))
-        mock_storage.update_record = AsyncMock(
-            side_effect=StorageError("update failed")
-        )
+        mock_storage.update_record = AsyncMock(side_effect=StorageError("update failed"))
 
         with patch.object(config, "get_storage", return_value=mock_storage):
             with pytest.raises(StorageError, match="update failed"):
@@ -606,9 +592,7 @@ class TestConfigModule:
             assert result == {"key": "value"}
 
     @pytest.mark.asyncio
-    async def test_get_config_returns_none_on_not_found(
-        self, mock_session, mock_storage
-    ):
+    async def test_get_config_returns_none_on_not_found(self, mock_session, mock_storage):
         """Test get_config returns None when config not found."""
         mock_storage.get_record = AsyncMock(side_effect=StorageNotFoundError())
 

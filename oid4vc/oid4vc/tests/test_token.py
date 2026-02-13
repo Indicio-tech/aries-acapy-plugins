@@ -111,22 +111,25 @@ async def test_token_pre_authorized_code_first_use_success(
     mock_did_info.did = "did:jwk:test123"
     mock_did_info.method = "jwk"
     mock_wallet.create_local_did = AsyncMock(return_value=mock_did_info)
-    
+
     # Mock session as an async context manager
     mock_session = MagicMock()
     mock_session.inject = MagicMock(return_value=mock_wallet)
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=None)
-    
+
     context.profile.session = MagicMock(return_value=mock_session)
 
     # Mock retrieve_or_create_did_jwk and jwt_sign using patch
-    with patch(
-        "oid4vc.public_routes.token.retrieve_or_create_did_jwk",
-        AsyncMock(return_value=mock_did_info),
-    ), patch(
-        "oid4vc.public_routes.token.jwt_sign",
-        AsyncMock(return_value="new_token_jwt"),
+    with (
+        patch(
+            "oid4vc.public_routes.token.retrieve_or_create_did_jwk",
+            AsyncMock(return_value=mock_did_info),
+        ),
+        patch(
+            "oid4vc.public_routes.token.jwt_sign",
+            AsyncMock(return_value="new_token_jwt"),
+        ),
     ):
         request = token_request()
         response = await token(cast(web.Request, request))

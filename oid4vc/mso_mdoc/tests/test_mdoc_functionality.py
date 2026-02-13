@@ -161,9 +161,7 @@ class TestMdocFunctionality:
 
             # Test that the signing function exists and can be called
             # Note: This tests the interface, actual signing depends on proper key setup
-            result = isomdl_mdoc_sign(
-                jwk, sample_headers, payload, cert_pem, private_pem
-            )
+            result = isomdl_mdoc_sign(jwk, sample_headers, payload, cert_pem, private_pem)
 
             # Verify we get some result (string or bytes)
             assert result is not None

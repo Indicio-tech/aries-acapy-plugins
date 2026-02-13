@@ -120,9 +120,7 @@ async def list_certificates(
         return []
 
 
-async def get_certificate_for_key(
-    session: ProfileSession, key_id: str
-) -> Optional[str]:
+async def get_certificate_for_key(session: ProfileSession, key_id: str) -> Optional[str]:
     """Retrieve certificate PEM associated with a key ID."""
     try:
         storage = get_storage(session)

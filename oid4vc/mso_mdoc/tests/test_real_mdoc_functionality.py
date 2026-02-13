@@ -83,9 +83,7 @@ class TestRealMdocFunctionality:
             "claims": sample_iso_claims,
             "issued_at": datetime.now(timezone.utc).isoformat(),
             "valid_from": datetime.now(timezone.utc).isoformat(),
-            "valid_until": (
-                datetime.now(timezone.utc) + timedelta(days=365)
-            ).isoformat(),
+            "valid_until": (datetime.now(timezone.utc) + timedelta(days=365)).isoformat(),
             "binary_data": base64.b64encode(b"test binary content").decode(),
             "nested_structure": {
                 "level1": {"level2": ["array", "of", "values", 123, True]}
@@ -152,9 +150,7 @@ class TestRealMdocFunctionality:
             "issuer": "test-dmv-issuer",
             "issued_at": datetime.now(timezone.utc).isoformat(),
             "valid_from": datetime.now(timezone.utc).isoformat(),
-            "valid_until": (
-                datetime.now(timezone.utc) + timedelta(days=365)
-            ).isoformat(),
+            "valid_until": (datetime.now(timezone.utc) + timedelta(days=365)).isoformat(),
         }
 
         # Validate required top-level fields
@@ -253,8 +249,7 @@ class TestRealMdocFunctionality:
 
         for invalid_doctype in invalid_doctypes:
             assert (
-                not invalid_doctype.startswith("org.iso.18013.5")
-                or invalid_doctype == ""
+                not invalid_doctype.startswith("org.iso.18013.5") or invalid_doctype == ""
             )
 
     @pytest.mark.skipif(not ISOMDL_AVAILABLE, reason="isomdl-uniffi not available")
@@ -270,9 +265,9 @@ class TestRealMdocFunctionality:
 
         # Add missing required fields that are not in the sample fixture
         claims["un_distinguishing_sign"] = "US"
-        claims[
-            "portrait"
-        ] = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        claims["portrait"] = (
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        )
 
         # payload for isomdl_mdoc_sign should be the flat claims dictionary
         payload = claims
@@ -301,9 +296,7 @@ class TestRealMdocFunctionality:
         except (AttributeError, TypeError, ValueError) as e:
             # Some signing errors are expected in test environment
             # The key is that the function exists and is callable
-            assert (
-                "isomdl_mdoc_sign" in str(e) or "jwk" in str(e) or "payload" in str(e)
-            )
+            assert "isomdl_mdoc_sign" in str(e) or "jwk" in str(e) or "payload" in str(e)
 
     @pytest.mark.skipif(not CBOR_AVAILABLE, reason="CBOR library not available")
     def test_real_performance_benchmarks(self, sample_iso_claims):

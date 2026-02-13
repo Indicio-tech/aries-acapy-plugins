@@ -35,9 +35,7 @@ def storage(monkeypatch):
     mock_storage = AsyncMock()
     # Patch get_storage in all submodules so they return our mock
     monkeypatch.setattr(keys, "get_storage", MagicMock(return_value=mock_storage))
-    monkeypatch.setattr(
-        certificates, "get_storage", MagicMock(return_value=mock_storage)
-    )
+    monkeypatch.setattr(certificates, "get_storage", MagicMock(return_value=mock_storage))
     monkeypatch.setattr(
         trust_anchors, "get_storage", MagicMock(return_value=mock_storage)
     )
@@ -177,9 +175,7 @@ async def test_store_signing_key_requires_jwk(
 
 
 @pytest.mark.asyncio
-async def test_store_config_updates_when_record_exists(
-    storage_manager, session, storage
-):
+async def test_store_config_updates_when_record_exists(storage_manager, session, storage):
     storage.add_record = AsyncMock(side_effect=StorageError("duplicate"))
     storage.update_record = AsyncMock()
 

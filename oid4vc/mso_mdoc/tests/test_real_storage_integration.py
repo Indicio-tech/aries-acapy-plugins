@@ -74,9 +74,7 @@ class TestRealMdocStorage:
             "issuer": "test-dmv-issuer",
             "issued_at": datetime.now(timezone.utc).isoformat(),
             "valid_from": datetime.now(timezone.utc).isoformat(),
-            "valid_until": (
-                datetime.now(timezone.utc) + timedelta(days=365)
-            ).isoformat(),
+            "valid_until": (datetime.now(timezone.utc) + timedelta(days=365)).isoformat(),
             "signature": "base64_encoded_mdoc_signature",
             "issuer_cert": "base64_encoded_issuer_certificate",
         }
@@ -256,9 +254,7 @@ class TestRealMdocStorage:
             sort_keys=True,
         )
 
-        calculated_hash = hashlib.sha256(
-            record_data_for_hash.encode("utf-8")
-        ).hexdigest()
+        calculated_hash = hashlib.sha256(record_data_for_hash.encode("utf-8")).hexdigest()
 
         # Integrity should match
         assert calculated_hash == record.metadata["integrity_hash"]
@@ -277,9 +273,7 @@ class TestRealMdocStorage:
             sort_keys=True,
         )
 
-        tampered_hash = hashlib.sha256(
-            tampered_data_for_hash.encode("utf-8")
-        ).hexdigest()
+        tampered_hash = hashlib.sha256(tampered_data_for_hash.encode("utf-8")).hexdigest()
 
         # Should detect tampering
         assert tampered_hash != record.metadata["integrity_hash"]
@@ -303,9 +297,7 @@ class TestRealMdocStorage:
                     }
                 },
                 "issuer": f"test-issuer-{i}",
-                "issued_at": (
-                    datetime.now(timezone.utc) - timedelta(days=i)
-                ).isoformat(),
+                "issued_at": (datetime.now(timezone.utc) - timedelta(days=i)).isoformat(),
             }
 
             record = MdocRecord(
@@ -405,9 +397,7 @@ class TestRealMdocStorage:
         assert len(ca_dmv_records) == 5  # Should be 5 records (15/3)
 
         # Query by metadata status
-        active_records = [
-            r for r in test_records if r.metadata.get("status") == "active"
-        ]
+        active_records = [r for r in test_records if r.metadata.get("status") == "active"]
         assert len(active_records) == 5  # Should be 5 records (15/3)
 
         # Complex query - active mDL records from California DMV

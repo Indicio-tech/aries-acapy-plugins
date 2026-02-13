@@ -464,9 +464,7 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             # Log full exception for debugging before raising a generic error
             LOGGER.exception("mso_mdoc issuance error: %s", ex)
             # Surface the underlying exception text in the CredProcessorError
-            raise CredProcessorError(
-                f"Failed to issue mso_mdoc credential: {ex}"
-            ) from ex
+            raise CredProcessorError(f"Failed to issue mso_mdoc credential: {ex}") from ex
 
         return mso_mdoc
 
@@ -565,9 +563,7 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                 f"Failed to normalize mDoc result of type {type(result).__name__}: {e}"
             ) from e
 
-    def validate_credential_subject(
-        self, supported: SupportedCredential, subject: dict
-    ):
+    def validate_credential_subject(self, supported: SupportedCredential, subject: dict):
         """Validate the credential subject."""
         if not subject:
             raise CredProcessorError("Credential subject cannot be empty")

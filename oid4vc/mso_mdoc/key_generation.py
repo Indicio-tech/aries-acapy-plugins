@@ -262,9 +262,7 @@ def generate_self_signed_certificate(
         x509.CRLDistributionPoints(
             [
                 x509.DistributionPoint(
-                    full_name=[
-                        x509.UniformResourceIdentifier("http://example.com/crl")
-                    ],
+                    full_name=[x509.UniformResourceIdentifier("http://example.com/crl")],
                     relative_name=None,
                     reasons=None,
                     crl_issuer=None,
@@ -370,9 +368,7 @@ async def generate_default_keys_and_certs(
     )
 
     # Set as defaults
-    await storage_manager.store_config(
-        session, "default_signing_key", {"key_id": key_id}
-    )
+    await storage_manager.store_config(session, "default_signing_key", {"key_id": key_id})
     await storage_manager.store_config(
         session, "default_certificate", {"cert_id": cert_id}
     )

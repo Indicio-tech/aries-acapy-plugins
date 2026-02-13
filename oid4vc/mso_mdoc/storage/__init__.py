@@ -303,9 +303,7 @@ class MdocStorageManager:
         """Store configuration data."""
         await config.store_config(session, config_id, config_data)
 
-    async def get_config(
-        self, session: ProfileSession, config_id: str
-    ) -> Optional[Dict]:
+    async def get_config(self, session: ProfileSession, config_id: str) -> Optional[Dict]:
         """Retrieve configuration data."""
         return await config.get_config(session, config_id)
 
@@ -339,8 +337,6 @@ class MdocStorageManager:
         """Retrieve all trust anchor certificates as PEM strings."""
         return await trust_anchors.get_all_trust_anchor_pems(session)
 
-    async def delete_trust_anchor(
-        self, session: ProfileSession, anchor_id: str
-    ) -> bool:
+    async def delete_trust_anchor(self, session: ProfileSession, anchor_id: str) -> bool:
         """Delete a trust anchor by ID."""
         return await trust_anchors.delete_trust_anchor(session, anchor_id)

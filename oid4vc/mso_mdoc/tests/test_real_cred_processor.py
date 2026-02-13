@@ -146,9 +146,7 @@ class TestRealCredProcessorIntegration:
             },
             "issued_at": datetime.now(timezone.utc).isoformat(),
             "valid_from": datetime.now(timezone.utc).isoformat(),
-            "valid_until": (
-                datetime.now(timezone.utc) + timedelta(days=365)
-            ).isoformat(),
+            "valid_until": (datetime.now(timezone.utc) + timedelta(days=365)).isoformat(),
         }
 
         # Process the credential data

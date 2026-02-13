@@ -29,6 +29,7 @@ class OID4VCTestRunner:
         """Create a supported credential configuration."""
         # Create a simple vc+sd-jwt credential configuration with proper sd_list
         import uuid
+
         random_suffix = str(uuid.uuid4())[:8]
         config = {
             "id": f"TestCredential_{random_suffix}",
@@ -41,25 +42,19 @@ class OID4VCTestRunner:
                 "cryptographic_binding_methods_supported": ["did:key"],
                 "cryptographic_suites_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/test",
-                "claims": {
-                    "test_claim": {"mandatory": True}
-                }
+                "claims": {"test_claim": {"mandatory": True}},
             },
-            "vc_additional_data": {"sd_list": ["/test_claim"]}
+            "vc_additional_data": {"sd_list": ["/test_claim"]},
         }
 
         response = await self.acapy_issuer_admin.post(
-            "/oid4vci/credential-supported/create",
-            json=config
+            "/oid4vci/credential-supported/create", json=config
         )
 
         supported_cred_id = response["supported_cred_id"]
         identifier = response.get("identifier", supported_cred_id)
 
-        return {
-            "supported_cred_id": supported_cred_id,
-            "identifier": identifier
-        }
+        return {"supported_cred_id": supported_cred_id, "identifier": identifier}
 
     async def create_credential_offer(self, supported_cred_id):
         """Create a credential offer for testing."""
@@ -69,20 +64,19 @@ class OID4VCTestRunner:
             json={
                 "supported_cred_id": supported_cred_id,
                 "credential_subject": {"test_claim": "test_value"},
-                "did": self.issuer_did
-            }
+                "did": self.issuer_did,
+            },
         )
 
         # Then get the credential offer
         offer_response = await self.acapy_issuer_admin.get(
-            "/oid4vci/credential-offer",
-            params={"exchange_id": exchange["exchange_id"]}
+            "/oid4vci/credential-offer", params={"exchange_id": exchange["exchange_id"]}
         )
 
         return {
             "exchange_id": exchange["exchange_id"],
             "offer": offer_response["offer"],
-            "credential_offer": offer_response["credential_offer"]
+            "credential_offer": offer_response["credential_offer"],
         }
 
 
@@ -170,8 +164,9 @@ class TestOID4VCI10Compliance:
         offer_data = await test_runner.create_credential_offer(supported_cred_id)
 
         # Verify offer has credential_configuration_ids (OID4VCI 1.0)
-        assert "credential_configuration_ids" in offer_data["offer"], \
+        assert "credential_configuration_ids" in offer_data["offer"], (
             "Offer must contain credential_configuration_ids per OID4VCI 1.0"
+        )
         LOGGER.info(f"Offer structure: {list(offer_data['offer'].keys())}")
 
         # Get access token
@@ -311,14 +306,17 @@ class TestOID4VCI10Compliance:
             # Should fail with 400 Bad Request per OID4VCI 1.0 § 7.2
             LOGGER.info(f"Mutual exclusion test response: {response.status_code}")
             if response.status_code != 400:
-                LOGGER.error(f"Expected 400, got {response.status_code}: {response.text}")
+                LOGGER.error(
+                    f"Expected 400, got {response.status_code}: {response.text}"
+                )
 
             assert response.status_code == 400
 
             # Verify error message mentions mutual exclusivity
             error_text = response.text.lower()
-            assert "mutually exclusive" in error_text, \
+            assert "mutually exclusive" in error_text, (
                 f"Error should mention mutual exclusivity, got: {response.text}"
+            )
 
             # Test with neither parameter (should also fail)
             invalid_request2 = {
@@ -334,8 +332,9 @@ class TestOID4VCI10Compliance:
 
             assert response2.status_code == 400
             error_text2 = response2.text.lower()
-            assert "required" in error_text2 or "missing" in error_text2, \
+            assert "required" in error_text2 or "missing" in error_text2, (
                 f"Error should mention required field, got: {response2.text}"
+            )
 
             test_runner.test_results["mutual_exclusion"] = {
                 "status": "PASS",
@@ -378,8 +377,9 @@ class TestOID4VCI10Compliance:
             # Test with invalid proof type
             # Use credential_identifier from OID4VCI 1.0 offer structure
             offer = offer_data["offer"]
-            assert "credential_configuration_ids" in offer, \
+            assert "credential_configuration_ids" in offer, (
                 "Offer must have credential_configuration_ids per OID4VCI 1.0"
+            )
 
             credential_identifier = offer["credential_configuration_ids"][0]
 
@@ -410,10 +410,11 @@ class TestOID4VCI10Compliance:
                 error_msg = response.text
 
             # Check for proof validation error
-            assert ("openid4vci-proof+jwt" in error_msg or
-                    "proof" in error_msg.lower() or
-                    "invalid" in error_msg.lower()), \
-                f"Error should mention proof validation, got: {error_msg}"
+            assert (
+                "openid4vci-proof+jwt" in error_msg
+                or "proof" in error_msg.lower()
+                or "invalid" in error_msg.lower()
+            ), f"Error should mention proof validation, got: {error_msg}"
 
             test_runner.test_results["proof_of_possession"] = {
                 "status": "PASS",

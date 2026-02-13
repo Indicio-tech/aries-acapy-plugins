@@ -206,10 +206,7 @@ def _is_preverified_claims_dict(credential: Any) -> bool:
     """
     if not isinstance(credential, dict):
         return False
-    return any(
-        key.startswith("org.iso.") or key == "status"
-        for key in credential.keys()
-    )
+    return any(key.startswith("org.iso.") or key == "status" for key in credential.keys())
 
 
 def _parse_string_credential(credential: str) -> tuple[Optional[Any], Optional[str]]:
@@ -224,7 +221,7 @@ def _parse_string_credential(credential: str) -> tuple[Optional[Any], Optional[s
         Tuple of (Parsed Mdoc object or None if parsing fails, error message if any)
     """
     last_error = None
-    
+
     # Try hex first (full DeviceResponse)
     try:
         if all(c in "0123456789abcdefABCDEF" for c in credential):
@@ -266,7 +263,7 @@ def _parse_string_credential(credential: str) -> tuple[Optional[Any], Optional[s
     except Exception as final_err:
         last_error = str(final_err)
         return None, last_error
-    
+
     return None, last_error
 
 
@@ -347,9 +344,7 @@ class MsoMdocCredVerifier(CredVerifier):
                     error_msg = f"Invalid credential format: {parse_error}"
                 else:
                     error_msg = "Invalid credential format"
-                return VerifyResult(
-                    verified=False, payload={"error": error_msg}
-                )
+                return VerifyResult(verified=False, payload={"error": error_msg})
 
             # Refresh trust store cache if needed
             if self.trust_store and isinstance(self.trust_store, WalletTrustStore):
@@ -535,8 +530,7 @@ def _verify_single_presentation(
     ):
         if hasattr(isomdl_uniffi, "verify_oid4vp_response_legacy"):
             LOGGER.info(
-                "Device auth failed with spec-compliant format, "
-                "trying legacy 2023 format"
+                "Device auth failed with spec-compliant format, trying legacy 2023 format"
             )
             verified_data = isomdl_uniffi.verify_oid4vp_response_legacy(
                 response_bytes,
@@ -643,9 +637,7 @@ class MsoMdocPresVerifier(PresVerifier):
                     == isomdl_uniffi.AuthenticationStatus.VALID
                 ):
                     try:
-                        claims = extract_verified_claims(
-                            verified_data.verified_response
-                        )
+                        claims = extract_verified_claims(verified_data.verified_response)
                     except Exception as e:
                         LOGGER.warning(f"Failed to extract claims: {e}")
                         claims = {}
@@ -666,9 +658,7 @@ class MsoMdocPresVerifier(PresVerifier):
                         verified_data.errors,
                     )
                     try:
-                        claims = extract_verified_claims(
-                            verified_data.verified_response
-                        )
+                        claims = extract_verified_claims(verified_data.verified_response)
                     except Exception:
                         claims = {}
 

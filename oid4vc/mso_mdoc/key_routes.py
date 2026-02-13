@@ -73,9 +73,7 @@ class TrustAnchorDetailSchema(OpenAPISchema):
     certificate_pem = fields.Str(
         required=True, metadata={"description": "PEM-encoded certificate"}
     )
-    created_at = fields.Str(
-        required=True, metadata={"description": "Creation timestamp"}
-    )
+    created_at = fields.Str(required=True, metadata={"description": "Creation timestamp"})
     metadata = fields.Dict(
         required=False, metadata={"description": "Trust anchor metadata"}
     )
@@ -159,9 +157,7 @@ class DefaultCertificateResponseSchema(OpenAPISchema):
     certificate_pem = fields.Str(
         required=True, metadata={"description": "PEM-encoded certificate"}
     )
-    created_at = fields.Str(
-        required=True, metadata={"description": "Creation timestamp"}
-    )
+    created_at = fields.Str(required=True, metadata={"description": "Creation timestamp"})
     metadata = fields.Dict(
         required=False, metadata={"description": "Certificate metadata"}
     )
@@ -297,7 +293,7 @@ async def generate_keys(request: web.BaseRequest):
                 "key_id": generated["key_id"],
                 "cert_id": generated["cert_id"],
                 "message": (
-                    "Successfully generated new mDoc signing key and" " certificate"
+                    "Successfully generated new mDoc signing key and certificate"
                 ),
             }
         )

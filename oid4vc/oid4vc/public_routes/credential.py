@@ -60,7 +60,7 @@ def types_are_subset(request: Optional[List[str]], supported: Optional[List[str]
 
 class IssueCredentialRequestSchema(OpenAPISchema):
     """Request schema for the /credential endpoint (OID4VCI 1.0).
-    
+
     Per OID4VCI 1.0 § 7.2: credential_identifier and format are mutually exclusive.
     Either credential_identifier (1.0) OR format (draft) must be provided.
     """
@@ -69,14 +69,14 @@ class IssueCredentialRequestSchema(OpenAPISchema):
         required=False,
         metadata={
             "description": "OID4VCI 1.0: Identifier of the credential configuration.",
-            "example": "UniversityDegreeCredential"
+            "example": "UniversityDegreeCredential",
         },
     )
     format = fields.Str(
         required=False,
         metadata={
             "description": "Draft spec: Credential format.",
-            "example": "jwt_vc_json"
+            "example": "jwt_vc_json",
         },
     )
     type = fields.List(
@@ -84,8 +84,7 @@ class IssueCredentialRequestSchema(OpenAPISchema):
         metadata={"description": "Credential types (optional)."},
     )
     proof = fields.Dict(
-        required=False,
-        metadata={"description": "Proof of possession (key binding)."}  
+        required=False, metadata={"description": "Proof of possession (key binding)."}
     )
 
 
@@ -102,21 +101,19 @@ async def issue_cred(request: web.Request):
     refresh_id = token_result.payload["sub"]
     body = await request.json()
     LOGGER.info("request: %s", body)
-    
+
     # OID4VCI 1.0 § 7.2: credential_identifier and format are mutually exclusive
     credential_identifier = body.get("credential_identifier")
     format_field = body.get("format")
-    
+
     if credential_identifier and format_field:
         raise web.HTTPBadRequest(
             reason="credential_identifier and format are mutually exclusive"
         )
-    
+
     if not credential_identifier and not format_field:
-        raise web.HTTPBadRequest(
-            reason="credential_identifier or format is required"
-        )
-    
+        raise web.HTTPBadRequest(reason="credential_identifier or format is required")
+
     try:
         async with context.profile.session() as session:
             ex_record = await OID4VCIExchangeRecord.retrieve_by_refresh_id(
@@ -144,9 +141,7 @@ async def issue_cred(request: web.Request):
     if credential_identifier:
         # OID4VCI 1.0: Match by credential_identifier (supported.identifier)
         if supported.identifier != credential_identifier:
-            raise web.HTTPBadRequest(
-                reason="credential_identifier does not match offer"
-            )
+            raise web.HTTPBadRequest(reason="credential_identifier does not match offer")
     else:
         # Draft spec: Match by format
         if supported.format != format_field:

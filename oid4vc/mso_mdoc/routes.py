@@ -201,8 +201,7 @@ async def mdoc_sign(request: web.BaseRequest):
                     LOGGER.info("Generated new signing key for verification method")
                 else:
                     raise ValueError(
-                        "No signing key available and no verification method"
-                        " provided"
+                        "No signing key available and no verification method provided"
                     )
 
             if not jwk or not key_data:

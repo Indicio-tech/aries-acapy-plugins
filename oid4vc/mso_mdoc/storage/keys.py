@@ -90,9 +90,7 @@ async def get_key(session: ProfileSession, key_id: str) -> Optional[Dict]:
         return None
 
 
-async def list_keys(
-    session: ProfileSession, purpose: Optional[str] = None
-) -> List[Dict]:
+async def list_keys(session: ProfileSession, purpose: Optional[str] = None) -> List[Dict]:
     """List stored keys, optionally filtered by purpose."""
     try:
         storage = get_storage(session)

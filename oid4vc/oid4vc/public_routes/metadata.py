@@ -91,8 +91,8 @@ async def credential_issuer_metadata(request: web.Request):
 @docs(tags=["oid4vc"], summary="OpenID Connect Discovery with OID4VCI")
 async def openid_configuration(request: web.Request):
     """OpenID Connect Discovery endpoint with OID4VCI compatibility.
-    
-    Returns combined OpenID Connect Discovery 1.0 metadata and OID4VCI 
+
+    Returns combined OpenID Connect Discovery 1.0 metadata and OID4VCI
     credential issuer metadata for maximum interoperability.
     """
     context: AdminRequestContext = request["context"]
@@ -106,19 +106,17 @@ async def openid_configuration(request: web.Request):
         wallet_id = request.match_info.get("wallet_id")
         subpath = f"/tenant/{wallet_id}" if wallet_id else ""
         base_url = f"{public_url}{subpath}"
-        
+
         # Combined OIDC Discovery + OID4VCI metadata
         metadata: dict[str, Any] = {
             # OIDC Discovery fields
             "issuer": base_url,
             "token_endpoint": f"{base_url}/token",
             "response_types_supported": ["code"],
-            
             # OAuth 2.0 AS Metadata fields
             "grant_types_supported": [
                 "urn:ietf:params:oauth:grant-type:pre-authorized_code"
             ],
-            
             # OID4VCI fields
             "credential_issuer": base_url,
             "credential_endpoint": f"{base_url}/credential",
@@ -126,9 +124,9 @@ async def openid_configuration(request: web.Request):
             "credential_configurations_supported": {
                 supported.identifier: supported.to_issuer_metadata()
                 for supported in credentials_supported
-            }
+            },
         }
-        
+
         if config.auth_server_url:
             auth_tenant_subpath = get_tenant_subpath(context.profile)
             metadata["authorization_servers"] = [

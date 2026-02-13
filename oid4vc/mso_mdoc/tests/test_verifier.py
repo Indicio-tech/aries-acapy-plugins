@@ -57,9 +57,11 @@ class TestFileTrustStore:
 
     def test_get_trust_anchors_success(self):
         """Test retrieving trust anchors successfully."""
-        with patch("os.path.isdir", return_value=True), patch(
-            "os.listdir", return_value=["cert1.pem", "cert2.crt", "ignore.txt"]
-        ), patch("builtins.open", mock_open(read_data="CERT_CONTENT")):
+        with (
+            patch("os.path.isdir", return_value=True),
+            patch("os.listdir", return_value=["cert1.pem", "cert2.crt", "ignore.txt"]),
+            patch("builtins.open", mock_open(read_data="CERT_CONTENT")),
+        ):
             store = FileTrustStore("/path/to/certs")
             anchors = store.get_trust_anchors()
 
@@ -75,17 +77,20 @@ class TestFileTrustStore:
 
     def test_get_trust_anchors_read_error(self):
         """Test handling of file read errors."""
-        with patch("os.path.isdir", return_value=True), patch(
-            "os.listdir", return_value=["cert1.pem"]
-        ), patch("builtins.open", side_effect=Exception("Read error")):
+        with (
+            patch("os.path.isdir", return_value=True),
+            patch("os.listdir", return_value=["cert1.pem"]),
+            patch("builtins.open", side_effect=Exception("Read error")),
+        ):
             store = FileTrustStore("/path/to/certs")
             anchors = store.get_trust_anchors()
             assert anchors == []
 
     def test_get_trust_anchors_empty_directory(self):
         """Test handling of empty directory with no certificate files."""
-        with patch("os.path.isdir", return_value=True), patch(
-            "os.listdir", return_value=[]
+        with (
+            patch("os.path.isdir", return_value=True),
+            patch("os.listdir", return_value=[]),
         ):
             store = FileTrustStore("/path/to/empty")
             anchors = store.get_trust_anchors()
@@ -93,8 +98,9 @@ class TestFileTrustStore:
 
     def test_get_trust_anchors_only_non_cert_files(self):
         """Test directory with only non-certificate files."""
-        with patch("os.path.isdir", return_value=True), patch(
-            "os.listdir", return_value=["readme.txt", "config.json", "script.sh"]
+        with (
+            patch("os.path.isdir", return_value=True),
+            patch("os.listdir", return_value=["readme.txt", "config.json", "script.sh"]),
         ):
             store = FileTrustStore("/path/to/certs")
             anchors = store.get_trust_anchors()
@@ -108,9 +114,11 @@ class TestFileTrustStore:
                 raise Exception("Read error")
             return mock_open(read_data="CERT_CONTENT")()
 
-        with patch("os.path.isdir", return_value=True), patch(
-            "os.listdir", return_value=["good1.pem", "fail.pem", "good2.crt"]
-        ), patch("builtins.open", side_effect=mock_open_side_effect):
+        with (
+            patch("os.path.isdir", return_value=True),
+            patch("os.listdir", return_value=["good1.pem", "fail.pem", "good2.crt"]),
+            patch("builtins.open", side_effect=mock_open_side_effect),
+        ):
             store = FileTrustStore("/path/to/certs")
             anchors = store.get_trust_anchors()
 
@@ -120,9 +128,11 @@ class TestFileTrustStore:
 
     def test_get_trust_anchors_case_sensitive_extensions(self):
         """Test that file extension matching is case-sensitive."""
-        with patch("os.path.isdir", return_value=True), patch(
-            "os.listdir", return_value=["cert1.PEM", "cert2.CRT", "cert3.pem"]
-        ), patch("builtins.open", mock_open(read_data="CERT_CONTENT")):
+        with (
+            patch("os.path.isdir", return_value=True),
+            patch("os.listdir", return_value=["cert1.PEM", "cert2.CRT", "cert3.pem"]),
+            patch("builtins.open", mock_open(read_data="CERT_CONTENT")),
+        ):
             store = FileTrustStore("/path/to/certs")
             anchors = store.get_trust_anchors()
 
@@ -140,9 +150,11 @@ class TestFileTrustStore:
             content = file_contents.get(path, "UNKNOWN")
             return mock_open(read_data=content)()
 
-        with patch("os.path.isdir", return_value=True), patch(
-            "os.listdir", return_value=["cert1.pem", "cert2.crt"]
-        ), patch("builtins.open", side_effect=mock_open_with_content):
+        with (
+            patch("os.path.isdir", return_value=True),
+            patch("os.listdir", return_value=["cert1.pem", "cert2.crt"]),
+            patch("builtins.open", side_effect=mock_open_with_content),
+        ):
             store = FileTrustStore("/path/to/certs")
             anchors = store.get_trust_anchors()
 
@@ -229,11 +241,11 @@ class TestMsoMdocPresVerifier:
         profile, mock_session = create_mock_profile_with_session()
         presentation_data = "mock_presentation_data"
 
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl, patch(
-            "mso_mdoc.mdoc.verifier.Config"
-        ) as mock_config, patch(
-            "oid4vc.did_utils.retrieve_or_create_did_jwk"
-        ) as mock_did_jwk:
+        with (
+            patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl,
+            patch("mso_mdoc.mdoc.verifier.Config") as mock_config,
+            patch("oid4vc.did_utils.retrieve_or_create_did_jwk") as mock_did_jwk,
+        ):
             mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
 
             # Mock the DID JWK retrieval as async
@@ -272,11 +284,11 @@ class TestMsoMdocPresVerifier:
         profile, mock_session = create_mock_profile_with_session()
         presentation_data = "mock_presentation_data"
 
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl, patch(
-            "mso_mdoc.mdoc.verifier.Config"
-        ) as mock_config, patch(
-            "oid4vc.did_utils.retrieve_or_create_did_jwk"
-        ) as mock_did_jwk:
+        with (
+            patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl,
+            patch("mso_mdoc.mdoc.verifier.Config") as mock_config,
+            patch("oid4vc.did_utils.retrieve_or_create_did_jwk") as mock_did_jwk,
+        ):
             mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
 
             # Mock the DID JWK retrieval
@@ -311,11 +323,11 @@ class TestMsoMdocPresVerifier:
         profile, mock_session = create_mock_profile_with_session()
         presentation_data = "mock_presentation_data"
 
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl, patch(
-            "mso_mdoc.mdoc.verifier.Config"
-        ) as mock_config, patch(
-            "oid4vc.did_utils.retrieve_or_create_did_jwk"
-        ) as mock_did_jwk:
+        with (
+            patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl,
+            patch("mso_mdoc.mdoc.verifier.Config") as mock_config,
+            patch("oid4vc.did_utils.retrieve_or_create_did_jwk") as mock_did_jwk,
+        ):
             mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
 
             # Mock the DID JWK retrieval
