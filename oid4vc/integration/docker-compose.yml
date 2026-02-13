@@ -10,7 +10,7 @@ services:
       target: base
       args:
         ACAPY_VERSION: 1.4.0
-        ISOMDL_BRANCH: main
+        ISOMDL_BRANCH: fix/python-build-system
     image: oid4vc-base:latest
     profiles:
       - base-only  # Only build when explicitly requested
@@ -54,7 +54,7 @@ services:
       context: ../../
       args:
         ACAPY_VERSION: 1.4.0
-        ISOMDL_BRANCH: main
+        ISOMDL_BRANCH: fix/python-build-system
     ports:
       - "${ACAPY_ISSUER_INBOUND_PORT:-18020}:8020"  # inbound transport
       - "${ACAPY_ISSUER_ADMIN_PORT:-18021}:8021"  # admin
@@ -90,7 +90,7 @@ services:
       context: ../../
       args:
         ACAPY_VERSION: 1.4.0
-        ISOMDL_BRANCH: main
+        ISOMDL_BRANCH: fix/python-build-system
     ports:
       - "${ACAPY_VERIFIER_INBOUND_PORT:-18030}:8030"  # inbound transport
       - "${ACAPY_VERIFIER_ADMIN_PORT:-18031}:8031"  # admin

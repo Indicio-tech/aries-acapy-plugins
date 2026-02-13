@@ -23,10 +23,6 @@ RUN git clone --depth 1 --branch ${ISOMDL_BRANCH} \
 
 WORKDIR /build/isomdl-uniffi/python
 
-# Create package directory and __init__.py
-RUN mkdir -p isomdl_uniffi && \
-    printf 'try:\n    from .isomdl_uniffi import *\nexcept ImportError:\n    pass\n' > isomdl_uniffi/__init__.py
-
 # Build wheel
 RUN pip install --no-cache-dir build wheel setuptools
 RUN python setup.py bdist_wheel
