@@ -63,6 +63,20 @@ jobs:
 
           echo "changed-plugins=${changed_dirs[*]}" >> $GITHUB_OUTPUT
       #----------------------------------------------
+      #       Install Rust toolchain (for isomdl-uniffi)
+      #----------------------------------------------
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+      #----------------------------------------------
+      #       Install uniffi-bindgen (for isomdl-uniffi)
+      #----------------------------------------------
+      - name: Install uniffi-bindgen
+        run: cargo install uniffi-bindgen --version 0.28.3
+      #----------------------------------------------
       #       Install dependencies
       #----------------------------------------------
       - name: Install dependencies
