@@ -9,6 +9,8 @@ from acapy_agent.wallet.base import BaseWallet
 from acapy_agent.wallet.did_info import DIDInfo
 from acapy_agent.wallet.key_type import ED25519
 
+from .jwk import DID_JWK
+
 
 async def _retrieve_default_did(session: ProfileSession):
     """Retrieve default DID from storage."""
@@ -33,7 +35,7 @@ async def _create_default_did(session: ProfileSession) -> DIDInfo:
     wallet = session.inject(BaseWallet)
     storage = session.inject(BaseStorage)
 
-    did_info = await wallet.create_local_did(method="jwk", key_type=ED25519)
+    did_info = await wallet.create_local_did(method=DID_JWK, key_type=ED25519)
 
     record = StorageRecord(
         type="OID4VP.default",

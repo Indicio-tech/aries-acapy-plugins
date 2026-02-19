@@ -163,7 +163,7 @@ async def create_exchange(request: web.Request, refresh_id: str | None = None):
 
     if verification_method is None:
         if did is None:
-            raise ValueError("did or verificationMethod required.")
+            raise web.HTTPBadRequest(reason="did or verificationMethod required.")
 
         did = nym_to_did(did)
 
@@ -177,7 +177,13 @@ async def create_exchange(request: web.Request, refresh_id: str | None = None):
                 reason=f"Could not determine verification method from DID: {err}"
             ) from err
         if not verification_method:
-            raise ValueError("Could not determine verification method from DID")
+            # For did:jwk DIDs the verification method is always {did}#0
+            if did.startswith("did:jwk:"):
+                verification_method = f"{did}#0"
+            else:
+                raise web.HTTPBadRequest(
+                    reason=f"Could not determine verification method from DID: {did}"
+                )
 
     if did:
         issuer_id = did

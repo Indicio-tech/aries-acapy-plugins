@@ -12,6 +12,19 @@ from .token import token
 from .verification import get_request, post_response
 
 
+async def credential_issuer_metadata_deprecated(request: web.Request) -> web.Response:
+    """Deprecated underscore endpoint wrapper - adds Deprecation header.
+
+    The underscore variant (/.well-known/openid_credential_issuer) was used in
+    early OID4VCI drafts. The canonical OID4VCI 1.0 endpoint uses a dash
+    (/.well-known/openid-credential-issuer). This wrapper adds the Deprecation
+    header to signal clients to migrate to the standard endpoint.
+    """
+    response = await credential_issuer_metadata(request)
+    response.headers["Deprecation"] = "true"
+    return response
+
+
 async def register(app: web.Application, multitenant: bool, context: InjectionContext):
     """Register routes with support for multitenant mode.
 
@@ -32,7 +45,7 @@ async def register(app: web.Application, multitenant: bool, context: InjectionCo
         # OID4VCI 1.0 spec uses underscore; dash variant is kept for compatibility
         web.get(
             f"{subpath}/.well-known/openid_credential_issuer",
-            credential_issuer_metadata,
+            credential_issuer_metadata_deprecated,
             allow_head=False,
         ),
         web.get(
