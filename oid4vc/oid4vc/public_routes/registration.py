@@ -23,7 +23,9 @@ async def credential_issuer_metadata_deprecated(request: web.Request) -> web.Res
     """
     response = await credential_issuer_metadata(request)
     response.headers["Deprecation"] = "true"
-    response.headers["Warning"] = '299 - "Deprecated: use /.well-known/openid-credential-issuer"'
+    response.headers["Warning"] = (
+        '299 - "Deprecated: use /.well-known/openid-credential-issuer"'
+    )
     response.headers["Sunset"] = "Sat, 01 Jan 2028 00:00:00 GMT"
     return response
 

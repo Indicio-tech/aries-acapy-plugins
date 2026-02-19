@@ -188,7 +188,9 @@ router.post('/accept-offer', async (req: any, res: any) => {
 
     let format = 'unknown';
     if (firstCredential?.record) {
-        const recordType = firstCredential.record.constructor?.name || '';
+        // Use both constructor.name and record.type to handle minified/compiled code
+        const recordType = (firstCredential.record.constructor?.name || '') +
+                           ((firstCredential.record as any).type || '');
         if (recordType.includes('Mdoc')) format = 'mso_mdoc';
         else if (recordType.includes('SdJwt')) format = 'vc+sd-jwt';
         else if (recordType.includes('W3c')) format = 'jwt_vc_json';
