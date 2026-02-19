@@ -105,6 +105,12 @@ class SupportedCredential(BaseRecord):
             )
         }
 
+    # Formats where format_data fields go directly at the top level of the
+    # credential configuration (per OID4VCI spec), NOT inside credential_definition.
+    # - vc+sd-jwt / dc+sd-jwt: top-level fields include vct, claims, display, etc.
+    # - mso_mdoc: top-level fields include doctype, claims, display, etc.
+    TOP_LEVEL_FORMAT_DATA_FORMATS = {"vc+sd-jwt", "dc+sd-jwt", "mso_mdoc"}
+
     def to_issuer_metadata(self) -> dict:
         """Return a representation of this record as issuer metadata.
 
@@ -127,17 +133,26 @@ class SupportedCredential(BaseRecord):
         if alg_supported:
             issuer_metadata["credential_signing_alg_values_supported"] = alg_supported
         issuer_metadata["id"] = self.identifier
-        issuer_metadata["credential_definition"] = (
-            self.format_data if self.format_data else {}
-        )
-        context = issuer_metadata["credential_definition"].pop("context", None)
-        if context:
-            issuer_metadata["credential_definition"]["@context"] = context
-        issuer_metadata["credential_definition"] = {
-            k: v
-            for k, v in issuer_metadata["credential_definition"].items()
-            if v is not None
-        }
+
+        format_data = self.format_data or {}
+        if self.format in self.TOP_LEVEL_FORMAT_DATA_FORMATS:
+            # For SD-JWT (vc+sd-jwt, dc+sd-jwt) and mDOC formats, format_data
+            # fields (e.g. vct, claims, doctype) belong at the top level of the
+            # credential configuration object per OID4VCI spec.
+            for key, value in format_data.items():
+                if value is not None:
+                    issuer_metadata[key] = value
+        else:
+            # For JWT VC JSON, JSON-LD, and other formats, format_data is
+            # wrapped in credential_definition per OID4VCI spec.
+            credential_definition = dict(format_data)
+            context = credential_definition.pop("context", None)
+            if context:
+                credential_definition["@context"] = context
+            issuer_metadata["credential_definition"] = {
+                k: v for k, v in credential_definition.items() if v is not None
+            }
+
         return issuer_metadata
 
 

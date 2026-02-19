@@ -196,9 +196,35 @@ router.post('/accept-offer', async (req: any, res: any) => {
         else if (recordType.includes('W3c')) format = 'jwt_vc_json';
     }
 
+    // Extract the actual credential string/value from the record instances.
+    // Credo stores credentials in credentialInstances[]; we need the raw encoded
+    // credential string that the Python tests (and presentation flow) expect.
+    let credentialValue: string | undefined;
+    if (firstCredential?.record) {
+        const record = firstCredential.record as any;
+        const instances = record.credentialInstances;
+        if (instances && instances.length > 0) {
+            const first = instances[0];
+            if (format === 'mso_mdoc' && first.issuerSignedBase64Url) {
+                // mDOC: base64url-encoded issuer-signed document
+                credentialValue = first.issuerSignedBase64Url;
+            } else if (first.compactSdJwtVc) {
+                // SD-JWT (vc+sd-jwt / dc+sd-jwt): compact serialization
+                credentialValue = first.compactSdJwtVc;
+            } else if (first.credential) {
+                // JWT VC / W3C: encoded credential
+                credentialValue = first.credential;
+            }
+        }
+        // Last-resort fallback: stringify the record for debugging
+        if (!credentialValue) {
+            console.warn('⚠️ Could not extract credential string; falling back to full record');
+        }
+    }
+
     res.json({
       success: true,
-      credential: firstCredential,
+      credential: credentialValue,
       format: format
     });
 
