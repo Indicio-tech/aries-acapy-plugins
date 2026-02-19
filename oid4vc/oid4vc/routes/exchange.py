@@ -167,20 +167,24 @@ async def create_exchange(request: web.Request, refresh_id: str | None = None):
 
         did = nym_to_did(did)
 
-        verkey_strat = context.inject(BaseVerificationKeyStrategy)
-        try:
-            verification_method = await verkey_strat.get_verification_method_id_for_did(
-                did, context.profile
-            )
-        except VerificationKeyStrategyError as err:
-            raise web.HTTPBadRequest(
-                reason=f"Could not determine verification method from DID: {err}"
-            ) from err
-        if not verification_method:
-            # For did:jwk DIDs the verification method is always {did}#0
-            if did.startswith("did:jwk:"):
-                verification_method = f"{did}#0"
-            else:
+        # For did:jwk DIDs the verification method is always {did}#0; skip DID
+        # resolution since the resolver may not be set up or may throw unexpected
+        # errors for did:jwk DIDs.
+        if did.startswith("did:jwk:"):
+            verification_method = f"{did}#0"
+        else:
+            verkey_strat = context.inject(BaseVerificationKeyStrategy)
+            try:
+                verification_method = (
+                    await verkey_strat.get_verification_method_id_for_did(
+                        did, context.profile
+                    )
+                )
+            except VerificationKeyStrategyError as err:
+                raise web.HTTPBadRequest(
+                    reason=f"Could not determine verification method from DID: {err}"
+                ) from err
+            if not verification_method:
                 raise web.HTTPBadRequest(
                     reason=f"Could not determine verification method from DID: {did}"
                 )

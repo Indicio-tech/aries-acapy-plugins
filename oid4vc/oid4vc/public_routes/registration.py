@@ -13,15 +13,18 @@ from .verification import get_request, post_response
 
 
 async def credential_issuer_metadata_deprecated(request: web.Request) -> web.Response:
-    """Deprecated underscore endpoint wrapper - adds Deprecation header.
+    """Deprecated underscore endpoint wrapper - adds deprecation headers.
 
     The underscore variant (/.well-known/openid_credential_issuer) was used in
     early OID4VCI drafts. The canonical OID4VCI 1.0 endpoint uses a dash
-    (/.well-known/openid-credential-issuer). This wrapper adds the Deprecation
-    header to signal clients to migrate to the standard endpoint.
+    (/.well-known/openid-credential-issuer). This wrapper adds standard
+    HTTP deprecation headers to signal clients to migrate to the standard
+    endpoint.
     """
     response = await credential_issuer_metadata(request)
     response.headers["Deprecation"] = "true"
+    response.headers["Warning"] = '299 - "Deprecated: use /.well-known/openid-credential-issuer"'
+    response.headers["Sunset"] = "Sat, 01 Jan 2028 00:00:00 GMT"
     return response
 
 
