@@ -29,6 +29,12 @@ async def register(app: web.Application, multitenant: bool, context: InjectionCo
             credential_issuer_metadata,
             allow_head=False,
         ),
+        # OID4VCI 1.0 spec uses underscore; dash variant is kept for compatibility
+        web.get(
+            f"{subpath}/.well-known/openid_credential_issuer",
+            credential_issuer_metadata,
+            allow_head=False,
+        ),
         web.get(
             f"{subpath}/.well-known/openid-configuration",
             openid_configuration,

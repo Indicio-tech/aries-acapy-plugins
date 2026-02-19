@@ -11,6 +11,7 @@ from acapy_agent.messaging.valid import GENERIC_DID_EXAMPLE, GENERIC_DID_VALIDAT
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from acapy_agent.wallet.default_verification_key_strategy import (
     BaseVerificationKeyStrategy,
+    VerificationKeyStrategyError,
 )
 from acapy_agent.wallet.jwt import nym_to_did
 from aiohttp import web
@@ -167,9 +168,14 @@ async def create_exchange(request: web.Request, refresh_id: str | None = None):
         did = nym_to_did(did)
 
         verkey_strat = context.inject(BaseVerificationKeyStrategy)
-        verification_method = await verkey_strat.get_verification_method_id_for_did(
-            did, context.profile
-        )
+        try:
+            verification_method = await verkey_strat.get_verification_method_id_for_did(
+                did, context.profile
+            )
+        except VerificationKeyStrategyError as err:
+            raise web.HTTPBadRequest(
+                reason=f"Could not determine verification method from DID: {err}"
+            ) from err
         if not verification_method:
             raise ValueError("Could not determine verification method from DID")
 

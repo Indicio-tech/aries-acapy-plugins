@@ -8,11 +8,6 @@ from acapy_agent.storage.error import StorageNotFoundError
 from acapy_agent.wallet.base import BaseWallet
 from acapy_agent.wallet.did_info import DIDInfo
 from acapy_agent.wallet.key_type import ED25519
-from acapy_agent.wallet.util import bytes_to_b64
-from aries_askar import Key, KeyAlg
-from base58 import b58decode
-
-from oid4vc.jwk import DID_JWK
 
 
 async def _retrieve_default_did(session: ProfileSession):
@@ -34,30 +29,21 @@ async def _retrieve_default_did(session: ProfileSession):
 
 
 async def _create_default_did(session: ProfileSession) -> DIDInfo:
-    """Create default DID."""
+    """Create default DID using create_local_did for proper wallet registration."""
     wallet = session.inject(BaseWallet)
     storage = session.inject(BaseStorage)
-    key = await wallet.create_key(ED25519)
-    jwk = json.loads(
-        Key.from_public_bytes(KeyAlg.ED25519, b58decode(key.verkey)).get_jwk_public()
-    )
-    jwk["use"] = "sig"
-    jwk = json.dumps(jwk)
 
-    did_jwk = f"did:jwk:{bytes_to_b64(jwk.encode(), urlsafe=True, pad=False)}"
-
-    did_info = DIDInfo(did_jwk, key.verkey, {}, DID_JWK, ED25519)
-    info = await wallet.store_did(did_info)
+    did_info = await wallet.create_local_did(method="jwk", key_type=ED25519)
 
     record = StorageRecord(
         type="OID4VP.default",
-        value=json.dumps({"verkey": info.verkey, "metadata": info.metadata}),
-        tags={"did": info.did},
+        value=json.dumps({"verkey": did_info.verkey, "metadata": did_info.metadata}),
+        tags={"did": did_info.did},
         id="OID4VP.default",
     )
     await storage.add_record(record)
 
-    return info
+    return did_info
 
 
 async def retrieve_or_create_did_jwk(

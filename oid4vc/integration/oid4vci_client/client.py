@@ -45,11 +45,19 @@ class CredentialOffer:
 
     @classmethod
     def from_dict(cls, value: dict):
-        """Parse from dict."""
-        offer = value["credential_offer"]
+        """Parse from dict.
+
+        Accepts either the raw credential offer object or a wrapped dict
+        with a 'credential_offer' key (legacy format).
+        """
+        # Support legacy wrapped format: {"credential_offer": {...}}
+        offer = value.get("credential_offer", value)
+        if isinstance(offer, str):
+            # credential_offer was a URL string, not the offer dict itself
+            offer = value
         return cls(
             offer["credential_issuer"],
-            offer["credential_configuration_ids"],
+            offer.get("credential_configuration_ids") or offer.get("credentials", []),
             offer.get("grants", {}).get("authorization_code"),
             CredentialGrantPreAuth.from_grants(offer.get("grants", {})),
         )
