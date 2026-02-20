@@ -62,7 +62,7 @@ class CredentialFlowHelper:
         credential_config = {
             "id": credential_id,
             "format": CredentialFormat.SD_JWT.value,
-            "cryptographic_binding_methods_supported": ["did:key"],
+            "cryptographic_binding_methods_supported": ["did:key", "jwk"],
             "cryptographic_suites_supported": ALGORITHMS.SD_JWT_ALGS,
             "proof_types_supported": {
                 "jwt": {"proof_signing_alg_values_supported": ALGORITHMS.SD_JWT_ALGS}
@@ -152,7 +152,7 @@ class CredentialFlowHelper:
         credential_config = {
             "id": credential_id,
             "format": CredentialFormat.JWT_VC.value,
-            "cryptographic_binding_methods_supported": ["did"],
+            "cryptographic_binding_methods_supported": ["did", "jwk"],
             "cryptographic_suites_supported": ALGORITHMS.JWT_VC_ALGS,
             "proof_types_supported": {
                 "jwt": {"proof_signing_alg_values_supported": ALGORITHMS.JWT_VC_ALGS}

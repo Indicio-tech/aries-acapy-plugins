@@ -763,7 +763,7 @@ def sd_jwt_credential_config():
             },
             "format_data": {
                 "cryptographic_binding_methods_supported": binding_methods
-                or ["did:key"],
+                or ["did:key", "jwk"],
                 "cryptographic_suites_supported": crypto_suites or ["EdDSA"],
                 "vct": vct,
                 "claims": claims,
@@ -865,7 +865,7 @@ async def offer(acapy_issuer_admin, issuer_p256_did):
     supported = await acapy_issuer_admin.post(
         "/oid4vci/credential-supported/create/jwt",
         json={
-            "cryptographic_binding_methods_supported": ["did"],
+            "cryptographic_binding_methods_supported": ["did", "jwk"],
             "cryptographic_suites_supported": ["ES256"],
             "format": "jwt_vc_json",
             "id": f"UniversityDegree_{uuid.uuid4().hex[:8]}",

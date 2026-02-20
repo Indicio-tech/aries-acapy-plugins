@@ -186,7 +186,7 @@ class TestCredoRevocationFlow:
                 "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
             },
             "format_data": {
-                "cryptographic_binding_methods_supported": ["did:key"],
+                "cryptographic_binding_methods_supported": ["did:key", "jwk"],
                 "cryptographic_suites_supported": ["EdDSA"],
                 "vct": f"https://credentials.example.com/revocable_{random_suffix}",
                 "claims": {
@@ -318,7 +318,7 @@ class TestCredoRevocationFlow:
                 "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
             },
             "format_data": {
-                "cryptographic_binding_methods_supported": ["did:key"],
+                "cryptographic_binding_methods_supported": ["did:key", "jwk"],
                 "cryptographic_suites_supported": ["EdDSA"],
                 "vct": f"https://credentials.example.com/presentable_{random_suffix}",
                 "claims": {"name": {"mandatory": True}},
