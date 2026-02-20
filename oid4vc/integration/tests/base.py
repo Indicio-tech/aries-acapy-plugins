@@ -74,7 +74,7 @@ class BaseJwtVcTest(BaseOID4VCTest):
         """Class-scoped JWT VC configuration template."""
         return {
             "format": CredentialFormat.JWT_VC.value,
-            "cryptographic_binding_methods_supported": ["did", "jwk"],
+            "cryptographic_binding_methods_supported": ["did"],
             "cryptographic_suites_supported": ALGORITHMS.JWT_VC_ALGS,
             "proof_types_supported": {
                 "jwt": {"proof_signing_alg_values_supported": ALGORITHMS.JWT_VC_ALGS}

@@ -197,7 +197,10 @@ async def get_request(request: web.Request):
         "vp_formats": record.vp_formats,
         "response_type": "vp_token",
         "response_mode": "direct_post",
-        "scope": "vp_token",
+        # NOTE: Do NOT include "scope" here. The @openid4vc/openid4vp library
+        # validates that EXACTLY ONE of {scope, presentation_definition,
+        # presentation_definition_uri, dcql_query} is present. Including scope
+        # alongside presentation_definition or dcql_query causes a validation error.
     }
     if pres_def is not None:
         payload["presentation_definition"] = pres_def.pres_def

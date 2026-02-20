@@ -865,7 +865,7 @@ async def offer(acapy_issuer_admin, issuer_p256_did):
     supported = await acapy_issuer_admin.post(
         "/oid4vci/credential-supported/create/jwt",
         json={
-            "cryptographic_binding_methods_supported": ["did", "jwk"],
+            "cryptographic_binding_methods_supported": ["did"],
             "cryptographic_suites_supported": ["ES256"],
             "format": "jwt_vc_json",
             "id": f"UniversityDegree_{uuid.uuid4().hex[:8]}",

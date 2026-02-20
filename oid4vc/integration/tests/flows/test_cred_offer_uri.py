@@ -25,7 +25,7 @@ async def supported_cred_id(acapy_issuer_admin, issuer_did):
     supported = await acapy_issuer_admin.post(
         "/oid4vci/credential-supported/create/jwt",
         json={
-            "cryptographic_binding_methods_supported": ["did", "jwk"],
+            "cryptographic_binding_methods_supported": ["did"],
             "cryptographic_suites_supported": ["ES256"],
             "format": "jwt_vc_json",
             "id": cred_id,
