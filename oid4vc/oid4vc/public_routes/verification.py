@@ -178,7 +178,11 @@ async def get_request(request: web.Request):
         "nbf": now,
         "exp": now + 120,
         "jti": str(uuid.uuid4()),
-        "client_id": config.endpoint,
+        # Use the did:jwk as client_id (matching the URL parameter) so that
+        # OID4VP holders can verify the JAR via DID resolution instead of
+        # interpreting an HTTP URL as an OpenID Federation entity.
+        "client_id": jwk.did,
+        "client_id_scheme": "did",
         "response_uri": (
             f"{config.endpoint}{subpath}/oid4vp/response/{pres.presentation_id}"
         ),
