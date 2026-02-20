@@ -51,11 +51,6 @@ async def test_mdoc_issue_to_credo_verify_with_sphereon_patterns(
     )
     config_id = config_response["supported_cred_id"]
 
-    did_response = await acapy_issuer_admin.post(
-        "/wallet/did/create", json={"method": "key", "options": {"key_type": "p256"}}
-    )
-    issuer_did = did_response["result"]["did"]
-
     exchange_response = await acapy_issuer_admin.post(
         "/oid4vci/exchange/create",
         json={
@@ -66,7 +61,6 @@ async def test_mdoc_issue_to_credo_verify_with_sphereon_patterns(
                     "family_name": "Wallet",
                 }
             },
-            "did": issuer_did,
         },
     )
 

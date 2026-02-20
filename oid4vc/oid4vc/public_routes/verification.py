@@ -305,6 +305,16 @@ async def verify_pres_def_presentation(
         presentation_record=presentation,
     )
 
+    if not vp_result.verified:
+        error_msg = (
+            vp_result.payload.get("error", "Presentation verification failed")
+            if isinstance(vp_result.payload, dict)
+            else "Presentation verification failed"
+        )
+        if isinstance(error_msg, list):
+            error_msg = "; ".join(str(e) for e in error_msg)
+        return PexVerifyResult(details=str(error_msg))
+
     async with profile.session() as session:
         pres_def_entry = await OID4VPPresDef.retrieve_by_id(
             session,
@@ -347,7 +357,8 @@ async def post_response(request: web.Request):
         record = await OID4VPPresentation.retrieve_by_id(session, presentation_id)
 
     try:
-        assert isinstance(vp_token, str)
+        if not isinstance(vp_token, str):
+            raise web.HTTPBadRequest(reason="vp_token must be a string")
 
         if record.pres_def_id:
             if presentation_submission is None:
@@ -376,6 +387,23 @@ async def post_response(request: web.Request):
         raise web.HTTPNotFound(reason=err.roll_up) from err
     except (StorageError, BaseModelError) as err:
         raise web.HTTPBadRequest(reason=err.roll_up) from err
+    except Exception as err:
+        # Catch all other exceptions (e.g. CredProcessorError, unsupported format),
+        # save the record as invalid so the holder gets a response and callers can
+        # observe the failure rather than timing out on request-retrieved.
+        error_msg = str(err)
+        LOGGER.exception(
+            "Unexpected error processing presentation %s: %s",
+            presentation_id,
+            error_msg,
+        )
+        record.state = OID4VPPresentation.PRESENTATION_INVALID
+        record.errors = [f"Processing error: {error_msg}"]
+        record.verified = False
+        record.matched_credentials = {}
+        async with context.session() as session:
+            await record.save(session, reason="Presentation processing failed")
+        return web.Response(status=200)
 
     if verify_result.verified:
         record.state = OID4VPPresentation.PRESENTATION_VALID

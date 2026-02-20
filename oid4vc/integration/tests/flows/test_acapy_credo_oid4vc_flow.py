@@ -231,7 +231,6 @@ async def test_acapy_credo_mdoc_flow(
     acapy_verifier_admin,
     credo_client,
     setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
-    issuer_p256_did,
     mdoc_credential_config,
 ):
     """Test complete OID4VC flow for mso_mdoc: ACA-Py issues → Credo receives → Credo presents → ACA-Py verifies.
@@ -270,7 +269,7 @@ async def test_acapy_credo_mdoc_flow(
     )
     config_id = credential_config_response["supported_cred_id"]
 
-    # Step 2: Create pre-authorized credential offer (using session-scoped P-256 DID)
+    # Step 2: Create pre-authorized credential offer (using default mDOC signing key)
     exchange_request = {
         "supported_cred_id": config_id,
         "credential_subject": {
@@ -280,7 +279,6 @@ async def test_acapy_credo_mdoc_flow(
                 "birth_date": "1990-01-01",
             }
         },
-        "did": issuer_p256_did,
     }
 
     exchange_response = await acapy_issuer_admin.post(
@@ -528,7 +526,6 @@ async def test_acapy_credo_mdoc_selective_disclosure(
     acapy_verifier_admin,
     credo_client,
     setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
-    issuer_p256_did,
     mdoc_credential_config,
 ):
     """Test mdoc selective disclosure: Request subset of namespaces/elements.
@@ -574,7 +571,6 @@ async def test_acapy_credo_mdoc_selective_disclosure(
                 "issue_date": "2023-01-01",
             }
         },
-        "did": issuer_p256_did,
     }
 
     exchange_response = await acapy_issuer_admin.post(
