@@ -133,9 +133,7 @@ async def create_oid4vp_request(request: web.Request):
     request_uri = quote(f"{config.endpoint}{subpath}/oid4vp/request/{req_record._id}")
     client_id = quote(jwk.did)
     full_uri = (
-        f"openid://?client_id={client_id}"
-        f"&client_id_scheme=did"
-        f"&request_uri={request_uri}"
+        f"openid://?client_id={client_id}&client_id_scheme=did&request_uri={request_uri}"
     )
 
     return web.json_response(
