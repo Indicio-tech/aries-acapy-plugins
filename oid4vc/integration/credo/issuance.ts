@@ -34,6 +34,12 @@ router.post('/accept-offer', async (req: any, res: any) => {
     // the 'Multikey' verification method type, which it currently doesn't support.
     // JWK binding sends the holder's public key directly in the proof JWT 'jwk' header,
     // which ACA-Py verifies via Key.from_jwk() without any DID resolution.
+    //
+    // We capture each created key ID so we can set kmsKeyId on SdJwtVcRecord instances
+    // after issuance. Credo 0.6.x only maps kmsKeyId for dc+sd-jwt or when the issuer
+    // metadata includes vct at the top level; for vc+sd-jwt without vct it is skipped.
+    // Setting it manually ensures key binding JWT signing works during presentations.
+    const createdKeyIds: string[] = [];
     const credentialBindingResolver = async (bindingOptions: any) => {
         console.log('🔒 Binding options received:', JSON.stringify(bindingOptions, null, 2));
         
@@ -60,6 +66,7 @@ router.post('/accept-offer', async (req: any, res: any) => {
             
             const key = await agent!.kms.createKey({ type: keyType });
             console.log('🔑 Created key with ID:', key.keyId);
+            createdKeyIds.push(key.keyId);
 
             // Always use JWK binding - the proof JWT will carry the holder's public key
             // in the 'jwk' header, which ACA-Py resolves directly without DID lookup.
@@ -94,7 +101,7 @@ router.post('/accept-offer', async (req: any, res: any) => {
     const credentials = credentialResponse.credentials || [];
     
     // Store credentials using the pre-hydrated records from Credo 0.6.0
-    for (const credentialItem of credentials) {
+    for (const [credentialIndex, credentialItem] of credentials.entries()) {
         try {
             // In Credo 0.6.0, each credential item has a 'record' that is already the appropriate record type
             const record = credentialItem.record;
@@ -113,6 +120,23 @@ router.post('/accept-offer', async (req: any, res: any) => {
                 await agent!.mdoc.store({ record });
                 console.log('✅ Stored MdocRecord');
             } else if (recordType === 'SdJwtVcRecord' || record.type === 'SdJwtVcRecord') {
+                // Credo 0.6.x only maps kmsKeyId onto SdJwtVcRecord instances when the
+                // credential format is dc+sd-jwt OR when the issuer metadata has a top-level
+                // `vct` field (FIXME in OpenId4VciHolderService.ts:1230).  For vc+sd-jwt
+                // credentials where the issuer uses a credential_definition instead, the
+                // mapping is skipped and kmsKeyId stays undefined, causing presentation to
+                // fall back to legacyKeyId (= JWK thumbprint) which is NOT the key id
+                // stored in askar.  We fix this by applying the captured key id here.
+                const keyId = createdKeyIds[credentialIndex];
+                if (keyId) {
+                    const instances: any[] = (record as any).credentialInstances ?? [];
+                    for (const instance of instances) {
+                        if (!instance.kmsKeyId) {
+                            instance.kmsKeyId = keyId;
+                            console.log(`🔑 Set kmsKeyId=${keyId} on SdJwtVcRecord instance`);
+                        }
+                    }
+                }
                 // @ts-ignore - Credo 0.6.x sdJwtVc module API has incomplete type definitions
                 await agent!.sdJwtVc.store({ record });
                 console.log('✅ Stored SdJwtVcRecord');
