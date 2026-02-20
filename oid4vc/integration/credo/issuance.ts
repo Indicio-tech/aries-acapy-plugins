@@ -28,93 +28,46 @@ router.post('/accept-offer', async (req: any, res: any) => {
 
     console.log('✅ Offer resolved', JSON.stringify(resolvedOffer, null, 2));
 
-    let generatedDidUrl: string | undefined;
-
     // Credential binding resolver for 0.6.0 API
+    // We always use JWK binding for all credential formats.
+    // Using did:key would require ACA-Py to resolve the DID document and handle
+    // the 'Multikey' verification method type, which it currently doesn't support.
+    // JWK binding sends the holder's public key directly in the proof JWT 'jwk' header,
+    // which ACA-Py verifies via Key.from_jwk() without any DID resolution.
     const credentialBindingResolver = async (bindingOptions: any) => {
         console.log('🔒 Binding options received:', JSON.stringify(bindingOptions, null, 2));
         
-        const { supportedDidMethods, supportsAllDidMethods, supportsJwk, proofTypes, credentialFormat } = bindingOptions;
+        const { proofTypes, credentialFormat } = bindingOptions;
         
-        // Check if this is mso_mdoc format - DIDs are not supported for mdoc
-        const isMdoc = credentialFormat === 'mso_mdoc';
-        
-        // Determine signature algorithm - prefer ES256 for mdoc, otherwise use first supported
+        // Determine signature algorithm
+        // - mso_mdoc requires ES256 (P-256)
+        // - Otherwise use the first algorithm advertised by the issuer, defaulting to EdDSA
         let algorithm: 'EdDSA' | 'ES256' | 'ES384' | 'ES512' | 'PS256' | 'PS384' | 'PS512' | 'RS256' | 'RS384' | 'RS512' | 'ES256K' = 'EdDSA';
-        if (proofTypes?.jwt?.supportedSignatureAlgorithms) {
-            algorithm = proofTypes.jwt.supportedSignatureAlgorithms[0] as typeof algorithm;
-        }
-        
-        // Force ES256 for mdoc
-        if (isMdoc) {
-            console.log('⚠️ Forcing ES256 algorithm for mso_mdoc credential');
+        if (credentialFormat === 'mso_mdoc') {
             algorithm = 'ES256';
+        } else if (proofTypes?.jwt?.supportedSignatureAlgorithms) {
+            algorithm = proofTypes.jwt.supportedSignatureAlgorithms[0] as typeof algorithm;
         }
 
         console.log('🔒 Creating key for algorithm:', algorithm);
         
         try {
-            // Create key using the lower-level createKey API with explicit key type
             const algStr = algorithm as string;
             const keyType = algStr === 'ES256' ? { kty: 'EC' as const, crv: 'P-256' as const } 
                           : algStr === 'ES384' ? { kty: 'EC' as const, crv: 'P-384' as const }
                           : algStr === 'ES256K' ? { kty: 'EC' as const, crv: 'secp256k1' as const }
-                          : { kty: 'OKP' as const, crv: 'Ed25519' as const }; // EdDSA default
+                          : { kty: 'OKP' as const, crv: 'Ed25519' as const };
             
-            console.log('🔒 Creating key with type:', JSON.stringify(keyType));
-            
-            const key = await agent!.kms.createKey({
-                type: keyType,
-            });
-            
+            const key = await agent!.kms.createKey({ type: keyType });
             console.log('🔑 Created key with ID:', key.keyId);
 
-            // For mso_mdoc, we MUST use jwk binding (DIDs are not supported)
-            if (isMdoc) {
-                console.log('📋 Using JWK binding for mso_mdoc credential');
-                // Import PublicJwk from core to create the proper JWK object
-                const { Kms } = await import('@credo-ts/core');
-                const publicJwk = Kms.PublicJwk.fromPublicJwk(key.publicJwk);
-                return {
-                    method: 'jwk',
-                    keys: [publicJwk],
-                };
-            }
-        
-            // For non-mdoc, create a DID for the key
-            const didResult = await agent!.dids.create({
-                method: 'key',
-                options: {
-                    keyId: key.keyId,
-                },
-            });
-            
-            const did = didResult.didState.did;
-            if (!did) {
-                throw new Error('Failed to create DID - didState.did is undefined');
-            }
-            
-            let didUrl = did;
-            
-            // Ensure we have a fragment for did:key
-            if (did.startsWith('did:key:')) {
-                // Check if we have the document to get the exact key ID
-                if (didResult.didState.didDocument?.verificationMethod?.[0]?.id) {
-                    didUrl = didResult.didState.didDocument.verificationMethod[0].id;
-                } else {
-                    // Fallback: construct the standard did:key key ID (did#fingerprint)
-                    const fingerprint = did.split(':')[2];
-                    didUrl = `${did}#${fingerprint}`;
-                }
-            }
-            
-            console.log('🔑 Generated DID URL:', didUrl);
-            generatedDidUrl = didUrl;
-
-            // Return in 0.6.0 format - array of didUrls
+            // Always use JWK binding - the proof JWT will carry the holder's public key
+            // in the 'jwk' header, which ACA-Py resolves directly without DID lookup.
+            const { Kms } = await import('@credo-ts/core');
+            const publicJwk = Kms.PublicJwk.fromPublicJwk(key.publicJwk);
             return {
-                method: 'did',
-                didUrls: [didUrl],
+                method: 'jwk',
+                keys: [publicJwk],
             };
         } catch (keyError) {
             console.error('❌ Error creating key:', keyError);
@@ -196,29 +149,43 @@ router.post('/accept-offer', async (req: any, res: any) => {
         else if (recordType.includes('W3c')) format = 'jwt_vc_json';
     }
 
-    // Extract the actual credential string/value from the record instances.
-    // Credo stores credentials in credentialInstances[]; we need the raw encoded
-    // credential string that the Python tests (and presentation flow) expect.
+    // Extract the actual credential string/value from the stored record.
+    // Each Credo record type uses a different property for the compact/encoded form.
     let credentialValue: string | undefined;
     if (firstCredential?.record) {
         const record = firstCredential.record as any;
-        const instances = record.credentialInstances;
-        if (instances && instances.length > 0) {
-            const first = instances[0];
-            if (format === 'mso_mdoc' && first.issuerSignedBase64Url) {
-                // mDOC: base64url-encoded issuer-signed document
-                credentialValue = first.issuerSignedBase64Url;
-            } else if (first.compactSdJwtVc) {
-                // SD-JWT (vc+sd-jwt / dc+sd-jwt): compact serialization
-                credentialValue = first.compactSdJwtVc;
-            } else if (first.credential) {
-                // JWT VC / W3C: encoded credential
-                credentialValue = first.credential;
+
+        if (format === 'mso_mdoc') {
+            // MdocRecord: credentialInstances[0].issuerSignedBase64Url
+            const instances = record.credentialInstances;
+            if (instances && instances.length > 0 && instances[0].issuerSignedBase64Url) {
+                credentialValue = instances[0].issuerSignedBase64Url;
+            }
+        } else if (format === 'vc+sd-jwt' || format === 'dc+sd-jwt') {
+            // SdJwtVcRecord: credentialInstances[0].compactSdJwtVc
+            const instances = record.credentialInstances;
+            if (instances && instances.length > 0 && instances[0].compactSdJwtVc) {
+                credentialValue = instances[0].compactSdJwtVc;
+            }
+        } else {
+            // W3cCredentialRecord (jwt_vc_json): record.credential.serializedJwtVc
+            // or record.credential for JSON-LD
+            const cred = record.credential;
+            if (cred) {
+                if (typeof cred.serializedJwtVc === 'string') {
+                    // JWT-encoded W3C credential
+                    credentialValue = cred.serializedJwtVc;
+                } else if (typeof cred === 'string') {
+                    credentialValue = cred;
+                } else {
+                    // JSON-LD or unknown: serialize the credential object
+                    credentialValue = JSON.stringify(cred);
+                }
             }
         }
-        // Last-resort fallback: stringify the record for debugging
+
         if (!credentialValue) {
-            console.warn('⚠️ Could not extract credential string; falling back to full record');
+            console.warn('⚠️ Could not extract credential string for format:', format, 'record type:', record.constructor?.name, record.type);
         }
     }
 
