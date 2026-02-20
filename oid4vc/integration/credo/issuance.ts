@@ -192,18 +192,31 @@ router.post('/accept-offer', async (req: any, res: any) => {
                 credentialValue = instances[0].compactSdJwtVc;
             }
         } else {
-            // W3cCredentialRecord (jwt_vc_json): record.credential.serializedJwtVc
-            // or record.credential for JSON-LD
+            // W3cCredentialRecord (jwt_vc_json): try multiple property paths because
+            // the Credo property name changed across versions:
+            //   Credo 0.6.x: W3cJwtVerifiableCredential.serializedJwt
+            //   Older Credo: W3cJwtVerifiableCredential.serializedJwtVc
             const cred = record.credential;
             if (cred) {
-                if (typeof cred.serializedJwtVc === 'string') {
-                    // JWT-encoded W3C credential
+                if (typeof cred.serializedJwt === 'string') {
+                    // Credo 0.6.x property name
+                    credentialValue = cred.serializedJwt;
+                } else if (typeof cred.serializedJwtVc === 'string') {
+                    // Legacy property name (older Credo versions)
                     credentialValue = cred.serializedJwtVc;
                 } else if (typeof cred === 'string') {
                     credentialValue = cred;
                 } else {
                     // JSON-LD or unknown: serialize the credential object
                     credentialValue = JSON.stringify(cred);
+                }
+            }
+            // Fallback: try credentialInstances (same pattern as mso_mdoc and vc+sd-jwt)
+            if (!credentialValue && record.credentialInstances) {
+                const instances = record.credentialInstances as any[];
+                if (instances.length > 0) {
+                    const inst = instances[0];
+                    credentialValue = inst.serializedJwt || inst.compactJwtVc || inst.credential;
                 }
             }
         }
@@ -215,7 +228,9 @@ router.post('/accept-offer', async (req: any, res: any) => {
 
     res.json({
       success: true,
-      credential: credentialValue,
+      // Use null (not undefined) to prevent JSON.stringify from omitting the key.
+      // Tests check for credential_data["credential"] and would get KeyError if omitted.
+      credential: credentialValue !== undefined ? credentialValue : null,
       format: format
     });
 

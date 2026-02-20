@@ -122,7 +122,8 @@ app.post('/oid4vci/accept-offer', async (req: Request, res: Response) => {
     const credentialResponse = await client.acquireCredentials({
       credentialIdentifier: credentialIdentifier,
       proofCallbacks: callbacks,
-      format: format || 'jwt_vc_json',
+      // Do NOT pass format alongside credentialIdentifier: OID4VCI 1.0 spec says
+      // they are mutually exclusive; the format is implied by the credentialIdentifier.
       alg: Alg.ES256,
       kid: kid,
     });
