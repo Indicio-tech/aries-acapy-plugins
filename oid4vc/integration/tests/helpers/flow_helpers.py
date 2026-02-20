@@ -435,6 +435,9 @@ class PresentationFlowHelper:
                     "id": str(uuid.uuid4()),
                     "format": {"mso_mdoc": {"alg": ALGORITHMS.MDOC_ALGS}},
                     "constraints": {
+                        # limit_disclosure: required is mandatory for mDOC presentations;
+                        # Credo's MdocDeviceResponse.assertMdocInputDescriptor enforces it.
+                        "limit_disclosure": "required",
                         "fields": [
                             {
                                 "path": ["$.doctype"],
@@ -444,7 +447,7 @@ class PresentationFlowHelper:
                                 {"path": [f"$['{namespace}']['{claim}']"]}
                                 for claim in required_claims
                             ],
-                        ]
+                        ],
                     },
                 }
             ],
@@ -563,7 +566,7 @@ class PresentationFlowHelper:
         """
         for attempt in range(max_attempts):
             presentation = await self.verifier_admin.get(
-                f"/oid4vp/presentations/{presentation_id}"
+                f"/oid4vp/presentation/{presentation_id}"
             )
 
             if (

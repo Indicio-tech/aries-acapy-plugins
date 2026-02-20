@@ -328,9 +328,14 @@ async def post_response(request: web.Request):
 
     form = await request.post()
 
+    # presentation_submission is only present for PEX (pres_def) presentations;
+    # DCQL presentations omit it and send vp_token as a JSON object instead.
     raw_submission = form.get("presentation_submission")
-    assert isinstance(raw_submission, str)
-    presentation_submission = PresentationSubmission.from_json(raw_submission)
+    presentation_submission = (
+        PresentationSubmission.from_json(raw_submission)
+        if isinstance(raw_submission, str)
+        else None
+    )
 
     vp_token = form.get("vp_token")
     state = form.get("state")
@@ -345,6 +350,10 @@ async def post_response(request: web.Request):
         assert isinstance(vp_token, str)
 
         if record.pres_def_id:
+            if presentation_submission is None:
+                raise web.HTTPBadRequest(
+                    reason="presentation_submission is required for PEX presentations"
+                )
             verify_result = await verify_pres_def_presentation(
                 profile=context.profile,
                 submission=presentation_submission,
