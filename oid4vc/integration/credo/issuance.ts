@@ -192,43 +192,75 @@ router.post('/accept-offer', async (req: any, res: any) => {
                 credentialValue = instances[0].compactSdJwtVc;
             }
         } else {
-            // W3cCredentialRecord (jwt_vc_json) in Credo 0.6.x:
-            // 'credential' is a PRIVATE SETTER on W3cCredentialRecord (no getter).
-            // Use 'firstCredential' (Credo 0.6.x API) to get the
-            // W3cJwtVerifiableCredential instance with .serializedJwt = JWT string.
+            // W3cCredentialRecord (jwt_vc_json) in Credo 0.6.x.
+            // Try several different APIs since the record structure changed across versions.
+            // Log the full record to help diagnose extraction failures.
+            console.log('🔍 W3c record keys:', Object.keys(record));
+            console.log('🔍 W3c record type:', record.type, record.constructor?.name);
+
+            // Attempt 1: Credo 0.6.x W3cV2CredentialRecord / W3cCredentialRecord
+            // firstCredential is a getter that returns a W3cJwtVerifiableCredential
             try {
                 const firstCred = record.firstCredential;
                 if (firstCred) {
                     if (typeof firstCred.serializedJwt === 'string') {
-                        // Credo 0.6.x: W3cJwtVerifiableCredential.serializedJwt
                         credentialValue = firstCred.serializedJwt;
+                        console.log('✅ Extracted JWT via record.firstCredential.serializedJwt');
                     } else if (typeof firstCred.encoded === 'string') {
-                        // Also Credo 0.6.x: .encoded is an alias for serializedJwt
                         credentialValue = firstCred.encoded;
+                        console.log('✅ Extracted JWT via record.firstCredential.encoded');
                     }
                 }
             } catch (e) {
-                console.warn('⚠️ firstCredential access failed, using fallback:', e);
+                console.warn('⚠️ firstCredential access failed:', e);
             }
 
-            // Fallback: credentialInstances[0].credential is the raw JWT string
-            // stored by W3cCredentialRecord.fromCredential()
+            // Attempt 2: credentialInstances[0].credential (new-style record)
             if (!credentialValue && record.credentialInstances) {
                 const instances = record.credentialInstances as any[];
                 if (instances.length > 0) {
                     const inst = instances[0];
                     const rawCred = inst.credential;
                     if (typeof rawCred === 'string') {
-                        // Raw JWT string — most common case
                         credentialValue = rawCred;
+                        console.log('✅ Extracted JWT via credentialInstances[0].credential (string)');
                     } else if (rawCred && typeof rawCred.serializedJwt === 'string') {
-                        // W3cJwtVerifiableCredential instance stored directly
                         credentialValue = rawCred.serializedJwt;
+                        console.log('✅ Extracted JWT via credentialInstances[0].credential.serializedJwt');
                     } else if (rawCred) {
-                        // JSON-LD credential object
                         credentialValue = JSON.stringify(rawCred);
+                        console.log('✅ Extracted JWT via credentialInstances[0].credential (JSON)');
                     }
                 }
+            }
+
+            // Attempt 3: direct record.credential (old-style W3cCredentialRecord)
+            // Bypasses TypeScript private accessor restriction at JS runtime
+            if (!credentialValue) {
+                const directCred = (record as any).credential;
+                if (directCred) {
+                    if (typeof directCred === 'string') {
+                        credentialValue = directCred;
+                        console.log('✅ Extracted JWT via record.credential (string)');
+                    } else if (typeof directCred.serializedJwt === 'string') {
+                        credentialValue = directCred.serializedJwt;
+                        console.log('✅ Extracted JWT via record.credential.serializedJwt');
+                    } else if (directCred.jwt) {
+                        // W3cJwtVerifiableCredential might have .jwt.serializedJwt
+                        const jwt = directCred.jwt;
+                        if (typeof jwt === 'string') {
+                            credentialValue = jwt;
+                        } else if (typeof jwt.serializedJwt === 'string') {
+                            credentialValue = jwt.serializedJwt;
+                        }
+                        if (credentialValue) console.log('✅ Extracted JWT via record.credential.jwt');
+                    }
+                }
+            }
+
+            if (!credentialValue) {
+                console.warn('⚠️ Could not extract W3c credential - record structure dump:',
+                    JSON.stringify(record, null, 2).substring(0, 1000));
             }
         }
 

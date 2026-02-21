@@ -61,6 +61,17 @@ router.post('/present', async (req: any, res: any) => {
     } else if (resolvedRequest.presentationExchange) {
         const { credentialsForRequest } = resolvedRequest.presentationExchange;
         
+        // DEBUG: Print presentation definition to confirm intent_to_retain is preserved
+        const debugPd = (resolvedRequest.presentationExchange as any).definition ?? 
+                        resolvedRequest.authorizationRequestPayload?.presentation_definition;
+        if (debugPd) {
+            console.log('📝 PD input_descriptors[0].constraints.fields (first 3):');
+            try {
+                const fields = debugPd.input_descriptors?.[0]?.constraints?.fields?.slice(0, 3);
+                console.log(JSON.stringify(fields, null, 2));
+            } catch (e) { console.log('⚠️ Could not print PD fields:', e); }
+        }
+        
         console.log('📋 Presentation Exchange Details:');
         console.log('  - Requirements satisfied:', credentialsForRequest.areRequirementsSatisfied);
         console.log('  - Requirements:', JSON.stringify(credentialsForRequest.requirements, null, 2));
