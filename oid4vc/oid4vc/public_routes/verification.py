@@ -185,8 +185,15 @@ async def get_request(request: web.Request):
         # Use the did:jwk as client_id (matching the URL parameter) so that
         # OID4VP holders can verify the JAR via DID resolution instead of
         # interpreting an HTTP URL as an OpenID Federation entity.
+        # NOTE: Do NOT include "client_id_scheme" here. In OID4VP v1, the
+        # scheme is inferred from the client_id prefix (did: → DID scheme).
+        # Including "client_id_scheme" caps the detected version at draft 21,
+        # which forces the mDOC session transcript to use openId4VpDraft18
+        # (requiring mdocGeneratedNonce via JARM apu), which is incompatible
+        # with direct_post. Without client_id_scheme, the version is inferred
+        # as 25 (> 24), so Credo uses the v1 openId4Vp transcript type that
+        # only needs nonce + clientId + responseUri — matching isomdl_uniffi.
         "client_id": jwk.did,
-        "client_id_scheme": "did",
         "response_uri": (
             f"{config.endpoint}{subpath}/oid4vp/response/{pres.presentation_id}"
         ),
