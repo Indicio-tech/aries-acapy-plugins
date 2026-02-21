@@ -103,17 +103,13 @@ async def issue_cred(request: web.Request):
     LOGGER.info("request: %s", body)
 
     # OID4VCI 1.0 § 7.2: credential_identifier and format are mutually exclusive.
-    # When both are set (some clients send both for backward compat), prefer
-    # credential_identifier and ignore format.
     credential_identifier = body.get("credential_identifier")
     format_field = body.get("format")
 
     if credential_identifier and format_field:
-        LOGGER.warning(
-            "credential_identifier and format both specified in credential request; "
-            "using credential_identifier per OID4VCI 1.0 spec"
+        raise web.HTTPBadRequest(
+            reason="credential_identifier and format are mutually exclusive"
         )
-        format_field = None
 
     if not credential_identifier and not format_field:
         raise web.HTTPBadRequest(reason="credential_identifier or format is required")

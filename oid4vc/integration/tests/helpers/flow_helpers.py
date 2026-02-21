@@ -444,7 +444,10 @@ class PresentationFlowHelper:
                                 "filter": {"type": "string", "const": doctype},
                             },
                             *[
-                                {"path": [f"$['{namespace}']['{claim}']"]}
+                                {
+                                    "path": [f"$['{namespace}']['{claim}']"],
+                                    "intent_to_retain": False,
+                                }
                                 for claim in required_claims
                             ],
                         ],

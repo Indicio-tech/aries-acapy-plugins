@@ -263,12 +263,10 @@ async def verify_dcql_presentation(
     LOGGER.debug("Got: %s", vp_token)
 
     async with profile.session() as session:
-        pres_def_entry = await DCQLQuery.retrieve_by_id(
+        dcql_query = await DCQLQuery.retrieve_by_id(
             session,
             dcql_query_id,
         )
-
-        dcql_query = DCQLQuery.deserialize(pres_def_entry)
 
     evaluator = DCQLQueryEvaluator.compile(dcql_query)
     result = await evaluator.verify(profile, vp_token, presentation)

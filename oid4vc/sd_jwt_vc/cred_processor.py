@@ -421,7 +421,9 @@ class SDJWTVerifierACAPy(SDJWTVerifier):
         if not self._holder_public_key_payload:
             raise ValueError("No holder public key in SD-JWT")
         verified_kb_jwt = await jwt_verify(
-            self.profile, self._unverified_input_key_binding_jwt
+            self.profile,
+            self._unverified_input_key_binding_jwt,
+            cnf=self._holder_public_key_payload,
         )
 
         if verified_kb_jwt.headers["typ"] != self.KB_JWT_TYP_HEADER:

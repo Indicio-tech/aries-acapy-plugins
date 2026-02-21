@@ -192,31 +192,42 @@ router.post('/accept-offer', async (req: any, res: any) => {
                 credentialValue = instances[0].compactSdJwtVc;
             }
         } else {
-            // W3cCredentialRecord (jwt_vc_json): try multiple property paths because
-            // the Credo property name changed across versions:
-            //   Credo 0.6.x: W3cJwtVerifiableCredential.serializedJwt
-            //   Older Credo: W3cJwtVerifiableCredential.serializedJwtVc
-            const cred = record.credential;
-            if (cred) {
-                if (typeof cred.serializedJwt === 'string') {
-                    // Credo 0.6.x property name
-                    credentialValue = cred.serializedJwt;
-                } else if (typeof cred.serializedJwtVc === 'string') {
-                    // Legacy property name (older Credo versions)
-                    credentialValue = cred.serializedJwtVc;
-                } else if (typeof cred === 'string') {
-                    credentialValue = cred;
-                } else {
-                    // JSON-LD or unknown: serialize the credential object
-                    credentialValue = JSON.stringify(cred);
+            // W3cCredentialRecord (jwt_vc_json) in Credo 0.6.x:
+            // 'credential' is a PRIVATE SETTER on W3cCredentialRecord (no getter).
+            // Use 'firstCredential' (Credo 0.6.x API) to get the
+            // W3cJwtVerifiableCredential instance with .serializedJwt = JWT string.
+            try {
+                const firstCred = record.firstCredential;
+                if (firstCred) {
+                    if (typeof firstCred.serializedJwt === 'string') {
+                        // Credo 0.6.x: W3cJwtVerifiableCredential.serializedJwt
+                        credentialValue = firstCred.serializedJwt;
+                    } else if (typeof firstCred.encoded === 'string') {
+                        // Also Credo 0.6.x: .encoded is an alias for serializedJwt
+                        credentialValue = firstCred.encoded;
+                    }
                 }
+            } catch (e) {
+                console.warn('⚠️ firstCredential access failed, using fallback:', e);
             }
-            // Fallback: try credentialInstances (same pattern as mso_mdoc and vc+sd-jwt)
+
+            // Fallback: credentialInstances[0].credential is the raw JWT string
+            // stored by W3cCredentialRecord.fromCredential()
             if (!credentialValue && record.credentialInstances) {
                 const instances = record.credentialInstances as any[];
                 if (instances.length > 0) {
                     const inst = instances[0];
-                    credentialValue = inst.serializedJwt || inst.compactJwtVc || inst.credential;
+                    const rawCred = inst.credential;
+                    if (typeof rawCred === 'string') {
+                        // Raw JWT string — most common case
+                        credentialValue = rawCred;
+                    } else if (rawCred && typeof rawCred.serializedJwt === 'string') {
+                        // W3cJwtVerifiableCredential instance stored directly
+                        credentialValue = rawCred.serializedJwt;
+                    } else if (rawCred) {
+                        // JSON-LD credential object
+                        credentialValue = JSON.stringify(rawCred);
+                    }
                 }
             }
         }

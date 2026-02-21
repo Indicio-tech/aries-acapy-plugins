@@ -93,7 +93,6 @@ async def _parse_cred_offer(context: AdminRequestContext, exchange_id: str) -> d
     return {
         "credential_issuer": f"{config.endpoint}{subpath}",
         "credential_configuration_ids": [supported.identifier],
-        "credentials": [supported.format],  # Draft spec backward compat
         "grants": {
             "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
                 "pre-authorized_code": record.code,

@@ -1143,6 +1143,13 @@ async def create_oid4vp_request(request: web.Request):
                 dcql_query_id=dcql_query_id, vp_formats=body["vp_formats"]
             )
             await req_record.save(session=session)
+
+            pres_record = OID4VPPresentation(
+                dcql_query_id=dcql_query_id,
+                state=OID4VPPresentation.REQUEST_CREATED,
+                request_id=req_record.request_id,
+            )
+            await pres_record.save(session=session)
         else:
             raise web.HTTPBadRequest(
                 reason="One of pres_def_id or dcql_query_id must be provided"

@@ -122,8 +122,10 @@ app.post('/oid4vci/accept-offer', async (req: Request, res: Response) => {
     const credentialResponse = await client.acquireCredentials({
       credentialIdentifier: credentialIdentifier,
       proofCallbacks: callbacks,
-      // Do NOT pass format alongside credentialIdentifier: OID4VCI 1.0 spec says
-      // they are mutually exclusive; the format is implied by the credentialIdentifier.
+      // Pass format as an internal hint so the library can determine the signing
+      // algorithm. The Sphereon library does NOT include 'format' in the HTTP
+      // request body when credentialIdentifier is set (OID4VCI 1.0 §7.2 is satisfied).
+      format: (format || 'jwt_vc_json') as any,
       alg: Alg.ES256,
       kid: kid,
     });
