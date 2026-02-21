@@ -251,8 +251,18 @@ app.post('/oid4vp/present-credential', async (req: Request, res: Response) => {
         const text = await postResponse.text();
         throw new Error(`VP submission failed: ${postResponse.status} ${text}`);
     }
-    
-    const jsonResponse = await postResponse.json();
+
+    // ACA-Py returns 200 with an empty body from its post_response handler.
+    // Safely attempt JSON parse; treat empty/non-JSON body as a success response.
+    let jsonResponse: any = { success: true };
+    try {
+        const responseText = await postResponse.text();
+        if (responseText.trim()) {
+            jsonResponse = JSON.parse(responseText);
+        }
+    } catch (_e) {
+        // Non-JSON body is acceptable; ACA-Py uses empty 200 responses
+    }
     res.json(jsonResponse);
 
   } catch (error: any) {

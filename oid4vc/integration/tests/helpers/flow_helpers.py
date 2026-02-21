@@ -427,12 +427,18 @@ class PresentationFlowHelper:
             Dict with presentation result and matched_credentials
         """
         # Create presentation definition
+        # NOTE: The input descriptor id MUST be the doctype string (e.g.,
+        # "org.iso.18013.5.1.mDL"). Credo's createPresentationDefinitionDeviceResponse
+        # matches input descriptors to mdoc documents by filtering
+        # `inputDescriptor.id === document.docType`.
+        # All fields MUST include `intent_to_retain` (Credo's assertMdocInputDescriptor
+        # enforces this strictly - it throws if any field lacks the property).
         presentation_definition = {
             "id": str(uuid.uuid4()),
             "format": {"mso_mdoc": {"alg": ALGORITHMS.MDOC_ALGS}},
             "input_descriptors": [
                 {
-                    "id": str(uuid.uuid4()),
+                    "id": doctype,
                     "format": {"mso_mdoc": {"alg": ALGORITHMS.MDOC_ALGS}},
                     "constraints": {
                         # limit_disclosure: required is mandatory for mDOC presentations;
@@ -440,16 +446,10 @@ class PresentationFlowHelper:
                         "limit_disclosure": "required",
                         "fields": [
                             {
-                                "path": ["$.doctype"],
-                                "filter": {"type": "string", "const": doctype},
-                            },
-                            *[
-                                {
-                                    "path": [f"$['{namespace}']['{claim}']"],
-                                    "intent_to_retain": False,
-                                }
-                                for claim in required_claims
-                            ],
+                                "path": [f"$['{namespace}']['{claim}']"],
+                                "intent_to_retain": False,
+                            }
+                            for claim in required_claims
                         ],
                     },
                 }

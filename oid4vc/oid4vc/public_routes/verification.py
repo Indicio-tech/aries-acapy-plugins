@@ -148,15 +148,19 @@ async def get_request(request: web.Request):
             pres = await OID4VPPresentation.retrieve_by_request_id(
                 session=session, request_id=request_id
             )
-            pres.state = OID4VPPresentation.REQUEST_RETRIEVED
-            pres.nonce = token_urlsafe(NONCE_BYTES)
-            await pres.save(session=session, reason="Retrieved presentation request")
 
             if record.pres_def_id:
                 pres_def = await OID4VPPresDef.retrieve_by_id(session, record.pres_def_id)
             elif record.dcql_query_id:
                 dcql_query = await DCQLQuery.retrieve_by_id(session, record.dcql_query_id)
             jwk = await retrieve_or_create_did_jwk(session)
+
+            pres.state = OID4VPPresentation.REQUEST_RETRIEVED
+            pres.nonce = token_urlsafe(NONCE_BYTES)
+            # Save the client_id (did:jwk) so verify_presentation can use it
+            # as the expected KB-JWT audience instead of the HTTP endpoint URL.
+            pres.client_id = jwk.did
+            await pres.save(session=session, reason="Retrieved presentation request")
 
     except StorageNotFoundError as err:
         raise web.HTTPNotFound(reason=err.roll_up) from err
