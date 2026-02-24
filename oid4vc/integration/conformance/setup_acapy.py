@@ -111,7 +111,10 @@ async def create_sd_jwt_credential_config(
         "format_data": {
             "vct": "https://credentials.example.com/identity_credential",
             "cryptographic_binding_methods_supported": ["did:key", "jwk"],
-            "cryptographic_suites_supported": ["EdDSA"],
+            # credential_signing_alg_values_supported belongs at the credential
+            # config level (not inside format_data), and is handled by the model.
+            # Do NOT add cryptographic_suites_supported here — it is deprecated
+            # in OID4VCI 1.0 and causes "invalid entries" in conformance tests.
             "claims": {
                 "given_name": {"display": [{"name": "Given Name", "locale": "en"}]},
                 "family_name": {"display": [{"name": "Family Name", "locale": "en"}]},
@@ -152,6 +155,8 @@ async def create_mdoc_credential_config(
         "format": "mso_mdoc",
         "display": [{"name": "Mobile Driver's License", "locale": "en"}],
         "cryptographic_binding_methods_supported": ["cose_key"],
+        # Store as JOSE string — to_issuer_metadata() converts it to the COSE
+        # integer identifier (-7) required by the OID4VCI metadata spec for mso_mdoc.
         "cryptographic_suites_supported": ["ES256"],
         "format_data": {
             "doctype": "org.iso.18013.5.1.mDL",

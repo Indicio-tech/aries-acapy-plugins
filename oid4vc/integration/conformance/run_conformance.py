@@ -488,25 +488,36 @@ class ConformanceSuiteClient:
                     # wait_for_waiting returns immediately if the module exits
                     # without entering WAITING (negative-test modules).
                     await self.wait_for_waiting(test_id, timeout=15.0)
-                    if oid4vci_offer_factory:
-                        # Fresh offer per module — each call creates a new one-time
-                        # pre-authorized code in ACA-Py so every module can redeem it.
-                        try:
-                            offer_deeplink = await oid4vci_offer_factory()
-                        except Exception as exc:
-                            logger.error(
-                                f"  Failed to create fresh offer for '{module_name}': {exc}"
-                            )
-                            offer_deeplink = ""
-                    else:
-                        # Fall back to static dict (wildcard or per-module)
-                        offer_deeplink = oid4vci_offers.get(module_name) or oid4vci_offers.get("*", "")  # type: ignore[union-attr]
-                    if offer_deeplink:
-                        await self.trigger_oid4vci_offer(test_id, offer_deeplink)
-                    else:
-                        logger.warning(
-                            f"  No offer for module '{module_name}' — skipping trigger"
+                    # Only trigger offer if the module is ACTUALLY waiting for
+                    # one — modules like the metadata test finish without ever
+                    # entering WAITING, so sending an offer would cause the
+                    # suite to reject it with "unexpected credential_offer".
+                    info_check = await self.get_module_status(test_id)
+                    if info_check.get("status") != "WAITING":
+                        logger.info(
+                            f"  Module '{module_name}' is not in WAITING state "
+                            f"(status={info_check.get('status')}) — skipping offer trigger"
                         )
+                    else:
+                        if oid4vci_offer_factory:
+                            # Fresh offer per module — each call creates a new one-time
+                            # pre-authorized code in ACA-Py so every module can redeem it.
+                            try:
+                                offer_deeplink = await oid4vci_offer_factory()
+                            except Exception as exc:
+                                logger.error(
+                                    f"  Failed to create fresh offer for '{module_name}': {exc}"
+                                )
+                                offer_deeplink = ""
+                        else:
+                            # Fall back to static dict (wildcard or per-module)
+                            offer_deeplink = oid4vci_offers.get(module_name) or oid4vci_offers.get("*", "")  # type: ignore[union-attr]
+                        if offer_deeplink:
+                            await self.trigger_oid4vci_offer(test_id, offer_deeplink)
+                        else:
+                            logger.warning(
+                                f"  No offer for module '{module_name}' — skipping trigger"
+                            )
 
                 info = await self.wait_for_module(test_id, module_name)
                 logs = await self.get_module_log(test_id)
@@ -693,6 +704,9 @@ def build_oid4vp_verifier_sdjwt_config(setup: dict) -> tuple[str, dict, dict]:
         # with 'x5c is null' until X.509 support is added to the OID4VP verifier.
         "client_id_prefix": "x509_san_dns",
         "request_method": "request_uri_signed",
+        # plain_vp is required when response_mode is direct_post; haip requires
+        # direct_post.jwt.  Using plain_vp so the plan is created successfully.
+        "vp_profile": "plain_vp",
         "response_mode": "direct_post",
     }
     config = {
@@ -723,6 +737,8 @@ def build_oid4vp_verifier_mdl_config(setup: dict) -> tuple[str, dict, dict]:
         # NOTE: Same x509 limitation as the sd_jwt_vc variant above.
         "client_id_prefix": "x509_san_dns",
         "request_method": "request_uri_signed",
+        # plain_vp is required when response_mode is direct_post.
+        "vp_profile": "plain_vp",
         "response_mode": "direct_post",
     }
     config = {

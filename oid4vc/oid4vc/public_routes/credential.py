@@ -27,6 +27,17 @@ from .token import check_token, handle_proof_of_posession
 
 LOGGER = logging.getLogger(__name__)
 
+def _vc_error(
+    status: int, error: str, description: str | None = None
+) -> web.HTTPException:
+    """Build a JSON-formatted OID4VCI error response per spec §7.3.2."""
+    body: dict = {"error": error}
+    if description:
+        body["error_description"] = description
+    kwargs = {"text": json.dumps(body), "content_type": "application/json"}
+    mapping = {400: web.HTTPBadRequest, 401: web.HTTPUnauthorized, 404: web.HTTPNotFound}
+    cls = mapping.get(status, web.HTTPInternalServerError)
+    return cls(**kwargs)
 
 @docs(tags=["oid4vci"], summary="Dereference a credential offer.")
 @querystring_schema(CredOfferQuerySchema())
@@ -97,26 +108,61 @@ async def issue_cred(request: web.Request):
     Supports both credential_identifier (OID4VCI 1.0) and format (draft spec).
     """
     context: AdminRequestContext = request["context"]
+    # check_token raises HTTPUnauthorized on auth failures — propagate as-is.
     token_result = await check_token(context, request.headers.get("Authorization"))
     refresh_id = token_result.payload["sub"]
-    body = await request.json()
-    LOGGER.info("request: %s", body)
+    req_body = await request.json()
+    LOGGER.info("request: %s", req_body)
 
+    try:
+        return await _issue_cred_inner(context, token_result, refresh_id, req_body)
+    except web.HTTPException as exc:
+        if exc.status in (401, 403):
+            raise  # propagate auth errors unchanged
+        # ACA-Py's ready_middleware intercepts web.HTTPBadRequest and re-raises
+        # it as HTTPBadRequest(reason=str(e)), stripping our JSON body and
+        # setting wrong Content-Type.  By catching here and returning a Response
+        # directly we bypass the middleware.
+        err_body: dict = {}
+        if exc.text:
+            try:
+                err_body = json.loads(exc.text)
+            except (json.JSONDecodeError, ValueError):
+                err_body = {
+                    "error": "invalid_credential_request",
+                    "error_description": exc.reason,
+                }
+        else:
+            err_body = {
+                "error": "invalid_credential_request",
+                "error_description": exc.reason or "Bad Request",
+            }
+        return web.json_response(err_body, status=exc.status)
+
+
+async def _issue_cred_inner(context, token_result, refresh_id, req_body):
+    """Inner implementation of issue_cred; all errors raised as HTTPException."""
     # OID4VCI 1.0 § 7.2: credential_identifier and format are mutually exclusive.
     # Also accept credential_configuration_id (OID4VCI 1.0 final spec field name)
     credential_identifier = (
-        body.get("credential_identifier")
-        or body.get("credential_configuration_id")
+        req_body.get("credential_identifier")
+        or req_body.get("credential_configuration_id")
     )
-    format_field = body.get("format")
+    format_field = req_body.get("format")
 
     if credential_identifier and format_field:
-        raise web.HTTPBadRequest(
-            reason="credential_identifier and format are mutually exclusive"
+        raise _vc_error(
+            400,
+            "invalid_credential_request",
+            "credential_identifier and format are mutually exclusive",
         )
 
     if not credential_identifier and not format_field:
-        raise web.HTTPBadRequest(reason="credential_identifier or format is required")
+        raise _vc_error(
+            400,
+            "invalid_credential_request",
+            "credential_identifier or format is required",
+        )
 
     try:
         async with context.profile.session() as session:
@@ -125,31 +171,38 @@ async def issue_cred(request: web.Request):
             )
             if not ex_record:
                 raise StorageNotFoundError("No exchange record found")
-            is_offer = (
-                True
-                if ex_record.state == OID4VCIExchangeRecord.STATE_OFFER_CREATED
-                else False
-            )
             supported = await SupportedCredential.retrieve_by_id(
                 session, ex_record.supported_cred_id
             )
     except StorageNotFoundError as err:
-        raise web.HTTPNotFound(reason="No credential offer available.") from err
+        raise _vc_error(
+            404, "invalid_credential_request", "No credential offer available."
+        ) from err
     except (StorageError, BaseModelError) as err:
-        raise web.HTTPBadRequest(reason=err.roll_up) from err
+        raise _vc_error(400, "invalid_credential_request", err.roll_up) from err
 
     if not supported.format:
-        raise web.HTTPBadRequest(reason="SupportedCredential missing format identifier.")
+        raise _vc_error(
+            400, "invalid_credential_request", "SupportedCredential missing format."
+        )
 
     # Handle both OID4VCI 1.0 (credential_identifier) and draft spec (format)
     if credential_identifier:
         # OID4VCI 1.0: Match by credential_identifier (supported.identifier)
         if supported.identifier != credential_identifier:
-            raise web.HTTPBadRequest(reason="credential_identifier does not match offer")
+            raise _vc_error(
+                400,
+                "invalid_credential_request",
+                "credential_identifier does not match offer",
+            )
     else:
         # Draft spec: Match by format
         if supported.format != format_field:
-            raise web.HTTPBadRequest(reason="Requested format does not match offer.")
+            raise _vc_error(
+                400,
+                "invalid_credential_request",
+                "Requested format does not match offer.",
+            )
 
     authorization_details = token_result.payload.get("authorization_details", None)
     if authorization_details:
@@ -159,15 +212,16 @@ async def issue_cred(request: web.Request):
             for ad in authorization_details
         )
         if not found:
-            raise web.HTTPBadRequest(
-                reason=f"{supported.identifier} is not authorized by the token."
+            raise _vc_error(
+                400,
+                "invalid_credential_request",
+                f"{supported.identifier} is not authorized by the token.",
             )
 
+    # c_nonce may be None when the OID4VCI 1.0 /nonce endpoint is used.
+    # handle_proof_of_posession handles c_nonce=None by calling Nonce.redeem_by_value,
+    # which validates nonces issued by the /nonce endpoint with replay protection.
     c_nonce = token_result.payload.get("c_nonce") or ex_record.nonce
-    if c_nonce is None:
-        raise web.HTTPBadRequest(
-            reason="Invalid exchange; no offer created for this request"
-        )
 
     if supported.format_data is None:
         LOGGER.error("No format_data for supported credential %s.", supported.format)
@@ -175,44 +229,46 @@ async def issue_cred(request: web.Request):
 
     # Normalize proof: accept both 'proof' (singular, draft spec) and
     # 'proofs.jwt' (plural array, OID4VCI 1.0 final spec)
-    if "proof" in body:
-        proof_value = body["proof"]
-    elif "proofs" in body and isinstance(body["proofs"], dict):
-        jwt_proofs = body["proofs"].get("jwt", [])
+    if "proof" in req_body:
+        proof_value = req_body["proof"]
+    elif "proofs" in req_body and isinstance(req_body["proofs"], dict):
+        jwt_proofs = req_body["proofs"].get("jwt", [])
         if not jwt_proofs:
-            raise web.HTTPBadRequest(reason=f"proofs.jwt is empty for {supported.format}")
+            raise _vc_error(
+                400, "invalid_proof", f"proofs.jwt is empty for {supported.format}"
+            )
         # Normalize to the expected structure
         proof_value = {"proof_type": "jwt", "jwt": jwt_proofs[0]}
     else:
-        raise web.HTTPBadRequest(reason=f"proof is required for {supported.format}")
+        raise _vc_error(
+            400, "invalid_proof", f"proof is required for {supported.format}"
+        )
 
     pop = await handle_proof_of_posession(context.profile, proof_value, c_nonce)
 
     if not pop.verified:
-        raise web.HTTPBadRequest(reason="Invalid proof")
+        raise _vc_error(400, "invalid_proof", "Proof signature verification failed.")
 
     try:
         processors = context.inject(CredProcessors)
         processor = processors.issuer_for_format(supported.format)
 
-        credential = await processor.issue(body, supported, ex_record, pop, context)
+        credential = await processor.issue(req_body, supported, ex_record, pop, context)
     except CredProcessorError as e:
-        raise web.HTTPBadRequest(reason=e.message)
+        raise _vc_error(400, "invalid_credential_request", e.message)
 
     async with context.session() as session:
         ex_record.state = OID4VCIExchangeRecord.STATE_ISSUED
         # Cause webhook to be emitted
         await ex_record.save(session, reason="Credential issued")
-        # Exchange is completed, record can be cleaned up
-        # But we'll leave it to the controller
-        # await ex_record.delete_record(session)
 
-    cred_response = {
-        "format": supported.format,
-        "credential": credential,
-        "notification_id": ex_record.notification_id,
+    # OID4VCI 1.0 §7.3.1: response MUST contain `credentials` (array) or `transaction_id`.
+    # `format` and the singular `credential` key are deprecated draft-era fields.
+    cred_response: dict = {
+        "credentials": [{"credential": credential}],
     }
-    if is_offer:
-        cred_response["refresh_id"] = ex_record.refresh_id
+    if ex_record.notification_id:
+        cred_response["notification_id"] = ex_record.notification_id
 
     return web.json_response(cred_response)
+

@@ -132,7 +132,9 @@ class SupportedCredential(BaseRecord):
         alg_supported = issuer_metadata.pop("cryptographic_suites_supported", None)
         if alg_supported:
             issuer_metadata["credential_signing_alg_values_supported"] = alg_supported
-        issuer_metadata["id"] = self.identifier
+        # NOTE: Do NOT add "id" here — per OID4VCI spec §11.2.3, the credential
+        # configuration identifier is ONLY the map key in
+        # credential_configurations_supported, never a field inside the object.
 
         format_data = self.format_data or {}
         if self.format in self.TOP_LEVEL_FORMAT_DATA_FORMATS:
@@ -140,8 +142,16 @@ class SupportedCredential(BaseRecord):
             # fields (e.g. vct, claims, doctype) belong at the top level of the
             # credential configuration object per OID4VCI spec.
             for key, value in format_data.items():
-                if value is not None:
-                    issuer_metadata[key] = value
+                if value is None:
+                    continue
+                if key == "cryptographic_suites_supported":
+                    # Deprecated field — convert to the OID4VCI 1.0 name if not
+                    # already set by the model-level attribute above.
+                    if "credential_signing_alg_values_supported" not in issuer_metadata:
+                        issuer_metadata["credential_signing_alg_values_supported"] = value
+                    # Don't add the deprecated name to the output.
+                    continue
+                issuer_metadata[key] = value
         else:
             # For JWT VC JSON, JSON-LD, and other formats, format_data is
             # wrapped in credential_definition per OID4VCI spec.
@@ -152,6 +162,38 @@ class SupportedCredential(BaseRecord):
             issuer_metadata["credential_definition"] = {
                 k: v for k, v in credential_definition.items() if v is not None
             }
+
+        # ── Format-specific post-processing ────────────────────────────────────
+
+        # SD-JWT VC (dc+sd-jwt / vc+sd-jwt): the OIDF conformance test requires
+        # `claims` to be an array of per-claim objects (not a dict) per the
+        # latest OID4VCI spec.  Stored format_data uses the legacy dict form
+        # {claim_name: {display: ...}}, so convert it here.
+        if self.format in ("dc+sd-jwt", "vc+sd-jwt"):
+            claims = issuer_metadata.get("claims")
+            if isinstance(claims, dict):
+                claims_arr = []
+                for claim_name, claim_meta in claims.items():
+                    entry: dict = {"path": [claim_name]}
+                    if isinstance(claim_meta, dict):
+                        if "display" in claim_meta:
+                            entry["display"] = claim_meta["display"]
+                        if "mandatory" in claim_meta:
+                            entry["mandatory"] = claim_meta["mandatory"]
+                    claims_arr.append(entry)
+                issuer_metadata["claims"] = claims_arr
+
+        # mso_mdoc: `credential_signing_alg_values_supported` must contain COSE
+        # algorithm integer identifiers (e.g. -7 for ES256), NOT string names.
+        # Convert any string entries (from old configs) to COSE integers.
+        if self.format == "mso_mdoc":
+            _COSE_ALG = {"ES256": -7, "ES384": -35, "ES512": -36, "ES256K": -47}
+            algs = issuer_metadata.get("credential_signing_alg_values_supported")
+            if algs:
+                issuer_metadata["credential_signing_alg_values_supported"] = [
+                    _COSE_ALG.get(a, a) if isinstance(a, str) else a
+                    for a in algs
+                ]
 
         return issuer_metadata
 

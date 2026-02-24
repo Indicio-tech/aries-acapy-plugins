@@ -107,11 +107,19 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
             "typ": supported.format,  # "vc+sd-jwt" or "dc+sd-jwt" per credential config
         }
 
+        # exp can be provided in credential_subject or vc_additional_data;
+        # default to 1 year from issuance if not set
+        exp_seconds = (
+            claims.pop("exp", None)
+            or supported.vc_additional_data.get("exp_seconds")
+            or (365 * 24 * 3600)
+        )
         claims = {
             **claims,
             "vct": supported.format_data["vct"],
             "iss": ex_record.issuer_id,
             "iat": current_time,
+            "exp": current_time + int(exp_seconds),
         }
 
         status_handler = context.inject_or(StatusHandler)

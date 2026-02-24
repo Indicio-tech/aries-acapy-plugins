@@ -1,6 +1,7 @@
 """Token endpoint for OID4VCI."""
 
 import datetime
+import json
 import time
 from typing import Any, Dict
 
@@ -257,29 +258,51 @@ async def handle_proof_of_posession(
     valid_typ_values = ["openid4vci-proof+jwt", "JWT", "jwt", "openid4vci-jwt"]
     if typ and typ not in valid_typ_values:
         LOGGER.warning("Proof JWT has unexpected typ header: %s", typ)
-        raise web.HTTPBadRequest(reason=f"Invalid proof: unsupported typ '{typ}'")
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": "invalid_proof", "error_description": f"unsupported typ: {typ}"}),
+            content_type="application/json",
+        )
 
     if "kid" in headers:
         try:
             key = await key_material_for_kid(profile, headers["kid"])
         except ValueError as exc:
-            raise web.HTTPBadRequest(reason="Invalid kid") from exc
+            raise web.HTTPBadRequest(
+                text=json.dumps({"error": "invalid_proof", "error_description": "invalid kid in proof"}),
+                content_type="application/json",
+            ) from exc
     elif "jwk" in headers:
         key = Key.from_jwk(headers["jwk"])
     elif "x5c" in headers:
-        raise web.HTTPBadRequest(reason="x5c not supported")
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": "invalid_proof", "error_description": "x5c key binding not supported"}),
+            content_type="application/json",
+        )
     else:
-        raise web.HTTPBadRequest(reason="No key material in proof")
+        raise web.HTTPBadRequest(
+            text=json.dumps({"error": "invalid_proof", "error_description": "no key material in proof header"}),
+            content_type="application/json",
+        )
 
     payload = b64_to_dict(encoded_payload)
-    nonce = payload.get("nonce")
+    # OID4VCI 1.0 final spec uses "nonce"; older draft wallets may use "c_nonce".
+    nonce = payload.get("nonce") or payload.get("c_nonce")
     if c_nonce:
         if c_nonce != nonce:
-            raise web.HTTPBadRequest(reason="Invalid proof: wrong nonce.")
+            raise web.HTTPBadRequest(
+                text=json.dumps({"error": "invalid_proof", "error_description": "nonce mismatch"}),
+                content_type="application/json",
+            )
     else:
-        redeemed = await Nonce.redeem_by_value(profile.session(), nonce)
+        # OID4VCI 1.0: nonce was obtained from the /nonce endpoint.
+        # Open a session to redeem it (marks it used for replay protection).
+        async with profile.session() as session:
+            redeemed = await Nonce.redeem_by_value(session, nonce)
         if not redeemed:
-            raise web.HTTPBadRequest(reason="Invalid proof: wrong or used nonce.")
+            raise web.HTTPBadRequest(
+                text=json.dumps({"error": "invalid_proof", "error_description": "invalid or already-used nonce"}),
+                content_type="application/json",
+            )
 
     decoded_signature = b64_to_bytes(encoded_signature, urlsafe=True)
     verified = key.verify_signature(

@@ -134,12 +134,16 @@ cmd_run() {
     _build_acapy_images
 
     # Start infrastructure services (images already built above, --build is a no-op)
+    # Use || true because acapy-tls-proxy has depends_on: condition: service_healthy
+    # for acapy-issuer and acapy-verifier, and dc up -d may timeout waiting for the
+    # healthcheck grace period before starting acapy-tls-proxy.  The polling loop
+    # below (deadline=600s) waits for all services to actually become healthy.
     dc up -d \
         conformance-mongodb \
         conformance-server \
         acapy-issuer \
         acapy-verifier \
-        acapy-tls-proxy
+        acapy-tls-proxy || true
 
     info "Waiting for all services to become healthy…"
     # poll until conformance-server + both acapy services + tls proxy are healthy
