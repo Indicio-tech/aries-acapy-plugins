@@ -509,14 +509,16 @@ async def _parse_cred_offer(context: AdminRequestContext, exchange_id: str) -> d
         else None
     )
     subpath = f"/tenant/{wallet_id}" if wallet_id else ""
+    pre_auth_grant: dict = {
+        "pre-authorized_code": record.code,
+    }
+    if user_pin_required:
+        pre_auth_grant["tx_code"] = {"input_mode": "text"}
     return {
         "credential_issuer": f"{config.endpoint}{subpath}",
         "credentials": [supported.identifier],
         "grants": {
-            "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
-                "pre-authorized_code": record.code,
-                "user_pin_required": user_pin_required,
-            }
+            "urn:ietf:params:oauth:grant-type:pre-authorized_code": pre_auth_grant,
         },
     }
 

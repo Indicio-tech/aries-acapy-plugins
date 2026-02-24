@@ -103,7 +103,11 @@ async def issue_cred(request: web.Request):
     LOGGER.info("request: %s", body)
 
     # OID4VCI 1.0 § 7.2: credential_identifier and format are mutually exclusive.
-    credential_identifier = body.get("credential_identifier")
+    # Also accept credential_configuration_id (OID4VCI 1.0 final spec field name)
+    credential_identifier = (
+        body.get("credential_identifier")
+        or body.get("credential_configuration_id")
+    )
     format_field = body.get("format")
 
     if credential_identifier and format_field:
@@ -169,10 +173,20 @@ async def issue_cred(request: web.Request):
         LOGGER.error("No format_data for supported credential %s.", supported.format)
         raise web.HTTPInternalServerError()
 
-    if "proof" not in body:
+    # Normalize proof: accept both 'proof' (singular, draft spec) and
+    # 'proofs.jwt' (plural array, OID4VCI 1.0 final spec)
+    if "proof" in body:
+        proof_value = body["proof"]
+    elif "proofs" in body and isinstance(body["proofs"], dict):
+        jwt_proofs = body["proofs"].get("jwt", [])
+        if not jwt_proofs:
+            raise web.HTTPBadRequest(reason=f"proofs.jwt is empty for {supported.format}")
+        # Normalize to the expected structure
+        proof_value = {"proof_type": "jwt", "jwt": jwt_proofs[0]}
+    else:
         raise web.HTTPBadRequest(reason=f"proof is required for {supported.format}")
 
-    pop = await handle_proof_of_posession(context.profile, body["proof"], c_nonce)
+    pop = await handle_proof_of_posession(context.profile, proof_value, c_nonce)
 
     if not pop.verified:
         raise web.HTTPBadRequest(reason="Invalid proof")

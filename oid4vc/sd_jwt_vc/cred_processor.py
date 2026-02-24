@@ -104,7 +104,7 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
 
         headers = {
             "kid": ex_record.verification_method,
-            "typ": "vc+sd-jwt",
+            "typ": supported.format,  # "vc+sd-jwt" or "dc+sd-jwt" per credential config
         }
 
         claims = {

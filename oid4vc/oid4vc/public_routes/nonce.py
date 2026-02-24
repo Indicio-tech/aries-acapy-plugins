@@ -45,9 +45,12 @@ async def get_nonce(request: web.Request):
     context: AdminRequestContext = request["context"]
     nonce = await create_nonce(context.profile, NONCE_BYTES, EXPIRES_IN)
 
-    return web.json_response(
+    response = web.json_response(
         {
             "c_nonce": nonce.nonce_value,
             "expires_in": EXPIRES_IN,
         }
     )
+    # OID4VCI spec §8 requires Cache-Control: no-store on nonce endpoint responses
+    response.headers["Cache-Control"] = "no-store"
+    return response

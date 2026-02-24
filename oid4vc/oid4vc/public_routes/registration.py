@@ -6,6 +6,7 @@ from aiohttp import web
 from ..status_handler import StatusHandler
 from .credential import dereference_cred_offer, issue_cred
 from .metadata import credential_issuer_metadata, openid_configuration
+from .nonce import get_nonce
 from .notification import receive_notification
 from .status_list import get_status_list
 from .token import token
@@ -58,11 +59,23 @@ async def register(app: web.Application, multitenant: bool, context: InjectionCo
             openid_configuration,
             allow_head=False,
         ),
+        # RFC 8414 Authorization Server Metadata endpoint - required by OID4VCI
+        # conformance suite (VCIFetchOAuthorizationServerMetadata). ACA-Py serves
+        # the same content as /.well-known/openid-configuration.
+        web.get(
+            f"{subpath}/.well-known/oauth-authorization-server",
+            openid_configuration,
+            allow_head=False,
+        ),
         # TODO Add .well-known/did-configuration.json
         # Spec: https://identity.foundation/.well-known/resources/did-configuration/
         web.post(f"{subpath}/token", token),
         web.post(f"{subpath}/notification", receive_notification),
         web.post(f"{subpath}/credential", issue_cred),
+        # OID4VCI nonce endpoint — provides server-generated nonces for proof-of-
+        # possession in HAIP and other profiles that require nonce_endpoint in metadata.
+        web.post(f"{subpath}/nonce", get_nonce),
+        web.get(f"{subpath}/nonce", get_nonce),
         web.get(f"{subpath}/oid4vp/request/{{request_id}}", get_request),
         web.post(f"{subpath}/oid4vp/response/{{presentation_id}}", post_response),
     ]

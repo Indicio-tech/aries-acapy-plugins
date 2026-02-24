@@ -28,7 +28,7 @@ class Nonce(BaseRecord):
         *,
         id: str | None = None,
         nonce_value: str,
-        used: bool,
+        used: bool | str = False,
         issued_at: str,
         expires_at: str,
         **kwargs,
@@ -36,7 +36,9 @@ class Nonce(BaseRecord):
         """Initialize a new Nonce."""
         super().__init__(id, **kwargs)
         self.nonce_value = nonce_value
-        self.used = used
+        # Askar tag values must be strings or lists of strings, not booleans.
+        # Store 'used' as the string literal "true" or "false".
+        self.used = "true" if (used is True or used == "true") else "false"
         self.issued_at = issued_at
         self.expires_at = expires_at
 
@@ -65,14 +67,14 @@ class Nonce(BaseRecord):
             return None
 
         record = await cls.retrieve_by_tag_filter(
-            session, {"nonce_value": nonce_value, "used": False}, for_update=True
+            session, {"nonce_value": nonce_value, "used": "false"}, for_update=True
         )
         if record:
             expires_after = datetime_now()
             expires_at = str_to_datetime(record.expires_at)
             if not expires_at or expires_at <= expires_after:
                 return None
-        record.used = True
+        record.used = "true"
         await record.save(session, reason="mark nonce used")
         return record
 
@@ -93,9 +95,9 @@ class NonceSchema(BaseRecordSchema):
         required=True,
         metadata={"description": "Unique nonce value"},
     )
-    used = fields.Bool(
+    used = fields.Str(
         required=True,
-        metadata={"description": "Whether the nonce has been used"},
+        metadata={"description": "Whether the nonce has been used ('true' or 'false')"},
     )
     issued_at = fields.Str(
         required=True,

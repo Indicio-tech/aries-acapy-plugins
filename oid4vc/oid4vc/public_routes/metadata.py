@@ -75,9 +75,12 @@ async def credential_issuer_metadata(request: web.Request):
             metadata["authorization_servers"] = [
                 f"{config.auth_server_url}{auth_tenant_subpath}"
             ]
-        metadata["token_endpoint"] = f"{public_url}{subpath}/token"
+        # NOTE: token_endpoint is NOT part of credential issuer metadata per
+        # OID4VCI spec (§11.2.1). It belongs in the authorization server metadata
+        # (/.well-known/oauth-authorization-server or /.well-known/openid-configuration).
         metadata["credential_endpoint"] = f"{public_url}{subpath}/credential"
         metadata["notification_endpoint"] = f"{public_url}{subpath}/notification"
+        metadata["nonce_endpoint"] = f"{public_url}{subpath}/nonce"
         metadata["credential_configurations_supported"] = {
             supported.identifier: supported.to_issuer_metadata()
             for supported in credentials_supported
@@ -109,18 +112,34 @@ async def openid_configuration(request: web.Request):
 
         # Combined OIDC Discovery + OID4VCI metadata
         metadata: dict[str, Any] = {
-            # OIDC Discovery fields
+            # OIDC Discovery fields (RFC 8414 / OIDC Discovery required fields)
             "issuer": base_url,
+            # authorization_endpoint is required by CheckServerConfiguration in the
+            # OIDF conformance suite (condition.common.CheckServerConfiguration checks
+            # for "authorization_endpoint", "token_endpoint", and "issuer").
+            # For pre-authorized_code flow the authorization endpoint is not invoked,
+            # but it must be advertised in the AS metadata.
+            "authorization_endpoint": f"{base_url}/authorize",
             "token_endpoint": f"{base_url}/token",
             "response_types_supported": ["code"],
+            # DPoP support - required by HAIP profile (DPOP-5.1).
+            # Advertise the algorithms supported for DPoP proof JWTs.
+            "dpop_signing_alg_values_supported": ["ES256", "ES384", "ES512"],
             # OAuth 2.0 AS Metadata fields
             "grant_types_supported": [
                 "urn:ietf:params:oauth:grant-type:pre-authorized_code"
             ],
+            # RFC 9396 Rich Authorization Requests — advertise the authorization_details
+            # type(s) supported (required by OID4VCI HAIP AS metadata validation).
+            "authorization_details_types_supported": ["openid_credential"],
             # OID4VCI fields
             "credential_issuer": base_url,
             "credential_endpoint": f"{base_url}/credential",
             "notification_endpoint": f"{base_url}/notification",
+            # OID4VCI nonce endpoint for server-generated nonces (HAIP required).
+            # Wallets call this before building a credential proof to get a fresh
+            # nonce that ACA-Py validates in the JWT proof `nonce` claim.
+            "nonce_endpoint": f"{base_url}/nonce",
             "credential_configurations_supported": {
                 supported.identifier: supported.to_issuer_metadata()
                 for supported in credentials_supported

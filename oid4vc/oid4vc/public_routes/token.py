@@ -2,7 +2,6 @@
 
 import datetime
 import time
-from secrets import token_urlsafe
 from typing import Any, Dict
 
 from acapy_agent.admin.request_context import AdminRequestContext
@@ -31,7 +30,6 @@ from ..utils import get_auth_header, get_tenant_subpath
 from .constants import (
     EXPIRES_IN,
     LOGGER,
-    NONCE_BYTES,
     PRE_AUTHORIZED_CODE_GRANT_TYPE,
 )
 
@@ -107,7 +105,8 @@ async def token(request: web.Request):
             status=400,
         )
 
-    user_pin = form.get("user_pin")
+    # Accept both legacy user_pin and OID4VCI 1.0 final tx_code in token requests.
+    user_pin = form.get("tx_code") or form.get("user_pin")
     try:
         async with context.profile.session() as session:
             record = await OID4VCIExchangeRecord.retrieve_by_code(
@@ -170,7 +169,13 @@ async def token(request: web.Request):
             )
 
         record.token = token_jwt
-        record.nonce = token_urlsafe(NONCE_BYTES)
+        # NOTE: We do NOT set record.nonce here because the OID4VCI HAIP profile
+        # uses the /nonce endpoint for proof-of-possession nonces.  Embedding a
+        # c_nonce in the token response would conflict with nonces obtained from
+        # the nonce endpoint (they are different values).  Clients SHOULD call
+        # the nonce endpoint; credential.py falls back to Nonce.redeem_by_value
+        # when c_nonce is not present in the token, which validates nonce-endpoint
+        # nonces correctly (with replay protection).
         await record.save(
             session,
             reason="Created new token",
@@ -181,8 +186,6 @@ async def token(request: web.Request):
             "access_token": record.token,
             "token_type": "Bearer",
             "expires_in": EXPIRES_IN,
-            "c_nonce": record.nonce,
-            "c_nonce_expires_in": EXPIRES_IN,
         }
     )
 

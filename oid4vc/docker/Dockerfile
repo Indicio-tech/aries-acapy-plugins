@@ -23,8 +23,10 @@ RUN git clone --depth 1 --branch ${ISOMDL_BRANCH} \
 
 WORKDIR /build/isomdl-uniffi/python
 
-# Build wheel
+# Build wheel — limit Cargo parallelism to avoid Docker VM OOM on resource-constrained hosts
+# (CARGO_BUILD_JOBS=2 cuts peak memory roughly in half vs. the default all-cores build)
 RUN pip install --no-cache-dir build wheel setuptools
+ENV CARGO_BUILD_JOBS=2
 RUN python setup.py bdist_wheel
 
 # =============================================================================

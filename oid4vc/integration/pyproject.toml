@@ -73,6 +73,7 @@ markers = [
     "requires_acapy: Tests that require ACA-Py agents",
     "negative: Negative and error handling tests",
     "trust: Trust anchor and certificate chain validation tests",
+    "conformance: OpenID Foundation conformance suite tests",
 ]
 testpaths = ["tests"]
 asyncio_mode = "auto"

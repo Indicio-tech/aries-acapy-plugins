@@ -22,6 +22,7 @@ async def setup(context: InjectionContext):
     processors.register_issuer("vc+sd-jwt", sd_jwt)
     processors.register_cred_verifier("vc+sd-jwt", sd_jwt)
     processors.register_pres_verifier("vc+sd-jwt", sd_jwt)
-    # dc+sd-jwt is an alias for vc+sd-jwt used by some clients (e.g. Credo)
+    # dc+sd-jwt is the format identifier used by newer OID4VCI drafts
+    processors.register_issuer("dc+sd-jwt", sd_jwt)
     processors.register_cred_verifier("dc+sd-jwt", sd_jwt)
     processors.register_pres_verifier("dc+sd-jwt", sd_jwt)
