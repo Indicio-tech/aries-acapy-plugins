@@ -28,14 +28,15 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse, parse_qs, urlencode
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 from cryptography.hazmat.primitives.asymmetric.ec import (
     SECP256R1,
+)
+from cryptography.hazmat.primitives.asymmetric.ec import (
     generate_private_key as ec_generate_private_key,
 )
 
@@ -56,9 +57,13 @@ CONFORMANCE_SETUP_OUTPUT = os.environ.get(
 CONFORMANCE_OUTPUT_XML = os.environ.get(
     "CONFORMANCE_OUTPUT_XML", "/usr/src/app/test-results/conformance-junit.xml"
 )
-CONFORMANCE_SCOPE = os.environ.get("CONFORMANCE_SCOPE", "all")  # issuer | verifier | all
+CONFORMANCE_SCOPE = os.environ.get(
+    "CONFORMANCE_SCOPE", "all"
+)  # issuer | verifier | all
 # ACA-Py issuer admin API base URL (used to create fresh offers per test module)
-ACAPY_ISSUER_ADMIN_URL = os.environ.get("ACAPY_ISSUER_ADMIN_URL", "http://acapy-issuer:8021")
+ACAPY_ISSUER_ADMIN_URL = os.environ.get(
+    "ACAPY_ISSUER_ADMIN_URL", "http://acapy-issuer:8021"
+)
 
 # How long to wait for a single test module to complete (seconds)
 TEST_TIMEOUT = int(os.environ.get("CONFORMANCE_TEST_TIMEOUT", "120"))
@@ -199,11 +204,9 @@ class ConformanceSuiteClient:
             try:
                 resp = await self._client.get(url)
                 if resp.status_code < 500:
-                    logger.info(
-                        f"Conformance suite ready after {attempt} attempt(s)"
-                    )
+                    logger.info(f"Conformance suite ready after {attempt} attempt(s)")
                     return
-            except httpx.RequestError as exc:
+            except httpx.RequestError:
                 pass
             if attempt < SUITE_POLL_MAX_ATTEMPTS:
                 await asyncio.sleep(SUITE_POLL_INTERVAL)
@@ -324,7 +327,9 @@ class ConformanceSuiteClient:
             trigger_params["credential_offer_uri"] = openid_offer_deeplink
 
         offer_endpoint = f"{self.base_url}/test/{test_id}/credential_offer"
-        logger.info(f"  Triggering conformance wallet (OID4VCI offer): GET {offer_endpoint}")
+        logger.info(
+            f"  Triggering conformance wallet (OID4VCI offer): GET {offer_endpoint}"
+        )
         for k, v in trigger_params.items():
             logger.info(f"    {k}={v[:120]}")
 
@@ -357,9 +362,7 @@ class ConformanceSuiteClient:
                 )
                 return
             if time.monotonic() > deadline:
-                logger.warning(
-                    f"  Module {test_id} didn't reach WAITING in {timeout}s"
-                )
+                logger.warning(f"  Module {test_id} didn't reach WAITING in {timeout}s")
                 return
             await asyncio.sleep(0.5)
 
@@ -524,7 +527,9 @@ class ConformanceSuiteClient:
                                 offer_deeplink = ""
                         else:
                             # Fall back to static dict (wildcard or per-module)
-                            offer_deeplink = oid4vci_offers.get(module_name) or oid4vci_offers.get("*", "")  # type: ignore[union-attr]
+                            offer_deeplink = oid4vci_offers.get(
+                                module_name
+                            ) or oid4vci_offers.get("*", "")  # type: ignore[union-attr]
                         if offer_deeplink:
                             await self.trigger_oid4vci_offer(test_id, offer_deeplink)
                         else:
@@ -763,7 +768,9 @@ def build_oid4vp_verifier_sdjwt_config(setup: dict) -> tuple[str, dict, dict]:
     # Docker endpoint (http://acapy-verifier:8033).  The conformance suite
     # validates that both URIs use https:// scheme.
     sdjwt_deeplink = verifier["sdjwt_vp_request"]["request_uri"]
-    sdjwt_request_uri = parse_qs(urlparse(sdjwt_deeplink).query).get("request_uri", [""])[0]
+    sdjwt_request_uri = parse_qs(urlparse(sdjwt_deeplink).query).get(
+        "request_uri", [""]
+    )[0]
     parsed_req_uri = urlparse(sdjwt_request_uri)
     public_base = f"{parsed_req_uri.scheme}://{parsed_req_uri.netloc}"  # e.g. https://acapy-tls-proxy.local:8444
 
@@ -824,7 +831,9 @@ def build_oid4vp_verifier_mdl_config(setup: dict) -> tuple[str, dict, dict]:
     }
     # Same HTTPS URL derivation as the sdjwt variant.
     mdoc_deeplink = verifier["mdoc_vp_request"]["request_uri"]
-    mdoc_request_uri = parse_qs(urlparse(mdoc_deeplink).query).get("request_uri", [""])[0]
+    mdoc_request_uri = parse_qs(urlparse(mdoc_deeplink).query).get("request_uri", [""])[
+        0
+    ]
     parsed_req_uri = urlparse(mdoc_request_uri)
     public_base = f"{parsed_req_uri.scheme}://{parsed_req_uri.netloc}"
 
@@ -892,7 +901,15 @@ async def run_all(
     # oid4vci_offers: module_name → openid-credential-offer:// deeplink; None for non-OID4VCI.
     # offer_factory: async () -> str that creates a fresh offer per module; takes priority.
     plans_to_run: list[
-        tuple[str, dict, dict, str, dict[str, str] | None, dict[str, str] | None, Any | None]
+        tuple[
+            str,
+            dict,
+            dict,
+            str,
+            dict[str, str] | None,
+            dict[str, str] | None,
+            Any | None,
+        ]
     ] = []
 
     if scope in ("issuer", "all"):
@@ -907,11 +924,18 @@ async def run_all(
         sdjwt_supported_id = issuer_info.get("sdjwt_credential_config_id", "")
         # sdjwt_p256_did is the P-256 DID created for SD-JWT credential signing
         # (uses P-256 so that x5c cert binding works with ES256)
-        issuer_did = issuer_info.get("sdjwt_p256_did", issuer_info.get("ed25519_did", ""))
+        issuer_did = issuer_info.get(
+            "sdjwt_p256_did", issuer_info.get("ed25519_did", "")
+        )
         sdjwt_tx_code = issuer_info.get("sdjwt_tx_code", None)
         _admin_url = ACAPY_ISSUER_ADMIN_URL
 
-        async def make_sdjwt_offer(_sid=sdjwt_supported_id, _did=issuer_did, _pin=sdjwt_tx_code, _url=_admin_url) -> str:
+        async def make_sdjwt_offer(
+            _sid=sdjwt_supported_id,
+            _did=issuer_did,
+            _pin=sdjwt_tx_code,
+            _url=_admin_url,
+        ) -> str:
             return await create_fresh_offer(
                 admin_url=_url,
                 supported_cred_id=_sid,
@@ -923,8 +947,8 @@ async def run_all(
             (
                 *build_oid4vci_issuer_config(setup),
                 "acapy-issuer-sdjwt",
-                None,   # No OID4VP deeplinks
-                None,   # No static oid4vci_offers (using factory instead)
+                None,  # No OID4VP deeplinks
+                None,  # No static oid4vci_offers (using factory instead)
                 make_sdjwt_offer,  # Fresh offer factory — called per-module
             )
         )
@@ -934,49 +958,51 @@ async def run_all(
         # After each module enters WAITING state, we deliver the pre-created
         # OID4VP authorization request (openid:// deeplink) to the suite's
         # wallet endpoint so it can proceed with the test flow.
-        OID4VP_MODULE = "oid4vp-1final-verifier-happy-flow"
+        oid4vp_module = "oid4vp-1final-verifier-happy-flow"
         sdjwt_deeplink = (
-            setup.get("verifier", {})
-            .get("sdjwt_vp_request", {})
-            .get("request_uri", "")
+            setup.get("verifier", {}).get("sdjwt_vp_request", {}).get("request_uri", "")
         )
         mdoc_deeplink = (
-            setup.get("verifier", {})
-            .get("mdoc_vp_request", {})
-            .get("request_uri", "")
+            setup.get("verifier", {}).get("mdoc_vp_request", {}).get("request_uri", "")
         )
         plans_to_run.append(
             (
                 *build_oid4vp_verifier_sdjwt_config(setup),
                 "acapy-verifier-sdjwt",
-                {OID4VP_MODULE: sdjwt_deeplink} if sdjwt_deeplink else None,
-                None,   # No OID4VCI offers
-                None,   # No offer factory
+                {oid4vp_module: sdjwt_deeplink} if sdjwt_deeplink else None,
+                None,  # No OID4VCI offers
+                None,  # No offer factory
             )
         )
         plans_to_run.append(
             (
                 *build_oid4vp_verifier_mdl_config(setup),
                 "acapy-verifier-mdl",
-                {OID4VP_MODULE: mdoc_deeplink} if mdoc_deeplink else None,
-                None,   # No OID4VCI offers
-                None,   # No offer factory
+                {oid4vp_module: mdoc_deeplink} if mdoc_deeplink else None,
+                None,  # No OID4VCI offers
+                None,  # No offer factory
             )
         )
 
     summaries: list[PlanSummary] = []
     overall_passed = True
 
-    for plan_name, variant, config, alias, oid4vp_deeplinks, oid4vci_offers, oid4vci_offer_factory in plans_to_run:
-        logger.info(f"\n{'='*60}")
+    for (
+        plan_name,
+        variant,
+        config,
+        alias,
+        oid4vp_deeplinks,
+        oid4vci_offers,
+        oid4vci_offer_factory,
+    ) in plans_to_run:
+        logger.info(f"\n{'=' * 60}")
         logger.info(f"Running plan: {plan_name}  ({alias})")
         logger.info(f"Variant: {json.dumps(variant, indent=2)}")
         logger.info("=" * 60)
 
         try:
-            plan_id = await client.create_plan(
-                plan_name, variant, config, alias=alias
-            )
+            plan_id = await client.create_plan(plan_name, variant, config, alias=alias)
         except Exception as exc:
             logger.error(f"Failed to create plan {plan_name}: {exc}")
             # Record as a failed plan-level error and continue
@@ -1014,7 +1040,9 @@ async def run_all(
         )
 
         modules_passed = sum(1 for r in results if r.passed)
-        modules_failed = sum(1 for r in results if not r.passed and r.result != RESULT_SKIPPED)
+        modules_failed = sum(
+            1 for r in results if not r.passed and r.result != RESULT_SKIPPED
+        )
         modules_skipped = sum(1 for r in results if r.result == RESULT_SKIPPED)
 
         summary = PlanSummary(

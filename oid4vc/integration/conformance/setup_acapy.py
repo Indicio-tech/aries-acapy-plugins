@@ -12,10 +12,10 @@ to build the final conformance suite configuration.
 
 import asyncio
 import base64
+import datetime
 import json
 import logging
 import os
-import sys
 import uuid
 from typing import Any
 
@@ -24,11 +24,10 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.ec import (
-    EllipticCurvePublicNumbers,
     SECP256R1,
+    EllipticCurvePublicNumbers,
 )
 from cryptography.x509.oid import NameOID
-import datetime
 
 logging.basicConfig(
     level=logging.INFO,
@@ -81,9 +80,7 @@ async def admin_post(
     client: httpx.AsyncClient, base: str, path: str, body: dict | None = None
 ) -> Any:
     """POST to ACA-Py admin API."""
-    resp = await client.post(
-        f"{base}{path}", json=body or {}, timeout=30.0
-    )
+    resp = await client.post(f"{base}{path}", json=body or {}, timeout=30.0)
     resp.raise_for_status()
     return resp.json()
 
@@ -117,9 +114,7 @@ async def create_sd_jwt_credential_config(
         "format": "dc+sd-jwt",
         "scope": config_id,
         "proof_types_supported": {
-            "jwt": {
-                "proof_signing_alg_values_supported": ["EdDSA", "ES256"]
-            }
+            "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
         },
         "display": [{"name": "Identity Credential", "locale": "en"}],
         "format_data": {
@@ -280,9 +275,7 @@ def _generate_test_pki() -> tuple[bytes, bytes, bytes]:
         .serial_number(x509.random_serial_number())
         .not_valid_before(now)
         .not_valid_after(now + datetime.timedelta(days=3650))
-        .add_extension(
-            x509.BasicConstraints(ca=True, path_length=None), critical=True
-        )
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
         .add_extension(
             x509.KeyUsage(
                 digital_signature=False,
@@ -316,9 +309,7 @@ def _generate_test_pki() -> tuple[bytes, bytes, bytes]:
         .serial_number(x509.random_serial_number())
         .not_valid_before(now)
         .not_valid_after(now + datetime.timedelta(days=365))
-        .add_extension(
-            x509.BasicConstraints(ca=False, path_length=None), critical=True
-        )
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
         .sign(root_key, hashes.SHA256())
     )
 
@@ -335,6 +326,7 @@ def _generate_test_pki() -> tuple[bytes, bytes, bytes]:
 
 def _ec_pub_key_from_jwk(jwk: dict):
     """Reconstruct a P-256 EC public key from a JWK dict."""
+
     # Pad base64url to a multiple of 4
     def _b64(s: str):
         s += "=" * (-len(s) % 4)
@@ -352,6 +344,7 @@ def _pem_cert_chain_to_b64der(cert_chain_pem: bytes) -> list[str]:
     format required by RFC 7517 §4.7 (standard base64, leaf first).
     """
     import re as _re
+
     return [
         _re.sub(r"\s+", "", cert)
         for cert in _re.findall(
@@ -374,7 +367,7 @@ def _generate_verifier_pki(dns_name: str, did_jwk_str: str) -> tuple[bytes, byte
     to ``POST /oid4vp/x509-identity``.
     """
     # Decode JWK from did:jwk identifier.
-    b64 = did_jwk_str[len("did:jwk:"):]
+    b64 = did_jwk_str[len("did:jwk:") :]
     b64 += "=" * (-len(b64) % 4)
     jwk = json.loads(base64.urlsafe_b64decode(b64))
     leaf_pub_key = _ec_pub_key_from_jwk(jwk)
@@ -397,9 +390,7 @@ def _generate_verifier_pki(dns_name: str, did_jwk_str: str) -> tuple[bytes, byte
         .serial_number(x509.random_serial_number())
         .not_valid_before(now)
         .not_valid_after(now + datetime.timedelta(days=365))
-        .add_extension(
-            x509.BasicConstraints(ca=True, path_length=None), critical=True
-        )
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
         .add_extension(
             x509.KeyUsage(
                 digital_signature=False,
@@ -436,9 +427,7 @@ def _generate_verifier_pki(dns_name: str, did_jwk_str: str) -> tuple[bytes, byte
             x509.SubjectAlternativeName([x509.DNSName(dns_name)]),
             critical=False,
         )
-        .add_extension(
-            x509.BasicConstraints(ca=False, path_length=None), critical=True
-        )
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
         .add_extension(
             x509.KeyUsage(
                 digital_signature=True,
@@ -485,7 +474,11 @@ async def register_x509_identity(
 
 
 async def upload_trust_anchor(
-    client: httpx.AsyncClient, base: str, cert_pem: bytes, *, anchor_type: str = "mso_mdoc"
+    client: httpx.AsyncClient,
+    base: str,
+    cert_pem: bytes,
+    *,
+    anchor_type: str = "mso_mdoc",
 ) -> None:
     """Upload a trust anchor certificate to an ACA-Py instance."""
     cert_str = cert_pem.decode()
@@ -552,11 +545,11 @@ async def create_vp_presentation_definition(
                 ],
             }
         }
-    result = await admin_post(
-        client, base, "/oid4vp/presentation-definition", payload
-    )
+    result = await admin_post(client, base, "/oid4vp/presentation-definition", payload)
     pres_def_record_id = result.get("id") or result.get("pres_def_id")
-    logger.info(f"Created presentation definition ({credential_type}): {pres_def_record_id}")
+    logger.info(
+        f"Created presentation definition ({credential_type}): {pres_def_record_id}"
+    )
     return {"pres_def_id": pres_def_record_id, "definition_id": pres_def_id}
 
 
@@ -577,10 +570,9 @@ async def create_vp_request(
     }
     result = await admin_post(client, base, "/oid4vp/request", payload)
     request_uri = result.get("request_uri", "")
-    request_id = (
-        (result.get("request") or {}).get("request_id")
-        or (result.get("presentation") or {}).get("request_id")
-    )
+    request_id = (result.get("request") or {}).get("request_id") or (
+        result.get("presentation") or {}
+    ).get("request_id")
     presentation_id = (result.get("presentation") or {}).get("presentation_id")
     logger.info(f"Created VP request: {request_uri}")
     return {
@@ -615,7 +607,9 @@ async def create_sdjwt_dcql_query(
         ]
     }
     result = await admin_post(client, base, "/oid4vp/dcql/queries", payload)
-    dcql_query_id = result.get("dcql_query_id") or (result.get("dcql_query") or {}).get("dcql_query_id")
+    dcql_query_id = result.get("dcql_query_id") or (result.get("dcql_query") or {}).get(
+        "dcql_query_id"
+    )
     logger.info(f"Created DCQL query (sdjwt): {dcql_query_id}")
     return {"dcql_query_id": dcql_query_id}
 
@@ -644,7 +638,9 @@ async def create_mdl_dcql_query(
         ]
     }
     result = await admin_post(client, base, "/oid4vp/dcql/queries", payload)
-    dcql_query_id = result.get("dcql_query_id") or (result.get("dcql_query") or {}).get("dcql_query_id")
+    dcql_query_id = result.get("dcql_query_id") or (result.get("dcql_query") or {}).get(
+        "dcql_query_id"
+    )
     logger.info(f"Created DCQL query (mdl): {dcql_query_id}")
     return {"dcql_query_id": dcql_query_id}
 
@@ -671,10 +667,9 @@ async def create_vp_request_dcql(
     }
     result = await admin_post(client, base, "/oid4vp/request", payload)
     request_uri = result.get("request_uri", "")
-    request_id = (
-        (result.get("request") or {}).get("request_id")
-        or (result.get("presentation") or {}).get("request_id")
-    )
+    request_id = (result.get("request") or {}).get("request_id") or (
+        result.get("presentation") or {}
+    ).get("request_id")
     presentation_id = (result.get("presentation") or {}).get("presentation_id")
     logger.info(f"Created VP request (DCQL): {request_uri}")
     return {
@@ -712,8 +707,8 @@ async def main() -> None:
         # Generate a cert chain for the SD-JWT issuer (x5c header requirement).
         # The leaf cert embeds the sdjwt_p256_did's public key and uses the
         # issuer's external HTTPS domain as the dNSName SAN.
-        ISSUER_DNS_NAME = "acapy-tls-proxy.local"
-        issuer_cert_pem, _ = _generate_verifier_pki(ISSUER_DNS_NAME, sdjwt_p256_did)
+        issuer_dns_name = "acapy-tls-proxy.local"
+        issuer_cert_pem, _ = _generate_verifier_pki(issuer_dns_name, sdjwt_p256_did)
         issuer_x5c_chain = _pem_cert_chain_to_b64der(issuer_cert_pem)
 
         # Register credential configs
@@ -736,13 +731,13 @@ async def main() -> None:
         # A fixed tx_code (pin) is used so the conformance suite can use
         # "static_tx_code" in its config, bypassing the interactive tx_code
         # delivery step that would require polling.
-        SDJWT_TX_CODE = "123456"
+        sdjwt_tx_code = "123456"
         sdjwt_offer = await create_credential_offer(
             client,
             ISSUER_ADMIN_URL,
             sdjwt_config["supported_cred_id"],
             sdjwt_p256_did,
-            pin=SDJWT_TX_CODE,
+            pin=sdjwt_tx_code,
         )
         mdoc_offer = await create_credential_offer(
             client,
@@ -759,7 +754,7 @@ async def main() -> None:
             "sdjwt_p256_did": sdjwt_p256_did,
             "sdjwt_credential_config_id": sdjwt_config["supported_cred_id"],
             "sdjwt_identifier": sdjwt_config["config_id"],
-            "sdjwt_tx_code": SDJWT_TX_CODE,
+            "sdjwt_tx_code": sdjwt_tx_code,
             "mdoc_credential_config_id": mdoc_config["supported_cred_id"],
             "mdoc_identifier": mdoc_config["config_id"],
             "sdjwt_offer": sdjwt_offer,
@@ -800,20 +795,20 @@ async def main() -> None:
         # suite's "verifier_url" (https://acapy-tls-proxy.local:8444) so the
         # suite can derive the expected client_id from the configuration and
         # compare it against the JAR's client_id field.
-        VERIFIER_DNS_NAME = "acapy-tls-proxy.local"
+        verifier_dns_name = "acapy-tls-proxy.local"
         verifier_p256_did = await create_did_jwk(client, VERIFIER_ADMIN_URL, "p256")
         verifier_cert_pem, _leaf_pem = _generate_verifier_pki(
-            VERIFIER_DNS_NAME, verifier_p256_did
+            verifier_dns_name, verifier_p256_did
         )
         await register_x509_identity(
             client,
             VERIFIER_ADMIN_URL,
             verifier_cert_pem,
             f"{verifier_p256_did}#0",
-            VERIFIER_DNS_NAME,
+            verifier_dns_name,
         )
         logger.info(
-            f"Verifier x509 identity registered: client_id={VERIFIER_DNS_NAME}, "
+            f"Verifier x509 identity registered: client_id={verifier_dns_name}, "
             f"vm={verifier_p256_did}#0"
         )
 
@@ -823,7 +818,12 @@ async def main() -> None:
             VERIFIER_ADMIN_URL,
             sdjwt_dcql["dcql_query_id"],
             vp_url=VERIFIER_OID4VP_URL,
-            vp_formats={"dc+sd-jwt": {"sd-jwt_alg_values": ["ES256"], "kb-jwt_alg_values": ["ES256"]}},
+            vp_formats={
+                "dc+sd-jwt": {
+                    "sd-jwt_alg_values": ["ES256"],
+                    "kb-jwt_alg_values": ["ES256"],
+                }
+            },
         )
         # MDL request uses DCQL (required by OID4VP Final conformance suite)
         mdoc_vp_request = await create_vp_request_dcql(
@@ -837,7 +837,7 @@ async def main() -> None:
             "url": VERIFIER_OID4VP_URL,
             "admin_url": VERIFIER_ADMIN_URL,
             "p256_did": verifier_p256_did,
-            "x509_dns_name": VERIFIER_DNS_NAME,
+            "x509_dns_name": verifier_dns_name,
             "sdjwt_pres_def": sdjwt_pd,
             "mdoc_pres_def": mdoc_pd,
             "sdjwt_dcql": sdjwt_dcql,

@@ -107,12 +107,10 @@ async def credential_issuer_metadata(request: web.Request):
                 async with context.profile.session() as sig_session:
                     jwk_info = await retrieve_or_create_did_jwk(sig_session)
                 vm = f"{jwk_info.did}#0"
-                # Decode the public JWK from the did:jwk DID
-                # did:jwk:<base64url(jwk_json)> — reverse the encoding in _create_default_did
-                jwk_encoded = jwk_info.did[len("did:jwk:"):]
-                jwk_public = json.loads(
-                    b64_to_bytes(jwk_encoded, urlsafe=True).decode()
-                )
+                # Decode the public JWK from the did:jwk DID.
+                # did:jwk:<base64url(jwk_json)> — reverse _create_default_did.
+                jwk_encoded = jwk_info.did[len("did:jwk:") :]
+                jwk_public = json.loads(b64_to_bytes(jwk_encoded, urlsafe=True).decode())
             except (WalletNotFoundError, WalletError, AssertionError) as err:
                 LOGGER.warning("Cannot sign metadata JWT: %s", err)
 
@@ -132,7 +130,10 @@ async def credential_issuer_metadata(request: web.Request):
                 # requires either `jwk` or `x5c` for signed issuer metadata.
                 # The `jwk` must have `kid` matching the JWT header's `kid` so
                 # the conformance suite can locate the correct key.
-                headers={"jwk": {**jwk_public, "kid": vm}, "typ": "openid-credential-issuer"},
+                headers={
+                    "jwk": {**jwk_public, "kid": vm},
+                    "typ": "openid-credential-issuer",
+                },
                 payload=payload,
                 verification_method=vm,
             )

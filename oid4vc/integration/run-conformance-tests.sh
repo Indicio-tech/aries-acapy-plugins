@@ -66,23 +66,34 @@ dc() {
     docker compose "${COMPOSE_OPTS[@]}" "$@"
 }
 
-# Build ACA-Py images as native linux/arm64 to avoid Docker VM OOM from
-# Rust compilation under x86_64 QEMU emulation on Apple Silicon.
-# Uses `docker buildx build --platform linux/arm64` directly so BuildKit
-# compiles Rust natively. The second image hits cache and completes in < 5s.
+# Build ACA-Py images for the native platform.
+# On Apple Silicon (arm64) Rust is compiled natively to avoid Docker VM OOM
+# from QEMU x86_64 emulation.  On x86_64 CI runners the detected platform is
+# linux/amd64.  Override by setting DOCKER_PLATFORM in the environment.
 _build_acapy_images() {
     local project="${COMPOSE_PROJECT_NAME:-oid4vc-integration}"
     local project_root
     project_root="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+    # Auto-detect native platform unless the caller already exported DOCKER_PLATFORM
+    if [[ -z "${DOCKER_PLATFORM:-}" ]]; then
+        local arch
+        arch="$(uname -m)"
+        case "$arch" in
+            arm64|aarch64) export DOCKER_PLATFORM="linux/arm64" ;;
+            *)             export DOCKER_PLATFORM="linux/amd64" ;;
+        esac
+    fi
+    info "  Using platform: $DOCKER_PLATFORM"
 
     for svc in acapy-issuer acapy-verifier; do
         local img="${project}-${svc}:latest"
         if docker image inspect "$img" &>/dev/null; then
             info "  $svc image already present ($img) — skipping rebuild"
         else
-            info "  Building $svc → $img  (native arm64, Rust ~10 min first time)…"
+            info "  Building $svc → $img  ($DOCKER_PLATFORM, Rust ~10 min first time)…"
             docker buildx build \
-                --platform linux/arm64 \
+                --platform "$DOCKER_PLATFORM" \
                 --progress=plain \
                 --load \
                 --build-arg ACAPY_VERSION=1.4.0 \

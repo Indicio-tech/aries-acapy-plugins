@@ -48,7 +48,7 @@ services:
 
   # ACA-Py Issuer - Issues credentials via OID4VCI
   acapy-issuer:
-    platform: linux/arm64
+    platform: ${DOCKER_PLATFORM:-linux/arm64}
     build: 
       dockerfile: oid4vc/docker/Dockerfile
       context: ../../
@@ -86,7 +86,7 @@ services:
 
   # ACA-Py Verifier - Receives presentations from Credo
   acapy-verifier:
-    platform: linux/arm64
+    platform: ${DOCKER_PLATFORM:-linux/arm64}
     build: 
       dockerfile: oid4vc/docker/Dockerfile
       context: ../../

@@ -117,14 +117,17 @@ async def _receive_notification_inner(request: web.Request) -> web.Response:
 
     if proof_value:
         try:
-            # c_nonce=None: uses /nonce endpoint replay protection via Nonce.redeem_by_value
+            # c_nonce=None: replay protection via Nonce.redeem_by_value.
             await handle_proof_of_posession(context.profile, proof_value, c_nonce=None)
         except web.HTTPBadRequest as proof_exc:
             # Propagate proof errors (invalid_nonce, invalid_proof) as-is
             try:
                 err_body = json.loads(proof_exc.text or "{}")
             except Exception:
-                err_body = {"error": "invalid_proof", "error_description": proof_exc.reason}
+                err_body = {
+                    "error": "invalid_proof",
+                    "error_description": proof_exc.reason,
+                }
             return web.json_response(err_body, status=400)
 
     # Manually validate required fields — OID4VCI 1.0 §11 requires 400 for errors.
@@ -167,9 +170,6 @@ async def _receive_notification_inner(request: web.Request) -> web.Response:
         except web.HTTPException:
             raise
         except (StorageError, BaseModelError, StorageNotFoundError) as err:
-            raise _notif_error(
-                400, "invalid_credential_request", err.roll_up
-            ) from err
+            raise _notif_error(400, "invalid_credential_request", err.roll_up) from err
 
     return web.Response(status=204)
-
