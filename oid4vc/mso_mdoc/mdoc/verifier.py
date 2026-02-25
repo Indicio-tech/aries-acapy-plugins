@@ -612,6 +612,7 @@ class MsoMdocPresVerifier(PresVerifier):
                 # Validate that the PEM is parseable by Python before passing to Rust
                 try:
                     from cryptography import x509 as _x509
+
                     _x509.load_pem_x509_certificate(pem_stripped.encode())
                     LOGGER.info("Trust anchor %d: Python PEM validation OK", i)
                 except Exception as pem_err:
