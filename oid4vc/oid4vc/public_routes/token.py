@@ -202,14 +202,23 @@ async def check_token(
     context: AdminRequestContext,
     bearer: str | None = None,
 ) -> JWTVerifyResult:
-    """Validate the OID4VCI token."""
-    if not bearer or not bearer.lower().startswith("bearer "):
+    """Validate the OID4VCI token.
+
+    Accepts both ``Bearer`` and ``DPoP`` Authorization schemes.  When
+    ``dpop_signing_alg_values_supported`` is advertised in the server
+    metadata, DPoP-capable clients (e.g. Credo 0.6.x) will present an
+    ``Authorization: DPoP <token>`` header.  We accept and verify the
+    access-token JWT in both cases; the DPoP proof itself is not
+    cryptographically validated here (full DPoP binding per RFC 9449 is
+    not yet implemented).
+    """
+    if not bearer:
         raise web.HTTPUnauthorized()
     try:
         scheme, cred = bearer.split(" ", 1)
     except ValueError:
         raise web.HTTPUnauthorized() from None
-    if scheme.lower() != "bearer":
+    if scheme.lower() not in ("bearer", "dpop"):
         raise web.HTTPUnauthorized()
 
     config = Config.from_settings(context.settings)

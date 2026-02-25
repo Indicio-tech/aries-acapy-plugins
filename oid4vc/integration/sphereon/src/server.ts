@@ -131,8 +131,16 @@ app.post('/oid4vci/accept-offer', async (req: Request, res: Response) => {
     });
 
     console.log('Credential acquired successfully');
-    
-    res.json({ credential: credentialResponse.credential });
+    console.log('Credential response keys:', Object.keys(credentialResponse));
+
+    // Handle both OID4VCI 1.0 (credentials array) and legacy draft (credential field).
+    // OID4VCI 1.0 final spec returns: {"credentials": [{"credential": "eyJ..."}]}
+    // Older draft spec returned: {"credential": "eyJ...", "format": "..."}
+    const credential =
+      credentialResponse.credential ??
+      (credentialResponse.credentials as any[])?.[0]?.credential;
+
+    res.json({ credential });
 
   } catch (error: any) {
     console.error('Error accepting offer:', error);

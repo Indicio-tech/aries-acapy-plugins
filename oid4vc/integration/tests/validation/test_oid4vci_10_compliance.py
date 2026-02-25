@@ -239,11 +239,16 @@ class TestOID4VCI10Compliance:
             assert cred_response.status_code == 200
             cred_data = cred_response.json()
 
-            # Validate response structure
-            assert "format" in cred_data
-            assert "credential" in cred_data
-            # Verify it's the expected format
-            assert cred_data["format"] == "vc+sd-jwt"
+            # Validate OID4VCI 1.0 response structure (credentials array)
+            assert "credentials" in cred_data, (
+                f"Expected 'credentials' key in response, got: {list(cred_data.keys())}"
+            )
+            assert len(cred_data["credentials"]) >= 1, "Expected at least one credential"
+            first_cred = cred_data["credentials"][0]
+            # Each credential entry must have a "credential" key with the actual value
+            assert "credential" in first_cred, (
+                f"Expected 'credential' key in credentials[0], got: {list(first_cred.keys())}"
+            )
 
             test_runner.test_results["credential_request_identifier"] = {
                 "status": "PASS",
