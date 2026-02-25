@@ -20,7 +20,7 @@ from aries_askar import Key
 from marshmallow import fields, pre_load
 
 from oid4vc.did_utils import retrieve_or_create_did_jwk
-from oid4vc.jwt import JWTVerifyResult, jwt_sign, jwt_verify, key_material_for_kid
+from oid4vc.jwt import JWTVerifyResult, jwt_sign, jwt_verify, key_from_x5c, key_material_for_kid
 
 from ..app_resources import AppResources
 from ..config import Config
@@ -274,10 +274,21 @@ async def handle_proof_of_posession(
     elif "jwk" in headers:
         key = Key.from_jwk(headers["jwk"])
     elif "x5c" in headers:
-        raise web.HTTPBadRequest(
-            text=json.dumps({"error": "invalid_proof", "error_description": "x5c key binding not supported"}),
-            content_type="application/json",
-        )
+        # OID4VCI 1.0: wallet may use x5c (certificate-based) key binding.
+        # Extract the public key from the leaf cert for signature verification.
+        try:
+            key = key_from_x5c(headers["x5c"])
+        except Exception as exc:
+            LOGGER.debug("Failed to extract key from x5c cert chain: %s", exc)
+            raise web.HTTPBadRequest(
+                text=json.dumps(
+                    {
+                        "error": "invalid_proof",
+                        "error_description": "invalid x5c certificate in proof header",
+                    }
+                ),
+                content_type="application/json",
+            ) from exc
     else:
         raise web.HTTPBadRequest(
             text=json.dumps({"error": "invalid_proof", "error_description": "no key material in proof header"}),
@@ -290,7 +301,7 @@ async def handle_proof_of_posession(
     if c_nonce:
         if c_nonce != nonce:
             raise web.HTTPBadRequest(
-                text=json.dumps({"error": "invalid_proof", "error_description": "nonce mismatch"}),
+                text=json.dumps({"error": "invalid_nonce", "error_description": "nonce mismatch"}),
                 content_type="application/json",
             )
     else:
@@ -300,7 +311,7 @@ async def handle_proof_of_posession(
             redeemed = await Nonce.redeem_by_value(session, nonce)
         if not redeemed:
             raise web.HTTPBadRequest(
-                text=json.dumps({"error": "invalid_proof", "error_description": "invalid or already-used nonce"}),
+                text=json.dumps({"error": "invalid_nonce", "error_description": "invalid or already-used nonce"}),
                 content_type="application/json",
             )
 
@@ -316,4 +327,5 @@ async def handle_proof_of_posession(
         verified,
         holder_kid=headers.get("kid"),
         holder_jwk=headers.get("jwk"),
+        holder_x5c=headers.get("x5c"),
     )

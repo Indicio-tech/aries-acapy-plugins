@@ -143,11 +143,11 @@ async def issue_cred(request: web.Request):
 async def _issue_cred_inner(context, token_result, refresh_id, req_body):
     """Inner implementation of issue_cred; all errors raised as HTTPException."""
     # OID4VCI 1.0 § 7.2: credential_identifier and format are mutually exclusive.
-    # Also accept credential_configuration_id (OID4VCI 1.0 final spec field name)
-    credential_identifier = (
-        req_body.get("credential_identifier")
-        or req_body.get("credential_configuration_id")
-    )
+    # Also accept credential_configuration_id (OID4VCI 1.0 final spec field name).
+    # Track which field was used in the request to return the correct error code.
+    raw_credential_identifier = req_body.get("credential_identifier")
+    raw_credential_config_id = req_body.get("credential_configuration_id")
+    credential_identifier = raw_credential_identifier or raw_credential_config_id
     format_field = req_body.get("format")
 
     if credential_identifier and format_field:
@@ -175,8 +175,22 @@ async def _issue_cred_inner(context, token_result, refresh_id, req_body):
                 session, ex_record.supported_cred_id
             )
     except StorageNotFoundError as err:
+        # OID4VCI 1.0 §7.5: if the exchange is in STATE_ISSUED (already issued),
+        # a second attempt with the same nonce is a nonce replay → invalid_nonce.
+        try:
+            async with context.profile.session() as session:
+                issued = await OID4VCIExchangeRecord.retrieve_by_tag_filter(
+                    session, {"refresh_id": refresh_id,
+                              "state": OID4VCIExchangeRecord.STATE_ISSUED}
+                )
+        except Exception:
+            issued = None
+        if issued:
+            raise _vc_error(
+                400, "invalid_nonce", "Nonce already used; credential was already issued."
+            )
         raise _vc_error(
-            404, "invalid_credential_request", "No credential offer available."
+            400, "invalid_credential_request", "No credential offer available."
         ) from err
     except (StorageError, BaseModelError) as err:
         raise _vc_error(400, "invalid_credential_request", err.roll_up) from err
@@ -186,15 +200,24 @@ async def _issue_cred_inner(context, token_result, refresh_id, req_body):
             400, "invalid_credential_request", "SupportedCredential missing format."
         )
 
-    # Handle both OID4VCI 1.0 (credential_identifier) and draft spec (format)
+    # Handle both OID4VCI 1.0 (credential_identifier/credential_configuration_id)
+    # and draft spec (format). Return spec-correct error codes per OID4VCI 1.0 §7.3.1.
     if credential_identifier:
-        # OID4VCI 1.0: Match by credential_identifier (supported.identifier)
+        # OID4VCI 1.0: Match by credential_identifier or credential_configuration_id.
         if supported.identifier != credential_identifier:
-            raise _vc_error(
-                400,
-                "invalid_credential_request",
-                "credential_identifier does not match offer",
-            )
+            # Distinguish request type for correct error code.
+            if raw_credential_identifier:
+                raise _vc_error(
+                    400,
+                    "invalid_credential_identifier",
+                    "credential_identifier does not match offer",
+                )
+            else:
+                raise _vc_error(
+                    400,
+                    "invalid_credential_configuration",
+                    "credential_configuration_id is not supported",
+                )
     else:
         # Draft spec: Match by format
         if supported.format != format_field:

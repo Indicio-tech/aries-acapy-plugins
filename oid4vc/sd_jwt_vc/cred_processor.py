@@ -99,12 +99,25 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
             )
 
             claims["cnf"] = {"kid": did + "#0", "jwk": pop.holder_jwk}
+        elif pop.holder_x5c:
+            # x5c-bound credential: cnf.x5c holds the holder's certificate chain
+            # (leaf first).  Per SD-JWT VC §4.2.2 the leaf cert identifies the
+            # holder key used for key-binding JWT verification.
+            claims["cnf"] = {"x5c": pop.holder_x5c}
         else:
             raise ValueError("Unsupported pop holder value")
 
+        # If an x5c cert chain is configured in vc_additional_data, use x5c
+        # as the key-identification header (RFC 7517 §4.7); x5c and kid are
+        # mutually exclusive.
+        x5c_chain = (supported.vc_additional_data or {}).get("x5c_cert_chain")
         headers = {
-            "kid": ex_record.verification_method,
             "typ": supported.format,  # "vc+sd-jwt" or "dc+sd-jwt" per credential config
+            **(
+                {"x5c": x5c_chain}
+                if x5c_chain
+                else {"kid": ex_record.verification_method}
+            ),
         }
 
         # exp can be provided in credential_subject or vc_additional_data;

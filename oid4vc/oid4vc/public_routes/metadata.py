@@ -1,15 +1,21 @@
 """Credential issuer metadata endpoint for OID4VCI."""
 
+import json
 import logging
+import time
 from typing import Any
 
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.messaging.models.openapi import OpenAPISchema
+from acapy_agent.wallet.error import WalletError, WalletNotFoundError
+from acapy_agent.wallet.util import b64_to_bytes
 from aiohttp import web
 from aiohttp_apispec import docs, response_schema
 from marshmallow import fields
 
 from ..config import Config
+from ..did_utils import retrieve_or_create_did_jwk
+from ..jwt import jwt_sign
 from ..models.supported_cred import SupportedCredential
 from ..utils import get_tenant_subpath
 
@@ -58,7 +64,12 @@ class CredentialIssuerMetadataSchema(OpenAPISchema):
 @docs(tags=["oid4vc"], summary="Get credential issuer metadata")
 @response_schema(CredentialIssuerMetadataSchema())
 async def credential_issuer_metadata(request: web.Request):
-    """Credential issuer metadata endpoint."""
+    """Credential issuer metadata endpoint.
+
+    If the client sends `Accept: application/jwt`, the metadata is returned as
+    a signed JWT (OID4VCI 1.0 §11.2.2 — signed metadata).  Otherwise, plain
+    JSON is returned.
+    """
     context: AdminRequestContext = request["context"]
     config = Config.from_settings(context.settings)
     public_url = config.endpoint
@@ -85,6 +96,55 @@ async def credential_issuer_metadata(request: web.Request):
             supported.identifier: supported.to_issuer_metadata()
             for supported in credentials_supported
         }
+
+        # OID4VCI 1.0 §11.2.2: if client requests signed metadata, sign and return
+        # the metadata document as a JWT with Content-Type: application/jwt.
+        accept = request.headers.get("Accept", "")
+        vm: str | None = None
+        jwk_public: dict | None = None
+        if "application/jwt" in accept:
+            try:
+                async with context.profile.session() as sig_session:
+                    jwk_info = await retrieve_or_create_did_jwk(sig_session)
+                vm = f"{jwk_info.did}#0"
+                # Decode the public JWK from the did:jwk DID
+                # did:jwk:<base64url(jwk_json)> — reverse the encoding in _create_default_did
+                jwk_encoded = jwk_info.did[len("did:jwk:"):]
+                jwk_public = json.loads(
+                    b64_to_bytes(jwk_encoded, urlsafe=True).decode()
+                )
+            except (WalletNotFoundError, WalletError, AssertionError) as err:
+                LOGGER.warning("Cannot sign metadata JWT: %s", err)
+
+    if "application/jwt" in accept and vm and jwk_public:
+        # Build JWT payload: include all metadata fields + required JWT claims
+        issuer_url = f"{public_url}{subpath}"
+        payload = {
+            **metadata,
+            "iss": issuer_url,
+            "sub": issuer_url,
+            "iat": int(time.time()),
+        }
+        try:
+            signed_jwt = await jwt_sign(
+                context.profile,
+                # Include the public JWK in the header — OID4VCI §11.2.2 / RFC 7515
+                # requires either `jwk` or `x5c` for signed issuer metadata.
+                # The `jwk` must have `kid` matching the JWT header's `kid` so
+                # the conformance suite can locate the correct key.
+                headers={"jwk": {**jwk_public, "kid": vm}, "typ": "openid-credential-issuer"},
+                payload=payload,
+                verification_method=vm,
+            )
+        except (WalletNotFoundError, WalletError) as err:
+            LOGGER.warning("Cannot sign metadata JWT: %s", err)
+            return web.json_response(metadata)
+
+        LOGGER.debug("SIGNED METADATA JWT: %s", signed_jwt[:60])
+        return web.Response(
+            body=signed_jwt,
+            content_type="application/jwt",
+        )
 
     LOGGER.debug("METADATA: %s", metadata)
 

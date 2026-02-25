@@ -131,6 +131,36 @@ async def retrieve_or_create_did_jwk(session: ProfileSession):
     return await _create_default_did(session)
 
 
+# ---------------------------------------------------------------------------
+# X.509 identity – stores a certificate chain + signing key for x509_san_dns
+# client_id_scheme in OID4VP request objects (JAR, RFC 9101).
+# ---------------------------------------------------------------------------
+
+X509_IDENTITY_RECORD_TYPE = "OID4VP.x509_identity"
+X509_IDENTITY_RECORD_ID = "OID4VP.x509_identity"
+
+
+async def _get_x509_identity(session: ProfileSession) -> Optional[Dict[str, Any]]:
+    """Return stored X.509 identity dict, or None if not configured.
+
+    The dict has the shape::
+
+        {
+            "cert_chain": ["<base64DER_leaf>", ...],  # leaf-first
+            "verification_method": "did:jwk:...#0",
+            "client_id": "acapy-verifier.example.com",
+        }
+    """
+    storage = session.inject(BaseStorage)
+    try:
+        record = await storage.get_record(
+            X509_IDENTITY_RECORD_TYPE, X509_IDENTITY_RECORD_ID
+        )
+        return json.loads(record.value)
+    except StorageNotFoundError:
+        return None
+
+
 @docs(tags=["oid4vp"], summary="Retrive OID4VP authorization request token")
 @match_info_schema(OID4VPRequestIDMatchSchema())
 async def get_request(request: web.Request):
@@ -154,12 +184,19 @@ async def get_request(request: web.Request):
             elif record.dcql_query_id:
                 dcql_query = await DCQLQuery.retrieve_by_id(session, record.dcql_query_id)
             jwk = await retrieve_or_create_did_jwk(session)
+            x509_id = await _get_x509_identity(session)
 
             pres.state = OID4VPPresentation.REQUEST_RETRIEVED
             pres.nonce = token_urlsafe(NONCE_BYTES)
-            # Save the client_id (did:jwk) so verify_presentation can use it
-            # as the expected KB-JWT audience instead of the HTTP endpoint URL.
-            pres.client_id = jwk.did
+            # Use x509 client_id when configured (x509_san_dns scheme).
+            # OID4VP Final (ID3+) encodes the scheme as a URI prefix in client_id:
+            #   x509_san_dns:{dns_name}  (e.g. "x509_san_dns:acapy-tls-proxy.local")
+            # This replaces the old separate client_id_scheme parameter.
+            if x509_id:
+                effective_client_id = f"x509_san_dns:{x509_id['client_id']}"
+            else:
+                effective_client_id = jwk.did
+            pres.client_id = effective_client_id
             await pres.save(session=session, reason="Retrieved presentation request")
 
     except StorageNotFoundError as err:
@@ -175,27 +212,32 @@ async def get_request(request: web.Request):
         else None
     )
     subpath = f"/tenant/{wallet_id}" if wallet_id else ""
+    # Use OID4VP_ENDPOINT when available (may differ from the OID4VCI endpoint;
+    # e.g. behind a dedicated TLS-terminating proxy for conformance tests).
+    oid4vp_base = config.oid4vp_endpoint or config.endpoint
     payload = {
-        "iss": jwk.did,
-        "sub": jwk.did,
+        "iss": effective_client_id,
+        # NOTE: Do NOT include 'sub' equal to client_id in OID4VP JAR.
+        # RFC 7519: sub identifies the principal that is the subject of the JWT,
+        # but the JAR does not have a meaningful 'subject'.  Including sub=client_id
+        # triggers a security warning (potential for use as client auth assertion).
         "iat": now,
         "nbf": now,
         "exp": now + 120,
         "jti": str(uuid.uuid4()),
-        # Use the did:jwk as client_id (matching the URL parameter) so that
-        # OID4VP holders can verify the JAR via DID resolution instead of
-        # interpreting an HTTP URL as an OpenID Federation entity.
-        # NOTE: Do NOT include "client_id_scheme" here. In OID4VP v1, the
-        # scheme is inferred from the client_id prefix (did: → DID scheme).
-        # Including "client_id_scheme" caps the detected version at draft 21,
-        # which forces the mDOC session transcript to use openId4VpDraft18
-        # (requiring mdocGeneratedNonce via JARM apu), which is incompatible
-        # with direct_post. Without client_id_scheme, the version is inferred
-        # as 25 (> 24), so Credo uses the v1 openId4Vp transcript type that
-        # only needs nonce + clientId + responseUri — matching isomdl_uniffi.
-        "client_id": jwk.did,
+        # client_id: when using x509_san_dns the value is a DNS name that
+        # matches the SAN of the leaf certificate.  For did:jwk the value is
+        # the DID itself (scheme inferred from prefix, no explicit
+        # client_id_scheme — see note below).
+        # NOTE: Do NOT include "client_id_scheme" in OID4VP Final (ID3+): the
+        # scheme is encoded as a URI prefix in client_id itself.
+        # For x509_san_dns: client_id = "x509_san_dns:{dns_name}".
+        # For did:jwk: client_id = the DID itself ("did:jwk:...").
+        # The x5c cert chain in the JWT header establishes the x509 binding.
+        # Do NOT add a separate client_id_scheme parameter — it causes failures.
+        "client_id": effective_client_id,
         "response_uri": (
-            f"{config.endpoint}{subpath}/oid4vp/response/{pres.presentation_id}"
+            f"{oid4vp_base}{subpath}/oid4vp/response/{pres.presentation_id}"
         ),
         "state": pres.presentation_id,
         "nonce": pres.nonce,
@@ -205,6 +247,13 @@ async def get_request(request: web.Request):
         "scopes_supported": ["openid", "vp_token"],
         "subject_types_supported": ["pairwise"],
         "subject_syntax_types_supported": ["urn:ietf:params:oauth:jwk-thumbprint"],
+        # OID4VP Final: vp_formats MUST be inside client_metadata when using
+        # x509_san_dns (verifier has no metadata document URL).  Keep top-level
+        # vp_formats as well for broad wallet compatibility.
+        "client_metadata": {
+            "vp_formats": record.vp_formats,
+            "authorization_signed_response_alg": "ES256",
+        },
         "vp_formats": record.vp_formats,
         "response_type": "vp_token",
         "response_mode": "direct_post",
@@ -218,16 +267,25 @@ async def get_request(request: web.Request):
     if dcql_query is not None:
         payload["dcql_query"] = dcql_query.record_value
 
-    headers = {
-        "kid": f"{jwk.did}#0",
-        "typ": "oauth-authz-req+jwt",
-    }
+    if x509_id:
+        headers = {
+            "x5c": x509_id["cert_chain"],
+            "typ": "oauth-authz-req+jwt",
+            "alg": "ES256",
+        }
+        signing_vm = x509_id["verification_method"]
+    else:
+        headers = {
+            "kid": f"{jwk.did}#0",
+            "typ": "oauth-authz-req+jwt",
+        }
+        signing_vm = f"{jwk.did}#0"
 
     token = await jwt_sign(
         profile=context.profile,
         payload=payload,
         headers=headers,
-        verification_method=f"{jwk.did}#0",
+        verification_method=signing_vm,
     )
 
     LOGGER.debug("TOKEN: %s", token)
@@ -412,7 +470,7 @@ async def post_response(request: web.Request):
         record.matched_credentials = {}
         async with context.session() as session:
             await record.save(session, reason="Presentation processing failed")
-        return web.Response(status=200)
+        return web.json_response({})
 
     if verify_result.verified:
         record.state = OID4VPPresentation.PRESENTATION_VALID
@@ -435,4 +493,6 @@ async def post_response(request: web.Request):
         )
 
     LOGGER.debug("Presentation result: %s", record.verified)
-    return web.Response(status=200)
+    # OID4VP Final §6.2: verifier MUST return a JSON response body.
+    # If no redirect_uri is required, return an empty JSON object.
+    return web.json_response({})

@@ -25,6 +25,9 @@ class Config:
     host: str
     port: int
     endpoint: str
+    # OID4VP public endpoint (may differ from OID4VCI endpoint).
+    # Reads OID4VP_ENDPOINT env var; falls back to OID4VCI endpoint if not set.
+    oid4vp_endpoint: str | None = None
     status_handler: str | None = None
     auth_server_url: str | None = None
     auth_server_client: str | None = None
@@ -42,6 +45,8 @@ class Config:
         # to override any static plugin configuration. This ensures the
         # credential_issuer matches the intended OID4VCI base URL.
         endpoint = getenv("OID4VCI_ENDPOINT") or plugin_settings.get("endpoint")
+        # OID4VP endpoint may differ (e.g., behind a separate TLS proxy).
+        oid4vp_endpoint = getenv("OID4VP_ENDPOINT") or None
         status_handler = plugin_settings.get("status_handler") or getenv(
             "OID4VCI_STATUS_HANDLER"
         )
@@ -74,5 +79,11 @@ class Config:
         endpoint = expand_vars(endpoint)
 
         return cls(
-            host, port, endpoint, status_handler, auth_server_url, auth_server_client
+            host,
+            port,
+            endpoint,
+            oid4vp_endpoint=oid4vp_endpoint,
+            status_handler=status_handler,
+            auth_server_url=auth_server_url,
+            auth_server_client=auth_server_client,
         )

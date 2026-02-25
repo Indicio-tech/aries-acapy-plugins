@@ -34,6 +34,10 @@ from typing import Any
 from urllib.parse import urlparse, parse_qs, urlencode
 
 import httpx
+from cryptography.hazmat.primitives.asymmetric.ec import (
+    SECP256R1,
+    generate_private_key as ec_generate_private_key,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -387,12 +391,14 @@ class ConformanceSuiteClient:
         logger.info(f"    client_id={client_id[:80]}...")
         logger.info(f"    request_uri={request_uri}")
 
+        # In OID4VP Final spec, client_id_scheme was removed from authorization
+        # request URL query parameters (removed in draft ID3).  The scheme is
+        # communicated inside the signed JAR only.  Omit client_id_scheme here.
         try:
             resp = await self._client.get(
                 wallet_url,
                 params={
                     "client_id": client_id,
-                    "client_id_scheme": "did",
                     "request_uri": request_uri,
                 },
                 follow_redirects=True,
@@ -489,11 +495,18 @@ class ConformanceSuiteClient:
                     # without entering WAITING (negative-test modules).
                     await self.wait_for_waiting(test_id, timeout=15.0)
                     # Only trigger offer if the module is ACTUALLY waiting for
-                    # one — modules like the metadata test finish without ever
-                    # entering WAITING, so sending an offer would cause the
+                    # one — modules like the metadata test derive the issuer
+                    # URL from the plan-level credential_offer config and don't
+                    # need a module-level offer trigger.  Sending one causes the
                     # suite to reject it with "unexpected credential_offer".
                     info_check = await self.get_module_status(test_id)
-                    if info_check.get("status") != "WAITING":
+                    is_metadata_module = "metadata" in module_name
+                    if is_metadata_module:
+                        logger.info(
+                            f"  Module '{module_name}' is a metadata-only module "
+                            "— skipping offer trigger"
+                        )
+                    elif info_check.get("status") != "WAITING":
                         logger.info(
                             f"  Module '{module_name}' is not in WAITING state "
                             f"(status={info_check.get('status')}) — skipping offer trigger"
@@ -693,6 +706,41 @@ def build_oid4vci_issuer_config(setup: dict) -> tuple[str, dict, dict]:
     return plan_name, variant, config
 
 
+def _jwk_from_did_jwk(did_jwk_str: str) -> dict:
+    """Decode the JWK embedded in a did:jwk DID string.
+
+    The did:jwk DID method encodes a JWK document as base64url in the DID
+    identifier (``did:jwk:{base64url_of_jwk}``).  This function decodes and
+    returns the JWK dict (public key fields only).
+    """
+    b64 = did_jwk_str.split("did:jwk:", 1)[-1]
+    b64 += "=" * (-len(b64) % 4)
+    return json.loads(base64.urlsafe_b64decode(b64))
+
+
+def _generate_ec_p256_jwk_pair() -> tuple[dict, dict]:
+    """Generate a fresh P-256 EC JWK key pair.
+
+    Returns ``(private_jwk, public_jwk)`` where ``private_jwk`` includes the
+    ``d`` field and ``public_jwk`` contains only the public components.
+    """
+    key = ec_generate_private_key(SECP256R1())
+    numbers = key.private_numbers()
+    pub = numbers.public_numbers
+
+    def _b64url(n: int, length: int = 32) -> str:
+        return base64.urlsafe_b64encode(n.to_bytes(length, "big")).rstrip(b"=").decode()
+
+    pub_jwk: dict = {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": _b64url(pub.x),
+        "y": _b64url(pub.y),
+    }
+    priv_jwk = {**pub_jwk, "d": _b64url(numbers.private_value)}
+    return priv_jwk, pub_jwk
+
+
 def build_oid4vp_verifier_sdjwt_config(setup: dict) -> tuple[str, dict, dict]:
     """Return (plan_name, variant, config) for the OID4VP SD-JWT verifier test plan."""
     verifier = setup["verifier"]
@@ -709,20 +757,53 @@ def build_oid4vp_verifier_sdjwt_config(setup: dict) -> tuple[str, dict, dict]:
         "vp_profile": "plain_vp",
         "response_mode": "direct_post",
     }
+    # Extract the public HTTPS request_uri from the pre-created setup deeplink
+    # so that authorization_endpoint and response_uri reflect the actual external
+    # URL (e.g. https://acapy-tls-proxy.local:8444) rather than the internal
+    # Docker endpoint (http://acapy-verifier:8033).  The conformance suite
+    # validates that both URIs use https:// scheme.
+    sdjwt_deeplink = verifier["sdjwt_vp_request"]["request_uri"]
+    sdjwt_request_uri = parse_qs(urlparse(sdjwt_deeplink).query).get("request_uri", [""])[0]
+    parsed_req_uri = urlparse(sdjwt_request_uri)
+    public_base = f"{parsed_req_uri.scheme}://{parsed_req_uri.netloc}"  # e.g. https://acapy-tls-proxy.local:8444
+
+    # Verifier signing JWK (leaf cert public key) — the suite uses this to
+    # validate the JAR signature for x509_san_dns.
+    verifier_pub_jwk = _jwk_from_did_jwk(verifier["p256_did"])
+
+    # Credential signing JWK: a fresh key pair the conformance suite (wallet)
+    # uses to sign the VP and/or key binding JWT it presents to the verifier.
+    cred_signing_priv_jwk, _ = _generate_ec_p256_jwk_pair()
+
+    # For x509_san_dns, EnsureMatchingClientId checks:
+    #   expected = "x509_san_dns:" + client.client_id
+    # and compares against the JAR's client_id field which our verifier sends as
+    #   "x509_san_dns:{dns_name}"
+    # So client.client_id must be the plain DNS name (without the scheme prefix).
+    verifier_dns_name = verifier.get("x509_dns_name", "acapy-tls-proxy.local")
+
     config = {
         "server": {
             "verifier_url": verifier["url"],
-            "authorization_endpoint": (
-                f"{verifier['url']}/oid4vp/request/"
-                f"{verifier['sdjwt_vp_request']['request_id']}"
-            ),
+            "client_id": verifier_dns_name,
+            "authorization_endpoint": sdjwt_request_uri,
             "response_uri": (
-                f"{verifier['url']}/oid4vp/response/"
+                f"{public_base}/oid4vp/response/"
                 f"{verifier['sdjwt_vp_request']['presentation_id']}"
             ),
+            "jwks": {"keys": [verifier_pub_jwk]},
         },
+        # client = the verifier acting as OAuth2 client / relying party.
+        # client.client_id = the plain DNS name; the suite prepends
+        # "x509_san_dns:" when checking matching against the JAR.
         "client": {
-            "client_id": "conformance-suite",
+            "client_id": verifier_dns_name,
+        },
+        # AbstractCreateSdJwtCredential.createSdJwt() looks up:
+        #   env.getElementFromObject("config", "credential.signing_jwk")
+        # so the key must be nested as credential.signing_jwk.
+        "credential": {
+            "signing_jwk": cred_signing_priv_jwk,
         },
     }
     return plan_name, variant, config
@@ -741,20 +822,35 @@ def build_oid4vp_verifier_mdl_config(setup: dict) -> tuple[str, dict, dict]:
         "vp_profile": "plain_vp",
         "response_mode": "direct_post",
     }
+    # Same HTTPS URL derivation as the sdjwt variant.
+    mdoc_deeplink = verifier["mdoc_vp_request"]["request_uri"]
+    mdoc_request_uri = parse_qs(urlparse(mdoc_deeplink).query).get("request_uri", [""])[0]
+    parsed_req_uri = urlparse(mdoc_request_uri)
+    public_base = f"{parsed_req_uri.scheme}://{parsed_req_uri.netloc}"
+
+    verifier_pub_jwk = _jwk_from_did_jwk(verifier["p256_did"])
+    cred_signing_priv_jwk, _ = _generate_ec_p256_jwk_pair()
+
+    verifier_dns_name = verifier.get("x509_dns_name", "acapy-tls-proxy.local")
+
     config = {
         "server": {
             "verifier_url": verifier["url"],
-            "authorization_endpoint": (
-                f"{verifier['url']}/oid4vp/request/"
-                f"{verifier['mdoc_vp_request']['request_id']}"
-            ),
+            "client_id": verifier_dns_name,
+            "authorization_endpoint": mdoc_request_uri,
             "response_uri": (
-                f"{verifier['url']}/oid4vp/response/"
+                f"{public_base}/oid4vp/response/"
                 f"{verifier['mdoc_vp_request']['presentation_id']}"
             ),
+            "jwks": {"keys": [verifier_pub_jwk]},
         },
         "client": {
-            "client_id": "conformance-suite",
+            "client_id": verifier_dns_name,
+        },
+        # MDL test doesn't use CreateSdJwtKbCredential, but keep the
+        # credential block consistent for future-proofing.
+        "credential": {
+            "signing_jwk": cred_signing_priv_jwk,
         },
     }
     return plan_name, variant, config
@@ -809,8 +905,9 @@ async def run_all(
         # SupportedCredential.retrieve_by_id; sdjwt_identifier is only the
         # human-readable config id used in issuer metadata / conformance config.
         sdjwt_supported_id = issuer_info.get("sdjwt_credential_config_id", "")
-        # ed25519_did is the DID created for SD-JWT credential signing
-        issuer_did = issuer_info.get("ed25519_did", "")
+        # sdjwt_p256_did is the P-256 DID created for SD-JWT credential signing
+        # (uses P-256 so that x5c cert binding works with ES256)
+        issuer_did = issuer_info.get("sdjwt_p256_did", issuer_info.get("ed25519_did", ""))
         sdjwt_tx_code = issuer_info.get("sdjwt_tx_code", None)
         _admin_url = ACAPY_ISSUER_ADMIN_URL
 
