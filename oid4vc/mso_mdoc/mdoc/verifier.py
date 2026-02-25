@@ -498,7 +498,8 @@ def _verify_single_presentation(
         nonce: The nonce
         client_id: The client ID
         response_uri: The response URI
-        trust_anchor_registry: Raw PEM-encoded trust anchor certificate strings
+        trust_anchor_registry: JSON-serialized PemTrustAnchor strings, each of the form
+            '{"certificate_pem": "...", "purpose": "Iaca"}'
 
     Returns:
         Verified payload dict if successful, None if failed
@@ -595,9 +596,17 @@ class MsoMdocPresVerifier(PresVerifier):
             trust_anchors = (
                 self.trust_store.get_trust_anchors() if self.trust_store else []
             )
-            # isomdl_uniffi.verify_oid4vp_response expects a list of raw PEM
-            # strings, NOT JSON-wrapped objects.  Pass through directly.
-            trust_anchor_registry = trust_anchors if trust_anchors else None
+            # isomdl_uniffi.verify_oid4vp_response expects each trust anchor as a
+            # JSON-serialized PemTrustAnchor: {"certificate_pem": "...", "purpose": "Iaca"}
+            # This is parsed via serde_json::from_str::<PemTrustAnchor>() in Rust.
+            trust_anchor_registry = (
+                [
+                    json.dumps({"certificate_pem": pem, "purpose": "Iaca"})
+                    for pem in trust_anchors
+                ]
+                if trust_anchors
+                else None
+            )
 
             # 2. Get verification parameters
             nonce, client_id, response_uri = await _get_oid4vp_verification_params(
