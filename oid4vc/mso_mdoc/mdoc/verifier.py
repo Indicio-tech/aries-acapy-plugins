@@ -596,9 +596,9 @@ class MsoMdocPresVerifier(PresVerifier):
             trust_anchors = (
                 self.trust_store.get_trust_anchors() if self.trust_store else []
             )
-            # isomdl_uniffi.verify_oid4vp_response expects each trust anchor as a
-            # JSON-serialized PemTrustAnchor: {"certificate_pem": "...", "purpose": "Iaca"}
-            # This is parsed via serde_json::from_str::<PemTrustAnchor>() in Rust.
+            # verify_oid4vp_response expects JSON-serialized PemTrustAnchor per anchor:
+            # {"certificate_pem": "...", "purpose": "Iaca"}
+            # Rust parses each string via serde_json::from_str::<PemTrustAnchor>().
             trust_anchor_registry = (
                 [
                     json.dumps({"certificate_pem": pem, "purpose": "Iaca"})
