@@ -193,25 +193,15 @@ router.post('/accept-offer', async (req: any, res: any) => {
             }
         } else {
             // W3cCredentialRecord (jwt_vc_json) in Credo 0.6.x.
-            // Credo 0.6.x may use TypeScript/JavaScript private class fields for the
-            // internal credential storage, which are inaccessible via (record as any).
-            // We therefore try multiple paths, starting with the raw OID4VCI response
-            // credential that lives on the higher-level response item.
+            // W3cCredentialRecord has a public .encoded getter that returns
+            // credentialInstances[0].credential, which is a JWT string for jwt_vc_json.
+            // W3cCredentialRecord.firstCredential parses the stored string back to
+            // W3cJwtVerifiableCredential, whose .serializedJwt getter is the JWT.
 
-            // Attempt 0: raw credential from the OID4VCI response item (before record
-            // transformation). In Credo 0.6.x each requestCredentials item has a
-            // top-level `credential` property that holds the server-returned value.
-            const rawItem = firstCredential as any;
-            if (!credentialValue && rawItem?.credential !== undefined) {
-                const raw = rawItem.credential;
-                if (typeof raw === 'string') {
-                    credentialValue = raw;
-                    console.log('✅ Extracted JWT via firstCredential.credential (string)');
-                } else if (raw && typeof raw.credential === 'string') {
-                    // OID4VCI 1.0 array item: {credential: "eyJ..."}
-                    credentialValue = raw.credential;
-                    console.log('✅ Extracted JWT via firstCredential.credential.credential');
-                }
+            // Attempt 0: W3cCredentialRecord.encoded (most direct — returns JWT string)
+            if (!credentialValue && typeof record.encoded === 'string') {
+                credentialValue = record.encoded;
+                console.log('✅ Extracted JWT via record.encoded');
             }
 
             if (!credentialValue) {
