@@ -243,7 +243,9 @@ class TestOID4VCI10Compliance:
             assert "credentials" in cred_data, (
                 f"Expected 'credentials' key in response, got: {list(cred_data.keys())}"
             )
-            assert len(cred_data["credentials"]) >= 1, "Expected at least one credential"
+            assert len(cred_data["credentials"]) >= 1, (
+                "Expected at least one credential"
+            )
             first_cred = cred_data["credentials"][0]
             # Each credential entry must have a "credential" key with the actual value
             assert "credential" in first_cred, (
