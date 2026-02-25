@@ -213,9 +213,10 @@ class DescriptorEvaluator:
         else:
             raise TypeError("descriptor must be dict or InputDescriptor")
 
+        fields = descriptor.constraint._fields if descriptor.constraint else []
         field_constraints = [
             ConstraintFieldEvaluator.compile(constraint)
-            for constraint in (descriptor.constraint._fields if descriptor.constraint else [])
+            for constraint in fields
         ]
         return cls(descriptor.id, field_constraints)
 
