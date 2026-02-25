@@ -20,13 +20,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY package.json package-lock.json* ./
 
 # Install all dependencies (use npm install if no lock file exists)
-# Use --ignore-scripts throughout to bypass pnpm-only checks in @sphereon/pex
-# (@sphereon/pex has `preinstall: npx only-allow pnpm` which is blocked in CI)
-# npm rebuild with --ignore-scripts still resolves pre-built native binaries
-# without running lifecycle scripts (askar-nodejs ships pre-built binaries).
+# Set npm config to ignore scripts during `npm ci` to bypass pnpm-only checks
+# in @sphereon/pex (@sphereon/pex has `preinstall: npx only-allow pnpm` which
+# is blocked by org npm security policy).
+# After install, rebuild only the FFI native modules (@2060.io/ffi-napi and
+# @2060.io/ref-napi) which askar-nodejs depends on for native bindings.
+# Targeting specific packages avoids triggering @sphereon/pex lifecycle scripts.
 RUN npm config set ignore-scripts true && \
     if [ -f package-lock.json ]; then npm ci; else npm install; fi && \
-    npm rebuild --ignore-scripts
+    npm config set ignore-scripts false && \
+    npm rebuild @2060.io/ffi-napi @2060.io/ref-napi
 
 # Copy source code
 COPY . .
