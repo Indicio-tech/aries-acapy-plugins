@@ -59,13 +59,12 @@ async def test_issuer_metadata(context: AdminRequestContext, req: web.Request):
             {
                 "credential_issuer": f"http://localhost:8020/tenant/{wallet_id}",
                 "authorization_servers": ["http://localhost:9001"],
-                "token_endpoint": f"http://localhost:8020/tenant/{wallet_id}/token",
                 "credential_endpoint": f"http://localhost:8020/tenant/{wallet_id}/credential",
                 "notification_endpoint": f"http://localhost:8020/tenant/{wallet_id}/notification",
+                "nonce_endpoint": f"http://localhost:8020/tenant/{wallet_id}/nonce",
                 "credential_configurations_supported": {
                     "MyCredential": {
                         "format": "jwt_vc_json",
-                        "id": "MyCredential",
                         "credential_definition": {"credentialSubject": {"name": "alice"}},
                     }
                 },
@@ -304,5 +303,7 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
 
     # Parse the JSON response body
     data = json.loads(resp.text)
-    assert data["format"] == "jwt_vc_json"
-    assert "credential" in data
+    # OID4VCI 1.0: response uses `credentials` array, not deprecated `format`/`credential`
+    assert "credentials" in data
+    assert len(data["credentials"]) == 1
+    assert "credential" in data["credentials"][0]

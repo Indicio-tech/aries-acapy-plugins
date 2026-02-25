@@ -21,6 +21,7 @@ class TestSelectiveDisclosure:
 
         # Define a credential with selective disclosure
         supported = MagicMock(spec=SupportedCredential)
+        supported.format = "vc+sd-jwt"
         supported.format_data = {
             "vct": "IdentityCredential",
             "claims": {
@@ -60,6 +61,7 @@ class TestSelectiveDisclosure:
         processor = SdJwtCredIssueProcessor()
 
         supported = MagicMock(spec=SupportedCredential)
+        supported.format = "vc+sd-jwt"
         supported.format_data = {
             "vct": "AddressCredential",
             "claims": {

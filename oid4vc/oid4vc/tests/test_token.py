@@ -121,6 +121,8 @@ async def test_token_pre_authorized_code_first_use_success(
     context.profile.session = MagicMock(return_value=mock_session)
 
     # Mock retrieve_or_create_did_jwk and jwt_sign using patch
+    mock_nonce = MagicMock()
+    mock_nonce.nonce_value = "test_c_nonce_value"
     with (
         patch(
             "oid4vc.public_routes.token.retrieve_or_create_did_jwk",
@@ -129,6 +131,10 @@ async def test_token_pre_authorized_code_first_use_success(
         patch(
             "oid4vc.public_routes.token.jwt_sign",
             AsyncMock(return_value="new_token_jwt"),
+        ),
+        patch(
+            "oid4vc.public_routes.token.create_nonce",
+            AsyncMock(return_value=mock_nonce),
         ),
     ):
         request = token_request()

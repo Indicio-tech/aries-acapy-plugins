@@ -37,8 +37,10 @@ from ..utils import get_auth_header, get_tenant_subpath
 from .constants import (
     EXPIRES_IN,
     LOGGER,
+    NONCE_BYTES,
     PRE_AUTHORIZED_CODE_GRANT_TYPE,
 )
+from .nonce import create_nonce
 
 
 class GetTokenSchema(OpenAPISchema):
@@ -176,23 +178,22 @@ async def token(request: web.Request):
             )
 
         record.token = token_jwt
-        # NOTE: We do NOT set record.nonce here because the OID4VCI HAIP profile
-        # uses the /nonce endpoint for proof-of-possession nonces.  Embedding a
-        # c_nonce in the token response would conflict with nonces obtained from
-        # the nonce endpoint (they are different values).  Clients SHOULD call
-        # the nonce endpoint; credential.py falls back to Nonce.redeem_by_value
-        # when c_nonce is not present in the token, which validates nonce-endpoint
-        # nonces correctly (with replay protection).
         await record.save(
             session,
             reason="Created new token",
         )
+
+    # Create a nonce for the wallet to use in its credential proof.
+    # The /nonce endpoint also serves nonces (OID4VCI 1.0 §8); both are valid.
+    c_nonce_record = await create_nonce(context.profile, NONCE_BYTES, EXPIRES_IN)
 
     return web.json_response(
         {
             "access_token": record.token,
             "token_type": "Bearer",
             "expires_in": EXPIRES_IN,
+            "c_nonce": c_nonce_record.nonce_value,
+            "c_nonce_expires_in": EXPIRES_IN,
         }
     )
 
