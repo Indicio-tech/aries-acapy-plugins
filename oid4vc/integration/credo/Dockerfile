@@ -23,13 +23,14 @@ COPY package.json package-lock.json* ./
 # Set npm config to ignore scripts during `npm ci` to bypass pnpm-only checks
 # in @sphereon/pex (@sphereon/pex has `preinstall: npx only-allow pnpm` which
 # is blocked by org npm security policy).
-# After install, rebuild only the FFI native modules (@2060.io/ffi-napi and
-# @2060.io/ref-napi) which askar-nodejs depends on for native bindings.
+# After install, rebuild the native modules that need their install scripts:
+#   - @2060.io/ffi-napi and @2060.io/ref-napi: native FFI bindings (compiled)
+#   - @openwallet-foundation/askar-nodejs: prebuilt binary selector
 # Targeting specific packages avoids triggering @sphereon/pex lifecycle scripts.
 RUN npm config set ignore-scripts true && \
     if [ -f package-lock.json ]; then npm ci; else npm install; fi && \
     npm config set ignore-scripts false && \
-    npm rebuild @2060.io/ffi-napi @2060.io/ref-napi
+    npm rebuild @2060.io/ffi-napi @2060.io/ref-napi @openwallet-foundation/askar-nodejs
 
 # Copy source code
 COPY . .
