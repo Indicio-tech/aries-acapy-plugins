@@ -20,11 +20,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY package.json package-lock.json* ./
 
 # Install all dependencies (use npm install if no lock file exists)
-# Set npm config to ignore scripts to bypass pnpm-only checks in @sphereon/pex
+# Use --ignore-scripts throughout to bypass pnpm-only checks in @sphereon/pex
+# (@sphereon/pex has `preinstall: npx only-allow pnpm` which is blocked in CI)
+# npm rebuild with --ignore-scripts still resolves pre-built native binaries
+# without running lifecycle scripts (askar-nodejs ships pre-built binaries).
 RUN npm config set ignore-scripts true && \
     if [ -f package-lock.json ]; then npm ci; else npm install; fi && \
-    npm config set ignore-scripts false && \
-    npm rebuild
+    npm rebuild --ignore-scripts
 
 # Copy source code
 COPY . .
