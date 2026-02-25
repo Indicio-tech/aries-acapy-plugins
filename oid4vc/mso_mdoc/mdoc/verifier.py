@@ -597,7 +597,8 @@ class MsoMdocPresVerifier(PresVerifier):
                 self.trust_store.get_trust_anchors() if self.trust_store else []
             )
             LOGGER.info(
-                "Trust anchors loaded: %d cert(s)", len(trust_anchors) if trust_anchors else 0
+                "Trust anchors loaded: %d cert(s)",
+                len(trust_anchors) if trust_anchors else 0,
             )
             for i, pem in enumerate(trust_anchors or []):
                 pem_stripped = pem.strip() if pem else ""
