@@ -27,6 +27,7 @@ from .token import check_token, handle_proof_of_posession
 
 LOGGER = logging.getLogger(__name__)
 
+
 def _vc_error(
     status: int, error: str, description: str | None = None
 ) -> web.HTTPException:
@@ -38,6 +39,7 @@ def _vc_error(
     mapping = {400: web.HTTPBadRequest, 401: web.HTTPUnauthorized, 404: web.HTTPNotFound}
     cls = mapping.get(status, web.HTTPInternalServerError)
     return cls(**kwargs)
+
 
 @docs(tags=["oid4vci"], summary="Dereference a credential offer.")
 @querystring_schema(CredOfferQuerySchema())
@@ -180,8 +182,11 @@ async def _issue_cred_inner(context, token_result, refresh_id, req_body):
         try:
             async with context.profile.session() as session:
                 issued = await OID4VCIExchangeRecord.retrieve_by_tag_filter(
-                    session, {"refresh_id": refresh_id,
-                              "state": OID4VCIExchangeRecord.STATE_ISSUED}
+                    session,
+                    {
+                        "refresh_id": refresh_id,
+                        "state": OID4VCIExchangeRecord.STATE_ISSUED,
+                    },
                 )
         except Exception:
             issued = None
@@ -263,9 +268,7 @@ async def _issue_cred_inner(context, token_result, refresh_id, req_body):
         # Normalize to the expected structure
         proof_value = {"proof_type": "jwt", "jwt": jwt_proofs[0]}
     else:
-        raise _vc_error(
-            400, "invalid_proof", f"proof is required for {supported.format}"
-        )
+        raise _vc_error(400, "invalid_proof", f"proof is required for {supported.format}")
 
     pop = await handle_proof_of_posession(context.profile, proof_value, c_nonce)
 
@@ -294,4 +297,3 @@ async def _issue_cred_inner(context, token_result, refresh_id, req_body):
         cred_response["notification_id"] = ex_record.notification_id
 
     return web.json_response(cred_response)
-

@@ -91,18 +91,14 @@ def key_from_x5c(x5c: List[str]) -> Key:
         y_bytes = nums.y.to_bytes(coord_bytes, "big")
         x_b64 = _b64.urlsafe_b64encode(x_bytes).rstrip(b"=").decode()
         y_b64 = _b64.urlsafe_b64encode(y_bytes).rstrip(b"=").decode()
-        return Key.from_jwk(
-            json.dumps({"kty": "EC", "crv": crv, "x": x_b64, "y": y_b64})
-        )
+        return Key.from_jwk(json.dumps({"kty": "EC", "crv": crv, "x": x_b64, "y": y_b64}))
     elif isinstance(pub_key, Ed25519PublicKey):
         from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
         raw = pub_key.public_bytes(Encoding.Raw, PublicFormat.Raw)
         return Key.from_public_bytes(KeyAlg.ED25519, raw)
     else:
-        raise ValueError(
-            f"Unsupported public key type in x5c: {type(pub_key).__name__}"
-        )
+        raise ValueError(f"Unsupported public key type in x5c: {type(pub_key).__name__}")
 
 
 async def jwt_sign(

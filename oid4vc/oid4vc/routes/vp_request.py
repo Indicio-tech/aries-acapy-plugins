@@ -112,7 +112,6 @@ async def create_oid4vp_request(request: web.Request):
             effective_client_id = f"x509_san_dns:{x509_id['client_id']}"
         else:
             effective_client_id = jwk.did
-        client_id_scheme = "x509_san_dns" if x509_id else "did"
 
         if pres_def_id := body.get("pres_def_id"):
             req_record = OID4VPRequest(
@@ -162,8 +161,7 @@ async def create_oid4vp_request(request: web.Request):
     # is communicated inside the signed JAR instead.  Do NOT include
     # client_id_scheme as a query parameter.
     full_uri = (
-        f"openid://?client_id={quote(effective_client_id)}"
-        f"&request_uri={request_uri}"
+        f"openid://?client_id={quote(effective_client_id)}&request_uri={request_uri}"
     )
 
     return web.json_response(
@@ -262,7 +260,7 @@ class RegisterX509IdentitySchema(OpenAPISchema):
         required=True,
         metadata={
             "description": (
-                "Verification method identifier (e.g. \"did:jwk:...#0\") that "
+                'Verification method identifier (e.g. "did:jwk:...#0") that '
                 "references the key matching the leaf certificate."
             )
         },
@@ -326,7 +324,11 @@ async def register_x509_identity(request: web.Request):
             await storage.add_record(record)
 
     return web.json_response(
-        {"cert_chain": b64_certs, "verification_method": verification_method, "client_id": client_id}
+        {
+            "cert_chain": b64_certs,
+            "verification_method": verification_method,
+            "client_id": client_id,
+        }
     )
 
 

@@ -20,7 +20,13 @@ from aries_askar import Key
 from marshmallow import fields, pre_load
 
 from oid4vc.did_utils import retrieve_or_create_did_jwk
-from oid4vc.jwt import JWTVerifyResult, jwt_sign, jwt_verify, key_from_x5c, key_material_for_kid
+from oid4vc.jwt import (
+    JWTVerifyResult,
+    jwt_sign,
+    jwt_verify,
+    key_from_x5c,
+    key_material_for_kid,
+)
 
 from ..app_resources import AppResources
 from ..config import Config
@@ -259,7 +265,12 @@ async def handle_proof_of_posession(
     if typ and typ not in valid_typ_values:
         LOGGER.warning("Proof JWT has unexpected typ header: %s", typ)
         raise web.HTTPBadRequest(
-            text=json.dumps({"error": "invalid_proof", "error_description": f"unsupported typ: {typ}"}),
+            text=json.dumps(
+                {
+                    "error": "invalid_proof",
+                    "error_description": f"unsupported typ: {typ}",
+                }
+            ),
             content_type="application/json",
         )
 
@@ -268,7 +279,12 @@ async def handle_proof_of_posession(
             key = await key_material_for_kid(profile, headers["kid"])
         except ValueError as exc:
             raise web.HTTPBadRequest(
-                text=json.dumps({"error": "invalid_proof", "error_description": "invalid kid in proof"}),
+                text=json.dumps(
+                    {
+                        "error": "invalid_proof",
+                        "error_description": "invalid kid in proof",
+                    }
+                ),
                 content_type="application/json",
             ) from exc
     elif "jwk" in headers:
@@ -291,7 +307,12 @@ async def handle_proof_of_posession(
             ) from exc
     else:
         raise web.HTTPBadRequest(
-            text=json.dumps({"error": "invalid_proof", "error_description": "no key material in proof header"}),
+            text=json.dumps(
+                {
+                    "error": "invalid_proof",
+                    "error_description": "no key material in proof header",
+                }
+            ),
             content_type="application/json",
         )
 
@@ -301,7 +322,12 @@ async def handle_proof_of_posession(
     if c_nonce:
         if c_nonce != nonce:
             raise web.HTTPBadRequest(
-                text=json.dumps({"error": "invalid_nonce", "error_description": "nonce mismatch"}),
+                text=json.dumps(
+                    {
+                        "error": "invalid_nonce",
+                        "error_description": "nonce mismatch",
+                    }
+                ),
                 content_type="application/json",
             )
     else:
@@ -311,7 +337,12 @@ async def handle_proof_of_posession(
             redeemed = await Nonce.redeem_by_value(session, nonce)
         if not redeemed:
             raise web.HTTPBadRequest(
-                text=json.dumps({"error": "invalid_nonce", "error_description": "invalid or already-used nonce"}),
+                text=json.dumps(
+                    {
+                        "error": "invalid_nonce",
+                        "error_description": "invalid or already-used nonce",
+                    }
+                ),
                 content_type="application/json",
             )
 

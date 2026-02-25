@@ -191,8 +191,7 @@ class SupportedCredential(BaseRecord):
             algs = issuer_metadata.get("credential_signing_alg_values_supported")
             if algs:
                 issuer_metadata["credential_signing_alg_values_supported"] = [
-                    _COSE_ALG.get(a, a) if isinstance(a, str) else a
-                    for a in algs
+                    _COSE_ALG.get(a, a) if isinstance(a, str) else a for a in algs
                 ]
 
         return issuer_metadata

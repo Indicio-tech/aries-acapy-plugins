@@ -14,7 +14,6 @@ import asyncio
 import json
 import logging
 import os
-import ssl
 import time
 from typing import Any
 
@@ -40,7 +39,9 @@ RUNNING_STATUSES = {"RUNNING", "CREATED", "WAITING"}
 # ── Low-level helpers ─────────────────────────────────────────────────────────
 
 
-async def _wait_for_suite(client: httpx.AsyncClient, base_url: str, max_attempts: int = 60) -> None:
+async def _wait_for_suite(
+    client: httpx.AsyncClient, base_url: str, max_attempts: int = 60
+) -> None:
     for attempt in range(1, max_attempts + 1):
         try:
             resp = await client.get(f"{base_url}/api/availabletestplans")
@@ -71,7 +72,9 @@ async def _create_plan(
     return plan_id
 
 
-async def _get_plan_modules(client: httpx.AsyncClient, base_url: str, plan_id: str) -> list[dict]:
+async def _get_plan_modules(
+    client: httpx.AsyncClient, base_url: str, plan_id: str
+) -> list[dict]:
     resp = await client.get(f"{base_url}/api/plan/{plan_id}")
     resp.raise_for_status()
     data = resp.json()

@@ -14,7 +14,6 @@ Run:
 """
 
 import logging
-import os
 
 import pytest
 import pytest_asyncio
@@ -121,9 +120,8 @@ class TestOID4VCIIssuerSDJWT:
 
     def _assert_all_pass(self, results: list[dict], label: str) -> None:
         failed = [
-            f"{r['module']} → {r['result']}" + (
-                f" : {'; '.join(r['errors'][:3])}" if r["errors"] else ""
-            )
+            f"{r['module']} → {r['result']}"
+            + (f" : {'; '.join(r['errors'][:3])}" if r["errors"] else "")
             for r in results
             if not r["passed"] and r["result"] != "SKIPPED"
         ]
@@ -147,37 +145,36 @@ class TestOID4VCIIssuerSDJWT:
     async def test_discovery_metadata_module(self, issuer_sdjwt_results):
         """Discovery / metadata module passes."""
         discovery_modules = [
-            r for r in issuer_sdjwt_results
+            r
+            for r in issuer_sdjwt_results
             if "discovery" in r["module"].lower() or "metadata" in r["module"].lower()
         ]
         failed = [r for r in discovery_modules if not r["passed"]]
         assert not failed, (
-            f"Discovery/metadata module(s) failed: "
-            f"{[r['module'] for r in failed]}"
+            f"Discovery/metadata module(s) failed: {[r['module'] for r in failed]}"
         )
 
     async def test_token_endpoint_module(self, issuer_sdjwt_results):
         """Token endpoint module passes (pre-authorized code grant)."""
         token_modules = [
-            r for r in issuer_sdjwt_results
-            if "token" in r["module"].lower()
+            r for r in issuer_sdjwt_results if "token" in r["module"].lower()
         ]
         failed = [r for r in token_modules if not r["passed"]]
         assert not failed, (
-            f"Token endpoint module(s) failed: "
-            f"{[r['module'] for r in failed]}"
+            f"Token endpoint module(s) failed: {[r['module'] for r in failed]}"
         )
 
     async def test_credential_endpoint_module(self, issuer_sdjwt_results):
         """Credential endpoint module passes."""
         cred_modules = [
-            r for r in issuer_sdjwt_results
-            if "credential" in r["module"].lower() and "offer" not in r["module"].lower()
+            r
+            for r in issuer_sdjwt_results
+            if "credential" in r["module"].lower()
+            and "offer" not in r["module"].lower()
         ]
         failed = [r for r in cred_modules if not r["passed"]]
         assert not failed, (
-            f"Credential endpoint module(s) failed: "
-            f"{[r['module'] for r in failed]}"
+            f"Credential endpoint module(s) failed: {[r['module'] for r in failed]}"
         )
 
 

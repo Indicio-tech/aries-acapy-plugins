@@ -118,9 +118,8 @@ class TestOID4VPVerifierSDJWT:
 
     def _assert_all_pass(self, results: list[dict], label: str) -> None:
         failed = [
-            f"{r['module']} → {r['result']}" + (
-                f" : {'; '.join(r['errors'][:3])}" if r["errors"] else ""
-            )
+            f"{r['module']} → {r['result']}"
+            + (f" : {'; '.join(r['errors'][:3])}" if r["errors"] else "")
             for r in results
             if not r["passed"] and r["result"] != "SKIPPED"
         ]
@@ -143,26 +142,27 @@ class TestOID4VPVerifierSDJWT:
     async def test_authorization_request_module(self, verifier_sdjwt_results):
         """Authorization request / request_uri module passes."""
         auth_modules = [
-            r for r in verifier_sdjwt_results
-            if "authorization" in r["module"].lower() or "request" in r["module"].lower()
+            r
+            for r in verifier_sdjwt_results
+            if "authorization" in r["module"].lower()
+            or "request" in r["module"].lower()
         ]
-        failed = [r for r in auth_modules if not r["passed"] and r["result"] != "SKIPPED"]
+        failed = [
+            r for r in auth_modules if not r["passed"] and r["result"] != "SKIPPED"
+        ]
         assert not failed, (
-            f"Authorization request module(s) failed: "
-            f"{[r['module'] for r in failed]}"
+            f"Authorization request module(s) failed: {[r['module'] for r in failed]}"
         )
 
     async def test_response_module(self, verifier_sdjwt_results):
         """Direct_post response module passes."""
         resp_modules = [
-            r for r in verifier_sdjwt_results
-            if "response" in r["module"].lower()
+            r for r in verifier_sdjwt_results if "response" in r["module"].lower()
         ]
-        failed = [r for r in resp_modules if not r["passed"] and r["result"] != "SKIPPED"]
-        assert not failed, (
-            f"Response module(s) failed: "
-            f"{[r['module'] for r in failed]}"
-        )
+        failed = [
+            r for r in resp_modules if not r["passed"] and r["result"] != "SKIPPED"
+        ]
+        assert not failed, f"Response module(s) failed: {[r['module'] for r in failed]}"
 
 
 @pytest.mark.conformance
