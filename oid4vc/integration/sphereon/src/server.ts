@@ -231,7 +231,12 @@ app.post('/oid4vp/present-credential', async (req: Request, res: Response) => {
                 {
                     id: descriptorId,
                     format: 'jwt_vp',
-                    path: '$'
+                    path: '$',
+                    path_nested: {
+                        id: descriptorId,
+                        format: 'jwt_vc',
+                        path: '$.vp.verifiableCredential[0]'
+                    }
                 }
             ]
         };

@@ -193,12 +193,22 @@ router.post('/accept-offer', async (req: any, res: any) => {
             }
         } else {
             // W3cCredentialRecord (jwt_vc_json) in Credo 0.6.x.
-            // W3cCredentialRecord has a public .encoded getter that returns
-            // credentialInstances[0].credential, which is a JWT string for jwt_vc_json.
-            // W3cCredentialRecord.firstCredential parses the stored string back to
-            // W3cJwtVerifiableCredential, whose .serializedJwt getter is the JWT.
+            // The JWT string is accessible through multiple paths depending on Credo version.
 
-            // Attempt 0: W3cCredentialRecord.encoded (most direct — returns JWT string)
+            // Attempt 0: firstCredential.credential (raw OID4VCI response credential)
+            // In Credo 0.6.x requestCredentials(), the top-level .credential on each
+            // item is the raw credential value returned by the issuer (a JWT string).
+            if (!credentialValue) {
+                try {
+                    const rawCred = (firstCredential as any).credential;
+                    if (typeof rawCred === 'string' && rawCred.includes('.')) {
+                        credentialValue = rawCred;
+                        console.log('✅ Extracted JWT via firstCredential.credential (raw OID4VCI)');
+                    }
+                } catch (e) { /* ignore */ }
+            }
+
+            // Attempt 1: W3cCredentialRecord.encoded (most direct — returns JWT string)
             if (!credentialValue && typeof record.encoded === 'string') {
                 credentialValue = record.encoded;
                 console.log('✅ Extracted JWT via record.encoded');
@@ -209,7 +219,33 @@ router.post('/accept-offer', async (req: any, res: any) => {
                 console.log('🔍 W3c record type:', record.type, record.constructor?.name);
             }
 
-            // Attempt 1: Credo 0.6.x W3cCredentialRecord getters
+            // Attempt 2: Credo 0.6.x W3cCredentialRecord.credential getter
+            // Returns W3cJwtVerifiableCredential — access .jwt (string) or
+            // .serializedJwt (alias) to get the compact JWT.
+            if (!credentialValue) {
+                try {
+                    const cred = record.credential;
+                    if (cred) {
+                        if (typeof cred === 'string' && cred.includes('.')) {
+                            credentialValue = cred;
+                            console.log('✅ Extracted JWT via record.credential (string)');
+                        } else if (typeof cred.serializedJwt === 'string') {
+                            credentialValue = cred.serializedJwt;
+                            console.log('✅ Extracted JWT via record.credential.serializedJwt');
+                        } else if (typeof cred.jwt === 'string') {
+                            credentialValue = cred.jwt;
+                            console.log('✅ Extracted JWT via record.credential.jwt (string)');
+                        } else if (cred.jwt && typeof cred.jwt.serializedJwt === 'string') {
+                            credentialValue = cred.jwt.serializedJwt;
+                            console.log('✅ Extracted JWT via record.credential.jwt.serializedJwt');
+                        }
+                    }
+                } catch (e) {
+                    console.warn('⚠️ record.credential access failed:', e);
+                }
+            }
+
+            // Attempt 3: Credo 0.6.x W3cCredentialRecord getters (firstCredential)
             if (!credentialValue) {
                 try {
                     const firstCred = record.firstCredential;
@@ -217,6 +253,9 @@ router.post('/accept-offer', async (req: any, res: any) => {
                         if (typeof firstCred.serializedJwt === 'string') {
                             credentialValue = firstCred.serializedJwt;
                             console.log('✅ Extracted JWT via record.firstCredential.serializedJwt');
+                        } else if (typeof firstCred.jwt === 'string') {
+                            credentialValue = firstCred.jwt;
+                            console.log('✅ Extracted JWT via record.firstCredential.jwt');
                         } else if (typeof firstCred.encoded === 'string') {
                             credentialValue = firstCred.encoded;
                             console.log('✅ Extracted JWT via record.firstCredential.encoded');
@@ -227,14 +266,13 @@ router.post('/accept-offer', async (req: any, res: any) => {
                 }
             }
 
-            // Attempt 2: credentialInstances[0].* (new-style record)
+            // Attempt 4: credentialInstances[0].* (new-style record)
             if (!credentialValue && record.credentialInstances) {
                 const instances = record.credentialInstances as any[];
                 if (instances.length > 0) {
                     const inst = instances[0];
-                    // Try common property names for W3c JWT credential instances
-                    for (const key of ['serializedJwt', 'compactJwtVc', 'credential', 'encoded']) {
-                        if (typeof inst[key] === 'string') {
+                    for (const key of ['serializedJwt', 'compactJwtVc', 'jwt', 'credential', 'encoded']) {
+                        if (typeof inst[key] === 'string' && (inst[key] as string).includes('.')) {
                             credentialValue = inst[key];
                             console.log(`✅ Extracted JWT via credentialInstances[0].${key}`);
                             break;
@@ -247,31 +285,31 @@ router.post('/accept-offer', async (req: any, res: any) => {
                 }
             }
 
-            // Attempt 3: record.credential via runtime property access
+            // Attempt 5: _credential backing field (private stored JSON string)
+            // W3cCredentialRecord stores the raw JWT/JSON-LD as _credential (string)
             if (!credentialValue) {
-                // Use a try/catch since this may throw or return undefined for private fields
                 try {
-                    const directCred = record.credential;
-                    if (directCred) {
-                        if (typeof directCred === 'string') {
-                            credentialValue = directCred;
-                            console.log('✅ Extracted JWT via record.credential (string)');
-                        } else if (typeof directCred.serializedJwt === 'string') {
-                            credentialValue = directCred.serializedJwt;
-                            console.log('✅ Extracted JWT via record.credential.serializedJwt');
-                        } else if (directCred.jwt) {
-                            const jwt = directCred.jwt;
-                            if (typeof jwt === 'string') {
-                                credentialValue = jwt;
-                            } else if (typeof jwt.serializedJwt === 'string') {
-                                credentialValue = jwt.serializedJwt;
-                            }
-                            if (credentialValue) console.log('✅ Extracted JWT via record.credential.jwt');
+                    const stored = (record as any)._credential;
+                    if (typeof stored === 'string') {
+                        // Stored value might be a raw JWT string or a JSON-serialized form
+                        if (stored.startsWith('ey') && stored.includes('.')) {
+                            credentialValue = stored;
+                            console.log('✅ Extracted JWT via record._credential (raw JWT)');
+                        } else {
+                            // Try to parse the JSON and extract the JWT
+                            try {
+                                const parsed = JSON.parse(stored);
+                                if (typeof parsed.jwt === 'string') {
+                                    credentialValue = parsed.jwt;
+                                    console.log('✅ Extracted JWT via record._credential (parsed .jwt)');
+                                } else if (typeof parsed.serializedJwt === 'string') {
+                                    credentialValue = parsed.serializedJwt;
+                                    console.log('✅ Extracted JWT via record._credential (parsed .serializedJwt)');
+                                }
+                            } catch (_) { /* not JSON */ }
                         }
                     }
-                } catch (e) {
-                    console.warn('⚠️ record.credential access failed:', e);
-                }
+                } catch (e) { /* ignore */ }
             }
 
             if (!credentialValue) {

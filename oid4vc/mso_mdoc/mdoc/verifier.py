@@ -489,7 +489,7 @@ def _verify_single_presentation(
     nonce: str,
     client_id: str,
     response_uri: str,
-    trust_anchors_json: List[str],
+    trust_anchor_registry: List[str],
 ) -> Optional[dict]:
     """Verify a single OID4VP presentation.
 
@@ -498,7 +498,7 @@ def _verify_single_presentation(
         nonce: The nonce
         client_id: The client ID
         response_uri: The response URI
-        trust_anchors_json: JSON-encoded trust anchors
+        trust_anchor_registry: Raw PEM-encoded trust anchor certificate strings
 
     Returns:
         Verified payload dict if successful, None if failed
@@ -518,7 +518,7 @@ def _verify_single_presentation(
         nonce,
         client_id,
         response_uri,
-        trust_anchors_json,
+        trust_anchor_registry,
         True,
     )
 
@@ -537,7 +537,7 @@ def _verify_single_presentation(
                 nonce,
                 client_id,
                 response_uri,
-                trust_anchors_json,
+                trust_anchor_registry,
                 True,
             )
         else:
@@ -595,10 +595,9 @@ class MsoMdocPresVerifier(PresVerifier):
             trust_anchors = (
                 self.trust_store.get_trust_anchors() if self.trust_store else []
             )
-            trust_anchors_json = [
-                json.dumps({"certificate_pem": a, "purpose": "Iaca"})
-                for a in trust_anchors
-            ]
+            # isomdl_uniffi.verify_oid4vp_response expects a list of raw PEM
+            # strings, NOT JSON-wrapped objects.  Pass through directly.
+            trust_anchor_registry = trust_anchors if trust_anchors else None
 
             # 2. Get verification parameters
             nonce, client_id, response_uri = await _get_oid4vp_verification_params(
@@ -627,7 +626,7 @@ class MsoMdocPresVerifier(PresVerifier):
                     nonce,
                     client_id,
                     response_uri,
-                    trust_anchors_json,
+                    trust_anchor_registry,
                 )
 
                 if (

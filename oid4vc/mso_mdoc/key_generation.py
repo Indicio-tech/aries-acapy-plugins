@@ -256,6 +256,17 @@ def generate_self_signed_certificate(
         critical=False,
     )
 
+    # 3b. AuthorityKeyIdentifier - required by strict IACA validators for
+    #     self-signed root CA certificates; key_identifier references own SKI
+    cert_builder = cert_builder.add_extension(
+        x509.AuthorityKeyIdentifier(
+            key_identifier=ski_digest,
+            authority_cert_issuer=None,
+            authority_cert_serial_number=None,
+        ),
+        critical=False,
+    )
+
     # 4. CRLDistributionPoints - HTTP URI (required per Annex B)
     # For test purposes, we use a placeholder URL
     cert_builder = cert_builder.add_extension(

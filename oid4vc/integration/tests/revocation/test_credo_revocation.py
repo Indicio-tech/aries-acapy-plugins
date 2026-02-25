@@ -547,8 +547,9 @@ class TestCredoRevocationFlow:
             compressed = base64.urlsafe_b64decode(encoded_list)
             decompressed = zlib.decompress(compressed)
 
-            # Each status is 1 bit
-            ba = bitarray()
+            # Each status is 1 bit; IETF status list uses little-endian bit order
+            # (status_handler.py encodes with bitarray(endian="little"))
+            ba = bitarray(endian="little")
             ba.frombytes(decompressed)
 
             return ba[index] == 1
