@@ -215,8 +215,7 @@ class DescriptorEvaluator:
 
         fields = descriptor.constraint._fields if descriptor.constraint else []
         field_constraints = [
-            ConstraintFieldEvaluator.compile(constraint)
-            for constraint in fields
+            ConstraintFieldEvaluator.compile(constraint) for constraint in fields
         ]
         return cls(descriptor.id, field_constraints)
 
