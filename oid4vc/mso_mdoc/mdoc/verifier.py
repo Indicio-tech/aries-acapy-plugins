@@ -596,6 +596,28 @@ class MsoMdocPresVerifier(PresVerifier):
             trust_anchors = (
                 self.trust_store.get_trust_anchors() if self.trust_store else []
             )
+            LOGGER.info(
+                "Trust anchors loaded: %d cert(s)", len(trust_anchors) if trust_anchors else 0
+            )
+            for i, pem in enumerate(trust_anchors or []):
+                pem_stripped = pem.strip() if pem else ""
+                LOGGER.info(
+                    "Trust anchor %d: len=%d first80=%r last20=%r",
+                    i,
+                    len(pem_stripped),
+                    pem_stripped[:80],
+                    pem_stripped[-20:],
+                )
+                # Validate that the PEM is parseable by Python before passing to Rust
+                try:
+                    from cryptography import x509 as _x509
+                    _x509.load_pem_x509_certificate(pem_stripped.encode())
+                    LOGGER.info("Trust anchor %d: Python PEM validation OK", i)
+                except Exception as pem_err:
+                    LOGGER.error(
+                        "Trust anchor %d: Python PEM validation FAILED: %s", i, pem_err
+                    )
+
             # verify_oid4vp_response expects JSON-serialized PemTrustAnchor per anchor:
             # {"certificate_pem": "...", "purpose": "Iaca"}
             # Rust parses each string via serde_json::from_str::<PemTrustAnchor>().
@@ -607,6 +629,11 @@ class MsoMdocPresVerifier(PresVerifier):
                 if trust_anchors
                 else None
             )
+            if trust_anchor_registry:
+                LOGGER.info(
+                    "trust_anchor_registry[0] first100: %r",
+                    trust_anchor_registry[0][:100],
+                )
 
             # 2. Get verification parameters
             nonce, client_id, response_uri = await _get_oid4vp_verification_params(
