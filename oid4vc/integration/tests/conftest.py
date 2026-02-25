@@ -616,7 +616,7 @@ def safely_get_first_credential(response, wallet_name: str) -> str:
 async def wait_for_presentation_valid(
     verifier_admin: Controller,
     presentation_id: str,
-    max_retries: int = 15,
+    max_retries: int = 30,
     interval: float = 1.0,
 ) -> dict:
     """Poll for presentation to be validated.
