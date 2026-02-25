@@ -96,11 +96,10 @@ services:
     ports:
       - "${ACAPY_VERIFIER_INBOUND_PORT:-18030}:8030"  # inbound transport
       - "${ACAPY_VERIFIER_ADMIN_PORT:-18031}:8031"  # admin
-      - "${ACAPY_VERIFIER_OID4VP_PORT:-18032}:8032"  # oid4vp endpoint
-      - "${ACAPY_VERIFIER_OID4VCI_PORT:-18033}:8033"  # oid4vci endpoint
+      - "${ACAPY_VERIFIER_OID4VP_PORT:-18032}:8032"  # oid4vci + oid4vp endpoint (shared port)
     environment:
       - AGENT_ENDPOINT=http://acapy-verifier:8030
-      - OID4VCI_ENDPOINT=http://acapy-verifier.local:8033
+      - OID4VCI_ENDPOINT=http://acapy-verifier.local:8032
       # Allow overriding via VERIFIER_OID4VP_ENDPOINT for conformance tests (HTTPS).
       - OID4VP_ENDPOINT=${VERIFIER_OID4VP_ENDPOINT:-http://acapy-verifier.local:8032}
       - WALLET_STORAGE_TYPE=${WALLET_STORAGE_TYPE:-sqlite}

@@ -22,13 +22,11 @@ plugin:
   - sd_jwt_vc
   - mso_mdoc
 
-# OID4VC plugin configuration - Use different ports for OID4VCI and OID4VP servers
+# OID4VC plugin configuration - both OID4VCI and OID4VP routes served on the same port
 plugin-config-value:
   - oid4vci.host=0.0.0.0
-  - oid4vci.port=8033
-  - oid4vci.endpoint=${OID4VCI_ENDPOINT:-http://localhost:8033}
-  - oid4vp.host=0.0.0.0
-  - oid4vp.port=8032
+  - oid4vci.port=8032
+  - oid4vci.endpoint=${OID4VCI_ENDPOINT:-http://localhost:8032}
   - oid4vp.endpoint=${OID4VP_ENDPOINT:-http://localhost:8032}
 
 # Ledger configuration - use no-ledger for simple development
