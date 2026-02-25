@@ -136,9 +136,10 @@ app.post('/oid4vci/accept-offer', async (req: Request, res: Response) => {
     // Handle both OID4VCI 1.0 (credentials array) and legacy draft (credential field).
     // OID4VCI 1.0 final spec returns: {"credentials": [{"credential": "eyJ..."}]}
     // Older draft spec returned: {"credential": "eyJ...", "format": "..."}
+    const responseAny = credentialResponse as any;
     const credential =
-      credentialResponse.credential ??
-      (credentialResponse.credentials as any[])?.[0]?.credential;
+      responseAny.credential ??
+      (responseAny.credentials as any[])?.[0]?.credential;
 
     res.json({ credential });
 
