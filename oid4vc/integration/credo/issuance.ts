@@ -67,11 +67,18 @@ router.post('/accept-offer', async (req: any, res: any) => {
             // pop.holder_kid (DID URL) and pop.holder_jwk (JWK) binding.
             const W3C_FORMATS = ['jwt_vc_json', 'jwt_vc_json-ld', 'ldp_vc'];
             if (W3C_FORMATS.includes(credentialFormat)) {
-                const keyType = (algorithm as string) === 'ES256' ? 'p256' : 'ed25519';
-                console.log(`🔑 Creating did:key for W3C format ${credentialFormat} (keyType=${keyType})`);
+                // Credo 0.6.x dids.create({ method: 'key' }) requires options.keyId
+                // pointing to a pre-created KMS key — not options.keyType.
+                const algStr2 = algorithm as string;
+                const kmsKeyType = algStr2 === 'ES256'
+                    ? { kty: 'EC' as const, crv: 'P-256' as const }
+                    : { kty: 'OKP' as const, crv: 'Ed25519' as const };
+                console.log(`🔑 Creating did:key for W3C format ${credentialFormat} (alg=${algorithm})`);
+                const w3cKey = await agent!.kms.createKey({ type: kmsKeyType });
+                createdKeyIds.push(w3cKey.keyId);
                 const didResult = await agent!.dids.create({
                     method: 'key',
-                    options: { keyType },
+                    options: { keyId: w3cKey.keyId },
                 });
                 const didState = (didResult.didState as any);
                 if (didState.state !== 'finished') {
@@ -83,7 +90,6 @@ router.post('/accept-offer', async (req: any, res: any) => {
                 const verificationMethodId =
                     didDocument?.verificationMethod?.[0]?.id ?? didState.did;
                 console.log(`✅ Created did:key binding: ${verificationMethodId}`);
-                createdKeyIds.push(''); // placeholder — DID management owns the key
                 return {
                     method: 'did',
                     didUrls: [verificationMethodId],

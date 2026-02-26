@@ -198,9 +198,15 @@ router.post('/accept-offer-inspect', async (req: any, res: any) => {
       // Credo 0.6.x rejects JWK binding for W3C formats — use did:key instead.
       const W3C_FORMATS = ['jwt_vc_json', 'jwt_vc_json-ld', 'ldp_vc'];
       if (W3C_FORMATS.includes(credentialFormat)) {
-        const keyType = algorithm === 'ES256' ? 'p256' : 'ed25519';
+        // Credo 0.6.x dids.create({ method: 'key' }) requires options.keyId
+        // pointing to a pre-created KMS key — not options.keyType.
+        const algStr2 = algorithm as string;
+        const kmsKeyType2 = algStr2 === 'ES256'
+          ? { kty: 'EC' as const, crv: 'P-256' as const }
+          : { kty: 'OKP' as const, crv: 'Ed25519' as const };
         try {
-          const didResult = await agent!.dids.create({ method: 'key', options: { keyType } });
+          const w3cKey = await agent!.kms.createKey({ type: kmsKeyType2 });
+          const didResult = await agent!.dids.create({ method: 'key', options: { keyId: w3cKey.keyId } });
           const didState = (didResult.didState as any);
           if (didState.state !== 'finished') {
             throw new Error(`did:key creation failed: ${JSON.stringify(didState)}`);
