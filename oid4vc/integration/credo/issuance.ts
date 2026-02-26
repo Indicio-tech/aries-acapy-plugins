@@ -29,11 +29,17 @@ router.post('/accept-offer', async (req: any, res: any) => {
     console.log('✅ Offer resolved', JSON.stringify(resolvedOffer, null, 2));
 
     // Credential binding resolver for 0.6.0 API
-    // We always use JWK binding for all credential formats.
-    // Using did:key would require ACA-Py to resolve the DID document and handle
-    // the 'Multikey' verification method type, which it currently doesn't support.
-    // JWK binding sends the holder's public key directly in the proof JWT 'jwk' header,
-    // which ACA-Py verifies via Key.from_jwk() without any DID resolution.
+    //
+    // Credo 0.6.x throws for JWK binding on W3C credential formats (jwt_vc_json,
+    // jwt_vc_json-ld, ldp_vc):
+    //   "Using a JWK for credential binding is not supported for the '...' format."
+    // For those formats we create a did:key DID and return DID binding instead.
+    // ACA-Py's key_material_for_kid() now handles the Multikey VM type that
+    // Credo 0.6.x did:key documents use.
+    //
+    // For non-W3C formats (mso_mdoc, vc+sd-jwt, dc+sd-jwt) we use JWK binding:
+    // the proof JWT carries the holder's public key in the 'jwk' header, which
+    // ACA-Py verifies via Key.from_jwk() without any DID resolution.
     //
     // We capture each created key ID so we can set kmsKeyId on SdJwtVcRecord instances
     // after issuance. Credo 0.6.x only maps kmsKeyId for dc+sd-jwt or when the issuer
@@ -55,9 +61,43 @@ router.post('/accept-offer', async (req: any, res: any) => {
             algorithm = proofTypes.jwt.supportedSignatureAlgorithms[0] as typeof algorithm;
         }
 
-        console.log('🔒 Creating key for algorithm:', algorithm);
+        console.log('🔒 Creating binding for format:', credentialFormat, 'algorithm:', algorithm);
         
         try {
+            // Credo 0.6.x throws for JWK binding on W3C credential formats.
+            // Use did:key instead — ACA-Py's key_material_for_kid() supports
+            // the Multikey verification method type used by Credo 0.6.x did:key DIDs.
+            const W3C_FORMATS = ['jwt_vc_json', 'jwt_vc_json-ld', 'ldp_vc'];
+            if (W3C_FORMATS.includes(credentialFormat)) {
+                // Credo 0.6.x dids.create({ method: 'key' }) requires options.keyId
+                // pointing to a pre-created KMS key.
+                const algStr2 = algorithm as string;
+                const kmsKeyType = algStr2 === 'ES256'
+                    ? { kty: 'EC' as const, crv: 'P-256' as const }
+                    : { kty: 'OKP' as const, crv: 'Ed25519' as const };
+                console.log(`🔑 Creating did:key for W3C format ${credentialFormat} (alg=${algorithm})`);
+                const w3cKey = await agent!.kms.createKey({ type: kmsKeyType });
+                createdKeyIds.push(w3cKey.keyId);
+                const didResult = await agent!.dids.create({
+                    method: 'key',
+                    options: { keyId: w3cKey.keyId },
+                });
+                const didState = (didResult.didState as any);
+                if (didState.state !== 'finished') {
+                    throw new Error(
+                        `Failed to create did:key for ${credentialFormat}: ${JSON.stringify(didState)}`
+                    );
+                }
+                const didDocument = didState.didDocument;
+                const verificationMethodId =
+                    didDocument?.verificationMethod?.[0]?.id ?? didState.did;
+                console.log(`✅ Created did:key binding: ${verificationMethodId}`);
+                return {
+                    method: 'did',
+                    didUrls: [verificationMethodId],
+                };
+            }
+
             const algStr = algorithm as string;
             const keyType = algStr === 'ES256' ? { kty: 'EC' as const, crv: 'P-256' as const } 
                           : algStr === 'ES384' ? { kty: 'EC' as const, crv: 'P-384' as const }
@@ -68,7 +108,7 @@ router.post('/accept-offer', async (req: any, res: any) => {
             console.log('🔑 Created key with ID:', key.keyId);
             createdKeyIds.push(key.keyId);
 
-            // Always use JWK binding - the proof JWT will carry the holder's public key
+            // JWK binding - the proof JWT will carry the holder's public key
             // in the 'jwk' header, which ACA-Py resolves directly without DID lookup.
             const { Kms } = await import('@credo-ts/core');
             const publicJwk = Kms.PublicJwk.fromPublicJwk(key.publicJwk);
