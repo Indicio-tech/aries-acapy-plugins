@@ -321,7 +321,6 @@ def test_isomdl_chain_pem_reproduces_cert_no_1_error(pki_chain):
             )
 
 
-
 # ---------------------------------------------------------------------------
 # Test: parsing a PEM string into individual certs
 # The production implementation lives in mso_mdoc.mdoc.utils.split_pem_chain.

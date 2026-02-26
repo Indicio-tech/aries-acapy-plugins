@@ -253,7 +253,9 @@ class TestIssuerCertChainHandling:
         from ..mdoc import isomdl_mdoc_sign
 
         private_pem, cert_pem, jwk_public = signing_key_and_cert
-        result = isomdl_mdoc_sign(jwk_public, _MDL_HEADERS, _MDL_PAYLOAD, cert_pem, private_pem)
+        result = isomdl_mdoc_sign(
+            jwk_public, _MDL_HEADERS, _MDL_PAYLOAD, cert_pem, private_pem
+        )
         assert result is not None
         assert isinstance(result, str)
         assert len(result) > 0
@@ -270,12 +272,16 @@ class TestIssuerCertChainHandling:
         private_pem, cert_pem, jwk_public = signing_key_and_cert
         # signing cert is FIRST in the chain (standard encoding order)
         chain_pem = cert_pem + unrelated_cert
-        result = isomdl_mdoc_sign(jwk_public, _MDL_HEADERS, _MDL_PAYLOAD, chain_pem, private_pem)
+        result = isomdl_mdoc_sign(
+            jwk_public, _MDL_HEADERS, _MDL_PAYLOAD, chain_pem, private_pem
+        )
         assert result is not None
         assert isinstance(result, str)
         assert len(result) > 0
 
-    def test_mdoc_signed_with_chain_is_verifiable(self, signing_key_and_cert, unrelated_cert):
+    def test_mdoc_signed_with_chain_is_verifiable(
+        self, signing_key_and_cert, unrelated_cert
+    ):
         """An mdoc signed via a chain PEM embeds the correct signing cert.
 
         Before the fix: the MSO embedded the unrelated cert (first in chain),
@@ -289,7 +295,9 @@ class TestIssuerCertChainHandling:
         private_pem, cert_pem, jwk_public = signing_key_and_cert
         chain_pem = cert_pem + unrelated_cert  # signing cert first
 
-        mdoc_str = isomdl_mdoc_sign(jwk_public, _MDL_HEADERS, _MDL_PAYLOAD, chain_pem, private_pem)
+        mdoc_str = isomdl_mdoc_sign(
+            jwk_public, _MDL_HEADERS, _MDL_PAYLOAD, chain_pem, private_pem
+        )
         assert mdoc_str is not None
 
         result = mdoc_verify(mdoc_str, trust_anchors=[cert_pem])
@@ -323,7 +331,9 @@ class TestVerifierCertChainHandling:
         private_pem, _, jwk = generate_ec_key_pair()
         cert_pem = generate_self_signed_certificate(private_pem, _IACA_SUBJECT)
         jwk_public = {k: v for k, v in jwk.items() if k != "d"}
-        mdoc_str = isomdl_mdoc_sign(jwk_public, _MDL_HEADERS, _MDL_PAYLOAD, cert_pem, private_pem)
+        mdoc_str = isomdl_mdoc_sign(
+            jwk_public, _MDL_HEADERS, _MDL_PAYLOAD, cert_pem, private_pem
+        )
         return mdoc_str, cert_pem
 
     @pytest.fixture
