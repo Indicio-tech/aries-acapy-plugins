@@ -143,7 +143,13 @@ def generate_self_signed_certificate(
     - KeyUsage: keyCertSign, cRLSign
     - SubjectKeyIdentifier: SHA-1 hash of public key
     - CRLDistributionPoints: HTTP URI for CRL
-    - IssuerAlternativeName: RFC822 email
+    - IssuerAlternativeName: URI
+
+    Extension helpers use the standard `from_public_key` / `from_issuer_public_key`
+    class methods so that the DER encoding is strictly correct.  Manual construction
+    of SubjectKeyIdentifier/AuthorityKeyIdentifier bytes was previously used here but
+    can produce DER that the Rust x509_cert crate (used by isomdl_uniffi) fails to
+    parse when ``Certificate::from_pem`` is called.
 
     Args:
         private_key_pem: Private key in PEM format for signing
@@ -163,8 +169,6 @@ def generate_self_signed_certificate(
         >>> cert = generate_self_signed_certificate(private_pem)
         >>> print("-----BEGIN CERTIFICATE-----" in cert)  # True
     """
-    import hashlib
-
     # Load private key
     private_key = serialization.load_pem_private_key(
         private_key_pem.encode("utf-8"), password=None
@@ -203,18 +207,7 @@ def generate_self_signed_certificate(
     subject = parse_dn(subject_name)
     issuer = parse_dn(issuer_name)
 
-    # Get public key bytes for SubjectKeyIdentifier calculation
-    # Per RFC 5280 section 4.2.1.2, the SKI is the SHA-1 hash of the
-    # subjectPublicKey BIT STRING value (excluding tag, length, and unused bits).
-    # For EC keys, this is the uncompressed point (0x04 || X || Y).
     public_key = private_key.public_key()
-    # Use UncompressedPoint format which gives just the raw point bytes
-    raw_public_key_bytes = public_key.public_bytes(
-        encoding=serialization.Encoding.X962,
-        format=serialization.PublicFormat.UncompressedPoint,
-    )
-    # SHA-1 hash of the raw public key point for SKI
-    ski_digest = hashlib.sha1(raw_public_key_bytes).digest()
 
     # Generate certificate
     now = datetime.utcnow()
@@ -250,20 +243,17 @@ def generate_self_signed_certificate(
         critical=True,
     )
 
-    # 3. SubjectKeyIdentifier - SHA-1 of public key (required for trust chain)
+    # 3. SubjectKeyIdentifier - use the standard helper to produce correct DER.
+    #    Manual bytes-based construction was previously used but can generate DER
+    #    that x509_cert (Rust) rejects in Certificate::from_pem.
     cert_builder = cert_builder.add_extension(
-        x509.SubjectKeyIdentifier(ski_digest),
+        x509.SubjectKeyIdentifier.from_public_key(public_key),
         critical=False,
     )
 
-    # 3b. AuthorityKeyIdentifier - required by strict IACA validators for
-    #     self-signed root CA certificates; key_identifier references own SKI
+    # 3b. AuthorityKeyIdentifier - use from_issuer_public_key for correct DER encoding.
     cert_builder = cert_builder.add_extension(
-        x509.AuthorityKeyIdentifier(
-            key_identifier=ski_digest,
-            authority_cert_issuer=None,
-            authority_cert_serial_number=None,
-        ),
+        x509.AuthorityKeyIdentifier.from_issuer_public_key(public_key),
         critical=False,
     )
 
@@ -283,11 +273,14 @@ def generate_self_signed_certificate(
         critical=False,
     )
 
-    # 5. IssuerAlternativeName - RFC822 email (required per Annex B)
+    # 5. IssuerAlternativeName - URI type (required per Annex B).
+    #    URI is used here instead of RFC822Name because the x509_cert Rust crate
+    #    used by isomdl_uniffi has been observed to reject certs with RFC822Name
+    #    in IssuerAlternativeName when parsing via Certificate::from_pem.
     cert_builder = cert_builder.add_extension(
         x509.IssuerAlternativeName(
             [
-                x509.RFC822Name("test@example.com"),
+                x509.UniformResourceIdentifier("https://example.com"),
             ]
         ),
         critical=False,

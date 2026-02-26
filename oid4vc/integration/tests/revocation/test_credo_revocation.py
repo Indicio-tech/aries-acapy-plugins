@@ -49,13 +49,20 @@ class TestCredoRevocationFlow:
         # === Step 1: Setup credential with status list ===
 
         # Create credential configuration
+        # NOTE: type and @context MUST be inside format_data so that ACA-Py puts
+        # them in credential_definition in the issuer metadata.  If placed at the
+        # top level, they move to vc_additional_data and credential_definition becomes
+        # empty, causing Credo's @openid4vc/openid4vci to exclude the config from
+        # knownCredentialConfigurations → offeredCredentialConfigurations={} → 0 creds.
         cred_config = {
             "id": f"RevocableJwtVc_{random_suffix}",
             "format": "jwt_vc_json",
-            "type": ["VerifiableCredential", "IdentityCredential"],
-            "@context": [
-                "https://www.w3.org/2018/credentials/v1",
-            ],
+            "format_data": {
+                "types": ["VerifiableCredential", "IdentityCredential"],
+                "@context": [
+                    "https://www.w3.org/2018/credentials/v1",
+                ],
+            },
             "proof_types_supported": {
                 "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
             },
@@ -622,14 +629,17 @@ class TestRevocationEdgeCases:
 
         random_suffix = str(uuid.uuid4())[:8]
 
-        # Setup - use complete credential config like the passing tests
+        # Setup - use complete credential config with format_data (see test_issue_revoke_verify_jwt_vc
+        # for the rationale: type/context must be in format_data, not at the top level).
         cred_config = {
             "id": f"Unrevokable_{random_suffix}",
             "format": "jwt_vc_json",
-            "type": ["VerifiableCredential", "UnrevokeTestCredential"],
-            "@context": [
-                "https://www.w3.org/2018/credentials/v1",
-            ],
+            "format_data": {
+                "types": ["VerifiableCredential", "UnrevokeTestCredential"],
+                "@context": [
+                    "https://www.w3.org/2018/credentials/v1",
+                ],
+            },
             "proof_types_supported": {
                 "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
             },

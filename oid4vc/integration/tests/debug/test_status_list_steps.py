@@ -34,14 +34,25 @@ LOGGER = logging.getLogger(__name__)
 
 
 def _make_jwt_vc_config(suffix: str) -> dict:
-    """Return a minimal jwt_vc_json credential configuration payload."""
+    """Return a minimal jwt_vc_json credential configuration payload.
+
+    NOTE: type and @context MUST be inside format_data (not at the top level).
+    When placed at the top level, ACA-Py moves them to vc_additional_data, leaving
+    credential_definition empty in the issuer metadata.  An empty credential_definition
+    causes @openid4vc/openid4vci 0.4.x to exclude the config from
+    knownCredentialConfigurations, resulting in offeredCredentialConfigurations={} and
+    zero credentials returned (no error) — which means ACA-Py never assigns status
+    entries and PATCH /status-list/defs/{id}/creds/{exchange_id} returns 404.
+    """
     return {
         "id": f"StatusListTest_{suffix}",
         "format": "jwt_vc_json",
-        "type": ["VerifiableCredential", "StatusTestCredential"],
-        "@context": [
-            "https://www.w3.org/2018/credentials/v1",
-        ],
+        "format_data": {
+            "types": ["VerifiableCredential", "StatusTestCredential"],
+            "@context": [
+                "https://www.w3.org/2018/credentials/v1",
+            ],
+        },
         "proof_types_supported": {
             "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
         },

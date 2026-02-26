@@ -34,12 +34,22 @@ JWT_VC_FORMAT = "jwt_vc_json"
 
 
 async def _make_config(acapy_issuer_admin, suffix: str) -> dict:
-    """Create a minimal jwt_vc_json credential config in ACA-Py."""
+    """Create a minimal jwt_vc_json credential config in ACA-Py.
+
+    NOTE: type and @context MUST be inside format_data (not at the top level).
+    When placed at the top level, ACA-Py moves them to vc_additional_data, leaving
+    credential_definition empty in the issuer metadata.  An empty credential_definition
+    causes @openid4vc/openid4vci 0.4.x to exclude the config from
+    knownCredentialConfigurations, resulting in offeredCredentialConfigurations={} and
+    zero credentials returned by requestCredentials (with no error).
+    """
     config = {
         "id": f"DebugJwtVc_{suffix}",
         "format": JWT_VC_FORMAT,
-        "type": ["VerifiableCredential", "DebugTestCredential"],
-        "@context": ["https://www.w3.org/2018/credentials/v1"],
+        "format_data": {
+            "types": ["VerifiableCredential", "DebugTestCredential"],
+            "@context": ["https://www.w3.org/2018/credentials/v1"],
+        },
         "proof_types_supported": {
             "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
         },

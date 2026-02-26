@@ -195,6 +195,30 @@ router.post('/accept-offer-inspect', async (req: any, res: any) => {
         algorithm = proofTypes.jwt.supportedSignatureAlgorithms[0];
       }
 
+      // Credo 0.6.x rejects JWK binding for W3C formats — use did:key instead.
+      const W3C_FORMATS = ['jwt_vc_json', 'jwt_vc_json-ld', 'ldp_vc'];
+      if (W3C_FORMATS.includes(credentialFormat)) {
+        const keyType = algorithm === 'ES256' ? 'p256' : 'ed25519';
+        try {
+          const didResult = await agent!.dids.create({ method: 'key', options: { keyType } });
+          const didState = (didResult.didState as any);
+          if (didState.state !== 'finished') {
+            throw new Error(`did:key creation failed: ${JSON.stringify(didState)}`);
+          }
+          const verificationMethodId =
+            didState.didDocument?.verificationMethod?.[0]?.id ?? didState.did;
+          call.resolved_method = 'did';
+          call.resolved_algorithm = algorithm;
+          bindingResolverCalls.push(call);
+          return { method: 'did', didUrls: [verificationMethodId] };
+        } catch (e) {
+          call.resolved_method = 'did:key_error';
+          call.resolved_algorithm = algorithm;
+          bindingResolverCalls.push(call);
+          throw e;
+        }
+      }
+
       const algStr = algorithm;
       const keyType =
         algStr === 'ES256' ? { kty: 'EC' as const, crv: 'P-256' as const }
