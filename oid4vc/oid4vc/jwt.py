@@ -59,7 +59,7 @@ async def key_material_for_kid(profile: Profile, kid: str):
         # did:key v2+ and Credo 0.6.x use Multikey type with multicodec-prefixed keys.
         # The publicKeyMultibase value is 'z' + base58btc(varint(codec) + raw_key_bytes).
         raw_bytes = b58_to_bytes(vm.public_key_multibase[1:])  # strip 'z' prefix
-        if len(raw_bytes) >= 2 and raw_bytes[0] == 0xED and raw_bytes[1] == 0x01:
+        if len(raw_bytes) >= 2 and raw_bytes[0] == 0xed and raw_bytes[1] == 0x01:
             # ed25519-pub multicodec varint [0xed, 0x01]
             return Key.from_public_bytes(KeyAlg.ED25519, raw_bytes[2:])
         if len(raw_bytes) >= 2 and raw_bytes[0] == 0x80 and raw_bytes[1] == 0x24:
