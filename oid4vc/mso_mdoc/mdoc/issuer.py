@@ -37,6 +37,8 @@ import cbor2
 # - P-256 elliptic curve cryptography (ISO 18013-5 § 9.1.3.5)
 from isomdl_uniffi import Mdoc  # ISO 18013-5 § 8.3: Mobile document structure
 
+from .utils import extract_signing_cert
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -176,6 +178,18 @@ def isomdl_mdoc_sign(
         LOGGER.info(f"iaca_cert_pem length: {len(iaca_cert_pem)}")
         LOGGER.info(f"iaca_key_pem length: {len(iaca_key_pem)}")
 
+        # If iaca_cert_pem contains a chain (multiple PEM blocks), Rust's
+        # x509_cert crate only reads the first certificate and silently drops
+        # everything after it.  Extract just the signing cert (first block)
+        # so Rust always receives a single, unambiguous certificate.
+        signing_cert_pem = extract_signing_cert(iaca_cert_pem)
+        if signing_cert_pem != iaca_cert_pem:
+            LOGGER.info(
+                "iaca_cert_pem contained a PEM chain; extracted first certificate "
+                "(%d bytes) as the signing cert",
+                len(signing_cert_pem),
+            )
+
         # Prepare namespaces based on doctype
         if doctype == "org.iso.18013.5.1.mDL":
             namespaces = _prepare_mdl_namespaces(payload)
@@ -188,7 +202,7 @@ def isomdl_mdoc_sign(
             doctype,
             namespaces,
             holder_jwk,
-            iaca_cert_pem,
+            signing_cert_pem,
             iaca_key_pem,
         )
 

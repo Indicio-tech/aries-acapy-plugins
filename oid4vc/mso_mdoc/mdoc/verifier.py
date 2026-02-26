@@ -21,6 +21,8 @@ from oid4vc.cred_processor import (
 )
 from oid4vc.models.presentation import OID4VPPresentation
 
+from .utils import flatten_trust_anchors
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -354,6 +356,13 @@ class MsoMdocCredVerifier(CredVerifier):
                 self.trust_store.get_trust_anchors() if self.trust_store else None
             )
 
+            # Flatten any concatenated PEM chains into individual cert PEMs.
+            # isomdl_uniffi (x509_cert) reads only the first certificate in a
+            # PEM string; passing a chain as one element silently drops all
+            # certs after the first, breaking trust-anchor validation.
+            if trust_anchors:
+                trust_anchors = flatten_trust_anchors(trust_anchors)
+
             # Verify issuer signature
             try:
                 verification_result = mdoc.verify_issuer_signature(trust_anchors, True)
@@ -620,6 +629,17 @@ class MsoMdocPresVerifier(PresVerifier):
                         "Trust anchor %d: Python PEM validation FAILED: %s", i, pem_err
                     )
 
+            # Flatten concatenated PEM chains into individual certs BEFORE
+            # building the registry.  Rust (x509_cert) only reads the first
+            # PEM block from a string; any additional certs in a chain string
+            # are silently dropped, breaking trust-anchor validation.
+            if trust_anchors:
+                trust_anchors = flatten_trust_anchors(trust_anchors)
+                LOGGER.info(
+                    "Trust anchors after chain-splitting: %d individual cert(s)",
+                    len(trust_anchors),
+                )
+
             # verify_oid4vp_response expects JSON-serialized PemTrustAnchor per anchor:
             # {"certificate_pem": "...", "purpose": "Iaca"}
             # Rust parses each string via serde_json::from_str::<PemTrustAnchor>().
@@ -749,16 +769,31 @@ def mdoc_verify(
 ) -> MdocVerifyResult:
     """Verify an mso_mdoc credential.
 
+    Accepts mDOC strings in any format understood by ``_parse_string_credential``:
+    hex-encoded DeviceResponse, base64url IssuerSigned, or raw base64.
+
     Args:
-        mso_mdoc: The hex-encoded or base64 encoded mdoc string.
+        mso_mdoc: The mDOC string (hex, base64url, or base64).
         trust_anchors: Optional list of PEM-encoded trust anchor certificates.
+            Each element may contain a single cert or a concatenated PEM chain;
+            chains are automatically split before being passed to Rust.
 
     Returns:
         MdocVerifyResult: The verification result.
     """
     try:
-        # Parse the mdoc
-        mdoc = isomdl_uniffi.Mdoc.from_string(mso_mdoc)
+        # Parse the mdoc — try all supported formats
+        mdoc, parse_error = _parse_string_credential(mso_mdoc)
+        if not mdoc:
+            return MdocVerifyResult(
+                verified=False,
+                error=f"Failed to parse mDOC: {parse_error or 'unknown format'}",
+            )
+
+        # Flatten concatenated PEM chains so Rust receives one cert per list
+        # entry (isomdl_uniffi only reads the first PEM block in a string).
+        if trust_anchors:
+            trust_anchors = flatten_trust_anchors(trust_anchors)
 
         # Verify issuer signature
         try:
