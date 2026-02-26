@@ -64,6 +64,21 @@ function inspectRecord(record: any): Record<string, unknown> {
         }
       } catch (_) { /* getter may throw; ignore */ }
     }
+    // Deep-drill: in Credo 0.6.x W3cJwtVerifiableCredential, the compact JWT is in
+    // inst.jwt.serializedJwt (inst.jwt is a Jwt parse object, not a string).
+    // Expose it directly so tests can find it without multi-level traversal.
+    try {
+      const jwtObj = (inst as any).jwt;
+      if (jwtObj && typeof jwtObj === 'object') {
+        for (const k of ['serializedJwt', 'compact', 'encoded']) {
+          const v = (jwtObj as any)[k];
+          if (typeof v === 'string' && v.length > 0) {
+            entry[`jwt_${k}`] = v.length > 100 ? v.substring(0, 100) + '…' : v;
+            break;
+          }
+        }
+      }
+    } catch (_) { /* ignore */ }
     return entry;
   });
 
@@ -94,6 +109,24 @@ function inspectRecord(record: any): Record<string, unknown> {
     }
   }
   info.getters = getterMap;
+
+  // Deep-drill for W3cCredentialRecord: record.firstCredential.jwt.serializedJwt
+  // In Credo 0.6.x this is the only path to the compact JWT string.
+  try {
+    const fc = (record as any).firstCredential;
+    if (fc && typeof fc === 'object') {
+      const fcJwt = (fc as any).jwt;
+      if (fcJwt && typeof fcJwt === 'object') {
+        for (const k of ['serializedJwt', 'compact', 'encoded']) {
+          const v = (fcJwt as any)[k];
+          if (typeof v === 'string' && v.length > 0) {
+            info.w3c_serialized_jwt = v.length > 100 ? v.substring(0, 100) + '…' : v;
+            break;
+          }
+        }
+      }
+    }
+  } catch (_) { /* ignore */ }
 
   // What does JSON.stringify see?
   try {

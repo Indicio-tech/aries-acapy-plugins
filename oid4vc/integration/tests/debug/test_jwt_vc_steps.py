@@ -339,14 +339,18 @@ async def test_step7_credential_instance_contains_jwt_string(
     print(f"[debug] instance[0] all_values: {inst}")
 
     # Search for the JWT string across the candidate keys that issuance.ts Attempt 4
-    # checks.  In Credo 0.6.x with did:key binding, the JWT is behind a getter
-    # (serializedJwt) that debug.ts now probes; older/JWK builds may use 'credential'.
+    # checks.  In Credo 0.6.x with did:key binding, the JWT is in inst.jwt.serializedJwt
+    # (inst is a W3cJwtVerifiableCredential; inst.jwt is the parsed Jwt object).
+    # debug.ts now exposes that as 'jwt_serializedJwt' on the instance dict.
     jwt_candidate_keys = [
         "serializedJwt",
         "compactJwtVc",
         "jwt",
         "credential",
         "encoded",
+        "jwt_serializedJwt",  # Credo 0.6.x: inst.jwt.serializedJwt deep-drilled
+        "jwt_compact",  # fallback alias
+        "jwt_encoded",  # fallback alias
     ]
     cred_val = None
     found_key = None
@@ -356,6 +360,14 @@ async def test_step7_credential_instance_contains_jwt_string(
             cred_val = v
             found_key = k
             break
+
+    # Fallback: record.firstCredential.jwt.serializedJwt deep-drilled by debug.ts
+    # and exposed as 'w3c_serialized_jwt' on the top-level credential dict.
+    if cred_val is None:
+        w3c = credentials[0].get("w3c_serialized_jwt", "")
+        if isinstance(w3c, str) and w3c.startswith("ey") and "." in w3c:
+            cred_val = w3c
+            found_key = "w3c_serialized_jwt"
 
     # Fallback: check raw_oidc_credential exposed by the debug endpoint (Attempt 0
     # path in issuance.ts — the compact JWT from the OID4VCI response, before storage).
@@ -377,9 +389,11 @@ async def test_step7_credential_instance_contains_jwt_string(
 
     assert cred_val is not None, (
         f"No JWT string found in credentialInstances[0] under any candidate key "
-        f"({jwt_candidate_keys}), nor in raw_oidc_credential, nor in record getters.\n"
+        f"({jwt_candidate_keys}), nor in w3c_serialized_jwt, raw_oidc_credential, "
+        f"nor in record getters.\n"
         f"  all_instance_keys    = {inst.get('own_keys')}\n"
         f"  all_values           = {inst}\n"
+        f"  w3c_serialized_jwt   = {credentials[0].get('w3c_serialized_jwt')}\n"
         f"  raw_oidc_credential  = {credentials[0].get('raw_oidc_credential')}\n"
         f"  getters              = {credentials[0].get('getters')}"
     )
