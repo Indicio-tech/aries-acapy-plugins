@@ -338,16 +338,32 @@ async def test_step7_credential_instance_contains_jwt_string(
     print(f"\n[debug] instance[0] keys: {inst.get('own_keys')}")
     print(f"[debug] instance[0] all_values: {inst}")
 
-    # The credential field should be a string starting with "ey" (JWT)
-    cred_val = inst.get("credential")
-    is_jwt = isinstance(cred_val, str) and cred_val.startswith("ey") and "." in cred_val
-    assert is_jwt, (
-        f"credentialInstances[0].credential is not a JWT string.\n"
-        f"  type           = {type(cred_val).__name__}\n"
-        f"  value_preview  = {str(cred_val)[:120]}\n"
+    # Search for the JWT string across the candidate keys that issuance.ts Attempt 4
+    # checks.  In Credo 0.6.x with did:key binding, the JWT is behind a getter
+    # (serializedJwt) that debug.ts now probes; older/JWK builds may use 'credential'.
+    jwt_candidate_keys = [
+        "serializedJwt",
+        "compactJwtVc",
+        "jwt",
+        "credential",
+        "encoded",
+    ]
+    cred_val = None
+    found_key = None
+    for k in jwt_candidate_keys:
+        v = inst.get(k)
+        if isinstance(v, str) and v.startswith("ey") and "." in v:
+            cred_val = v
+            found_key = k
+            break
+
+    assert cred_val is not None, (
+        f"No JWT string found in credentialInstances[0] under any candidate key "
+        f"({jwt_candidate_keys}).\n"
         f"  all_instance_keys = {inst.get('own_keys')}\n"
-        f"  all_values     = {inst}"
+        f"  all_values        = {inst}"
     )
+    print(f"[debug] Found JWT via key '{found_key}': {cred_val[:60]}…")
 
 
 # ---------------------------------------------------------------------------

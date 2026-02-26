@@ -46,6 +46,24 @@ function inspectRecord(record: any): Record<string, unknown> {
         entry[k] = typeof v;
       }
     }
+    // Also probe well-known getter/prototype properties not exposed by Object.entries.
+    // In Credo 0.6.x, W3cJwtVerifiableCredential stores the JWT behind a getter
+    // (serializedJwt), not as an own enumerable property.
+    for (const gkey of [
+      'serializedJwt', 'compactJwtVc', 'jwt', 'encoded',
+      'issuerSignedBase64Url', 'compactSdJwtVc',
+    ]) {
+      if (gkey in entry) continue; // already captured by Object.entries
+      try {
+        const gval = (inst as any)[gkey];
+        if (gval === undefined || gval === null) continue;
+        if (typeof gval === 'string') {
+          entry[gkey] = gval.length > 100 ? gval.substring(0, 100) + '…' : gval;
+        } else if (typeof gval === 'object') {
+          entry[gkey] = { type: (gval as any)?.constructor?.name, keys: Object.keys(gval as any).slice(0, 10) };
+        }
+      } catch (_) { /* getter may throw; ignore */ }
+    }
     return entry;
   });
 
