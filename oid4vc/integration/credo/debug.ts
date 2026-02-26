@@ -145,6 +145,27 @@ function inspectRecord(record: any): Record<string, unknown> {
     }
   } catch (_) { /* ignore */ }
 
+  // Probe record._credential (private backing field, bypasses Credo's '***' masking).
+  // In Credo 0.6.x this is the path used by issuance.ts Attempt 5.
+  try {
+    const raw = (record as any)._credential;
+    if (typeof raw === 'string' && raw.startsWith('ey') && raw.includes('.')) {
+      info.record_credential_raw = raw.length > 100 ? raw.substring(0, 100) + '…' : raw;
+    } else if (typeof raw === 'string' && raw.length > 0) {
+      // Might be JSON-encoded — try to extract jwt/serializedJwt
+      try {
+        const parsed = JSON.parse(raw);
+        for (const k of ['jwt', 'serializedJwt', 'encoded']) {
+          const v = (parsed as any)[k];
+          if (typeof v === 'string' && v.startsWith('ey') && v.includes('.')) {
+            info.record_credential_raw = v.length > 100 ? v.substring(0, 100) + '…' : v;
+            break;
+          }
+        }
+      } catch (_) { /* not JSON */ }
+    }
+  } catch (_) { /* ignore */ }
+
   // What does JSON.stringify see?
   try {
     const plain = JSON.parse(JSON.stringify(record));
