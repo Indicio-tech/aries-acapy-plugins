@@ -58,7 +58,7 @@ class TestCredoRevocationFlow:
             "id": f"RevocableJwtVc_{random_suffix}",
             "format": "jwt_vc_json",
             "format_data": {
-                "types": ["VerifiableCredential", "IdentityCredential"],
+                "type": ["VerifiableCredential", "IdentityCredential"],
                 "@context": [
                     "https://www.w3.org/2018/credentials/v1",
                 ],
@@ -635,7 +635,7 @@ class TestRevocationEdgeCases:
             "id": f"Unrevokable_{random_suffix}",
             "format": "jwt_vc_json",
             "format_data": {
-                "types": ["VerifiableCredential", "UnrevokeTestCredential"],
+                "type": ["VerifiableCredential", "UnrevokeTestCredential"],
                 "@context": [
                     "https://www.w3.org/2018/credentials/v1",
                 ],

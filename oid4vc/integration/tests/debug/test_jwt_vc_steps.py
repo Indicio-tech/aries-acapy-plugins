@@ -47,7 +47,7 @@ async def _make_config(acapy_issuer_admin, suffix: str) -> dict:
         "id": f"DebugJwtVc_{suffix}",
         "format": JWT_VC_FORMAT,
         "format_data": {
-            "types": ["VerifiableCredential", "DebugTestCredential"],
+            "type": ["VerifiableCredential", "DebugTestCredential"],
             "@context": ["https://www.w3.org/2018/credentials/v1"],
         },
         "proof_types_supported": {

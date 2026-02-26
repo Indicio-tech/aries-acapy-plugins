@@ -48,7 +48,7 @@ def _make_jwt_vc_config(suffix: str) -> dict:
         "id": f"StatusListTest_{suffix}",
         "format": "jwt_vc_json",
         "format_data": {
-            "types": ["VerifiableCredential", "StatusTestCredential"],
+            "type": ["VerifiableCredential", "StatusTestCredential"],
             "@context": [
                 "https://www.w3.org/2018/credentials/v1",
             ],
