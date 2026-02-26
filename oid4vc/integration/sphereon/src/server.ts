@@ -67,9 +67,11 @@ app.post('/oid4vci/accept-offer', async (req: Request, res: Response) => {
       retrieveServerMetadata: true,
     });
 
-    // Acquire access token
+    // Acquire access token and capture the response (includes c_nonce for proof)
+    let tokenBody: any = null;
     try {
-        const accessToken = await client.acquireAccessToken();
+        const tokenResult = await client.acquireAccessToken();
+        tokenBody = (tokenResult as any)?.successBody ?? tokenResult;
         console.log('Access token acquired');
     } catch (e) {
         console.log('Note: Failed to acquire access token (might not be needed for this flow):', e);
@@ -118,6 +120,89 @@ app.post('/oid4vci/accept-offer', async (req: Request, res: Response) => {
 
     // We use the first configuration ID found
     const credentialIdentifier = credentialConfigurationIds[0];
+
+    // -----------------------------------------------------------------------
+    // Custom mso_mdoc path: the Sphereon OID4VCI library (v0.13) does not
+    // support parsing CBOR-encoded mso_mdoc credential responses.  We bypass
+    // it and send the credential request manually using raw fetch so we can
+    // return the base64url-encoded IssuerSigned bytes as-is.
+    // -----------------------------------------------------------------------
+    if (format === 'mso_mdoc') {
+        // Extract endpoint metadata from the initialised client.
+        // Different versions of the Sphereon library surface these under
+        // different property paths, so we try all common locations.
+        const endpointMeta: any = (client as any).endpointMetadata ?? {};
+        const openIdMeta: any =
+            endpointMeta.openIDResponse ??
+            endpointMeta.credential_issuer_metadata ??
+            {};
+        const credentialEndpoint: string =
+            // Direct property (some v0.13 builds expose it here)
+            endpointMeta.credential_endpoint ??
+            openIdMeta.credential_endpoint ??
+            `${endpointMeta.issuer ?? openIdMeta.credential_issuer ?? ''}/credential`;
+        const issuerValue: string | undefined =
+            openIdMeta.credential_issuer ?? openIdMeta.issuer ?? endpointMeta.issuer;
+
+        const accessTokenValue: string | undefined =
+            tokenBody?.access_token ??
+            (client as any)?.accessToken?.access_token;
+        if (!accessTokenValue) {
+            throw new Error('No access token available for mso_mdoc credential request');
+        }
+        if (!credentialEndpoint) {
+            throw new Error('No credential_endpoint found in server metadata for mso_mdoc');
+        }
+
+        // Build OID4VCI proof JWT — include c_nonce when provided by the token endpoint
+        const cNonce: string | undefined = tokenBody?.c_nonce ?? tokenBody?.c_nonce_value;
+        const proofClaims: any = { iat: Math.floor(Date.now() / 1000) };
+        if (issuerValue) proofClaims.aud = issuerValue;
+        if (cNonce) proofClaims.nonce = cNonce;
+
+        const proofJwt = await new jose.SignJWT(proofClaims)
+            .setProtectedHeader({
+                alg: 'ES256',
+                typ: 'openid4vci-proof+jwt',
+                jwk: publicJwk,
+            })
+            .setIssuedAt()
+            .sign(privateKey);
+
+        // POST credential request directly to the issuer endpoint
+        const mdocCredReqBody = {
+            credential_identifier: credentialIdentifier,
+            proof: { proof_type: 'jwt', jwt: proofJwt },
+        };
+
+        // @ts-ignore – fetch is available in Node 18+
+        const mdocFetchResponse = await fetch(credentialEndpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${accessTokenValue}`,
+            },
+            body: JSON.stringify(mdocCredReqBody),
+        });
+
+        if (!mdocFetchResponse.ok) {
+            const errText = await mdocFetchResponse.text();
+            throw new Error(
+                `mso_mdoc credential request failed: ${mdocFetchResponse.status} ${errText}`,
+            );
+        }
+
+        const mdocCredJson = await mdocFetchResponse.json();
+        const mdocCredential =
+            (mdocCredJson as any).credential ??
+            ((mdocCredJson as any).credentials as any[])?.[0]?.credential;
+
+        console.log('mso_mdoc credential acquired via direct fetch');
+        return res.json({ credential: mdocCredential });
+    }
+    // -----------------------------------------------------------------------
+    // Default path: use the Sphereon library for JWT / SD-JWT formats
+    // -----------------------------------------------------------------------
 
     const credentialResponse = await client.acquireCredentials({
       credentialIdentifier: credentialIdentifier,

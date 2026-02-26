@@ -82,14 +82,6 @@ async def test_sphereon_accept_credential_offer(acapy_issuer_admin, sphereon_cli
 
 
 @pytest.mark.skipif(not MDOC_AVAILABLE, reason="isomdl_uniffi not available")
-@pytest.mark.xfail(
-    reason=(
-        "Known limitation: Sphereon wallet library returns HTTP 500 for "
-        "mso_mdoc format credential offers. mso_mdoc is not supported by "
-        "the current Sphereon integration."
-    ),
-    strict=False,
-)
 @pytest.mark.asyncio
 async def test_sphereon_accept_mdoc_credential_offer(
     acapy_issuer_admin, sphereon_client
@@ -201,14 +193,6 @@ async def test_sphereon_accept_mdoc_credential_offer(
 
 
 @pytest.mark.skipif(not MDOC_AVAILABLE, reason="isomdl_uniffi not available")
-@pytest.mark.xfail(
-    reason=(
-        "Known limitation: Sphereon wallet library returns HTTP 500 for "
-        "mso_mdoc format credential offers. mso_mdoc is not supported by "
-        "the current Sphereon integration."
-    ),
-    strict=False,
-)
 @pytest.mark.asyncio
 async def test_sphereon_present_mdoc_credential(
     acapy_verifier_admin, acapy_issuer_admin, sphereon_client
