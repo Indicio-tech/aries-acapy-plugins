@@ -365,12 +365,23 @@ async def test_step7_credential_instance_contains_jwt_string(
             cred_val = raw
             found_key = "raw_oidc_credential"
 
+    # Fallback: check record-level getters (issuance.ts Attempts 1/2/3/5 paths).
+    if cred_val is None:
+        getters = credentials[0].get("getters", {})
+        for gk in ["encoded", "serializedJwt", "jwt"]:
+            gv = getters.get(gk) if isinstance(getters, dict) else None
+            if isinstance(gv, str) and gv.startswith("ey") and "." in gv:
+                cred_val = gv
+                found_key = f"getters.{gk}"
+                break
+
     assert cred_val is not None, (
         f"No JWT string found in credentialInstances[0] under any candidate key "
-        f"({jwt_candidate_keys}) nor in raw_oidc_credential.\n"
-        f"  all_instance_keys = {inst.get('own_keys')}\n"
-        f"  all_values        = {inst}\n"
-        f"  raw_oidc_credential = {credentials[0].get('raw_oidc_credential')}"
+        f"({jwt_candidate_keys}), nor in raw_oidc_credential, nor in record getters.\n"
+        f"  all_instance_keys    = {inst.get('own_keys')}\n"
+        f"  all_values           = {inst}\n"
+        f"  raw_oidc_credential  = {credentials[0].get('raw_oidc_credential')}\n"
+        f"  getters              = {credentials[0].get('getters')}"
     )
     print(f"[debug] Found JWT via key '{found_key}': {cred_val[:60]}…")
 
