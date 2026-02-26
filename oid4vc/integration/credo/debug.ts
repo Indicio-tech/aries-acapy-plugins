@@ -195,35 +195,10 @@ router.post('/accept-offer-inspect', async (req: any, res: any) => {
         algorithm = proofTypes.jwt.supportedSignatureAlgorithms[0];
       }
 
-      // Credo 0.6.x rejects JWK binding for W3C formats — use did:key instead.
-      const W3C_FORMATS = ['jwt_vc_json', 'jwt_vc_json-ld', 'ldp_vc'];
-      if (W3C_FORMATS.includes(credentialFormat)) {
-        // Credo 0.6.x dids.create({ method: 'key' }) requires options.keyId
-        // pointing to a pre-created KMS key — not options.keyType.
-        const algStr2 = algorithm as string;
-        const kmsKeyType2 = algStr2 === 'ES256'
-          ? { kty: 'EC' as const, crv: 'P-256' as const }
-          : { kty: 'OKP' as const, crv: 'Ed25519' as const };
-        try {
-          const w3cKey = await agent!.kms.createKey({ type: kmsKeyType2 });
-          const didResult = await agent!.dids.create({ method: 'key', options: { keyId: w3cKey.keyId } });
-          const didState = (didResult.didState as any);
-          if (didState.state !== 'finished') {
-            throw new Error(`did:key creation failed: ${JSON.stringify(didState)}`);
-          }
-          const verificationMethodId =
-            didState.didDocument?.verificationMethod?.[0]?.id ?? didState.did;
-          call.resolved_method = 'did';
-          call.resolved_algorithm = algorithm;
-          bindingResolverCalls.push(call);
-          return { method: 'did', didUrls: [verificationMethodId] };
-        } catch (e) {
-          call.resolved_method = 'did:key_error';
-          call.resolved_algorithm = algorithm;
-          bindingResolverCalls.push(call);
-          throw e;
-        }
-      }
+      // Always use JWK binding - ACA-Py verifies the holder's public key
+      // directly from the 'jwk' header without DID resolution. Using did:key
+      // would require ACA-Py to resolve the DID document and handle the
+      // 'Multikey' verification method type, which it currently doesn't support.
 
       const algStr = algorithm;
       const keyType =
