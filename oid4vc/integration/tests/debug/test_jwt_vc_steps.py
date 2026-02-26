@@ -357,11 +357,20 @@ async def test_step7_credential_instance_contains_jwt_string(
             found_key = k
             break
 
+    # Fallback: check raw_oidc_credential exposed by the debug endpoint (Attempt 0
+    # path in issuance.ts — the compact JWT from the OID4VCI response, before storage).
+    if cred_val is None:
+        raw = credentials[0].get("raw_oidc_credential", "")
+        if isinstance(raw, str) and raw.startswith("ey") and "." in raw:
+            cred_val = raw
+            found_key = "raw_oidc_credential"
+
     assert cred_val is not None, (
         f"No JWT string found in credentialInstances[0] under any candidate key "
-        f"({jwt_candidate_keys}).\n"
+        f"({jwt_candidate_keys}) nor in raw_oidc_credential.\n"
         f"  all_instance_keys = {inst.get('own_keys')}\n"
-        f"  all_values        = {inst}"
+        f"  all_values        = {inst}\n"
+        f"  raw_oidc_credential = {credentials[0].get('raw_oidc_credential')}"
     )
     print(f"[debug] Found JWT via key '{found_key}': {cred_val[:60]}…")
 

@@ -286,9 +286,18 @@ router.post('/accept-offer-inspect', async (req: any, res: any) => {
       request_error_stack: requestErrorStack,
       credentials_count: credentialResponse?.credentials?.length ?? 0,
       deferred_count: credentialResponse?.deferredCredentials?.length ?? 0,
-      credentials: (credentialResponse?.credentials ?? []).map(
-        (item: any) => inspectRecord(item.record)
-      ),
+      credentials: (credentialResponse?.credentials ?? []).map((item: any) => {
+        const inspection = inspectRecord(item.record);
+        // Also expose item.credential — the raw credential value from the OID4VCI
+        // response (before storage). In Credo 0.6.x this is the compact JWT string
+        // for jwt_vc_json (issuance.ts Attempt 0 uses this path).
+        const rawCred = item.credential;
+        if (typeof rawCred === 'string' && rawCred.length > 0) {
+          (inspection as any)['raw_oidc_credential'] =
+            rawCred.length > 100 ? rawCred.substring(0, 100) + '…' : rawCred;
+        }
+        return inspection;
+      }),
     };
 
     res.json(result);
