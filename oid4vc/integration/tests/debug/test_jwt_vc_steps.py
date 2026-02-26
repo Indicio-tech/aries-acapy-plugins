@@ -351,6 +351,9 @@ async def test_step7_credential_instance_contains_jwt_string(
         "jwt_serializedJwt",  # Credo 0.6.x: inst.jwt.serializedJwt deep-drilled
         "jwt_compact",  # fallback alias
         "jwt_encoded",  # fallback alias
+        "credential_jwt_serializedJwt",  # wrapper: inst.credential.jwt.serializedJwt
+        "credential_jwt_compact",  # fallback alias
+        "credential_jwt_encoded",  # fallback alias
     ]
     cred_val = None
     found_key = None

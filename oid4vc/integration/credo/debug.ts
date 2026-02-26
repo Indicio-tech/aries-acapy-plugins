@@ -79,6 +79,23 @@ function inspectRecord(record: any): Record<string, unknown> {
         }
       }
     } catch (_) { /* ignore */ }
+    // Deep-drill: credentialInstances[0] may be a wrapper { credential: W3cJwtVerifiableCredential }
+    // where inst.credential.jwt.serializedJwt is the compact JWT string.
+    try {
+      const credObj = (inst as any).credential;
+      if (credObj && typeof credObj === 'object') {
+        const jwtObj = (credObj as any).jwt;
+        if (jwtObj && typeof jwtObj === 'object') {
+          for (const k of ['serializedJwt', 'compact', 'encoded']) {
+            const v = (jwtObj as any)[k];
+            if (typeof v === 'string' && v.length > 0) {
+              entry[`credential_jwt_${k}`] = v.length > 100 ? v.substring(0, 100) + '…' : v;
+              break;
+            }
+          }
+        }
+      }
+    } catch (_) { /* ignore */ }
     return entry;
   });
 
