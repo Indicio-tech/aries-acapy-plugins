@@ -391,7 +391,23 @@ async def verify_pres_def_presentation(
         pres_def = PresentationDefinition.deserialize(pres_def_entry.pres_def)
 
     evaluator = PresentationExchangeEvaluator.compile(pres_def)
-    result = await evaluator.verify(profile, submission, vp_result.payload)
+
+    # For mso_mdoc presentations, vp_result.payload is an already-decoded claims
+    # dict.  The presentation_submission from wallets (e.g. waltid) typically
+    # references $.documents[N] which is a path into the raw DeviceResponse CBOR,
+    # not the decoded dict.  Wrap the decoded payload so that $.documents[0]
+    # correctly resolves to the pre-verified claims.
+    item = submission.descriptor_maps[0]
+    if (
+        item.path_nested
+        and item.path_nested.path
+        and ".documents[" in item.path_nested.path
+    ):
+        eval_presentation: dict = {"documents": [vp_result.payload]}
+    else:
+        eval_presentation = vp_result.payload
+
+    result = await evaluator.verify(profile, submission, eval_presentation)
     return result
 
 

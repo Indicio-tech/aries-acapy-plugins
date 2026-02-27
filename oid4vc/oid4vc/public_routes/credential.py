@@ -289,8 +289,10 @@ async def _issue_cred_inner(context, token_result, refresh_id, req_body):
         await ex_record.save(session, reason="Credential issued")
 
     # OID4VCI 1.0 §7.3.1: response MUST contain `credentials` (array) or `transaction_id`.
-    # `format` and the singular `credential` key are deprecated draft-era fields.
+    # Also include the singular `credential` key (draft-era field) for wallets such as
+    # waltid that still parse only the top-level `credential` field and NPE when absent.
     cred_response: dict = {
+        "credential": credential,
         "credentials": [{"credential": credential}],
     }
     if ex_record.notification_id:

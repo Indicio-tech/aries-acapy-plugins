@@ -6,7 +6,6 @@
 
 import axios from 'axios';
 import type { AxiosInstance } from 'axios';
-import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
@@ -51,7 +50,7 @@ export async function createMdocCredentialConfig(configId?: string): Promise<str
   const client = createClient(ISSUER_ADMIN_URL);
   
   const id = configId || `org.iso.18013.5.1.mDL_waltid_${Date.now()}`;
-  
+
   const config = {
     id,
     format: 'mso_mdoc',
@@ -64,6 +63,15 @@ export async function createMdocCredentialConfig(configId?: string): Promise<str
         proof_signing_alg_values_supported: ['ES256'],
       },
     },
+    display: [
+      {
+        name: 'Mobile Driving License',
+        locale: 'en-US',
+        description: 'ISO 18013-5 mDL credential',
+        background_color: '#1d4ed8',
+        text_color: '#ffffff',
+      },
+    ],
     format_data: {
       doctype: 'org.iso.18013.5.1.mDL',
       claims: {
@@ -86,8 +94,20 @@ export async function createMdocCredentialConfig(configId?: string): Promise<str
     },
   };
   
-  const response = await client.post('/oid4vci/credential-supported/create', config);
-  return response.data.supported_cred_id;
+  try {
+    const response = await client.post('/oid4vci/credential-supported/create', config);
+    return response.data.supported_cred_id;
+  } catch (err: any) {
+    // ACA-Py returns 400 "Record with identifier <id> already exists" on re-runs.
+    // There is no DELETE endpoint for mso_mdoc configs, so we look up the existing
+    // record and reuse its supported_cred_id.
+    if (err?.response?.status === 400) {
+      const listResp = await client.get('/oid4vci/credential-supported/records');
+      const existing = listResp.data.results?.find((r: any) => r.identifier === id);
+      if (existing) return existing.supported_cred_id;
+    }
+    throw err;
+  }
 }
 
 /**
@@ -248,24 +268,28 @@ export async function uploadIssuerCertificate(_certPath?: string, _keyPath?: str
 // ============================================================================
 
 /**
- * Upload trust anchor certificate to verifier for mDOC verification
+ * Upload trust anchor certificate to verifier for mDOC verification.
+ * Fetches the issuer's signing certificate from the issuer admin API and
+ * registers it as a trust anchor on the verifier.
  */
-export async function uploadTrustAnchor(certPath?: string): Promise<void> {
-  const client = createClient(VERIFIER_ADMIN_URL);
-  
-  try {
-    const certsDir = path.resolve(__dirname, '../certs');
-    const certPem = fs.readFileSync(certPath || path.join(certsDir, 'root-ca.pem'), 'utf-8');
-    
-    // Use the mso_mdoc trust anchor endpoint
-    await client.post('/mso_mdoc/trust-anchors', {
-      certificate_pem: certPem,
-      anchor_id: `playwright_test_${Date.now()}`,
-    });
-  } catch (error: any) {
-    // Ignore if trust anchor already exists or endpoint not available
-    console.log('Note: Trust anchor upload skipped or already exists');
+export async function uploadTrustAnchor(): Promise<void> {
+  const issuerClient = createClient(ISSUER_ADMIN_URL);
+  const verifierClient = createClient(VERIFIER_ADMIN_URL);
+
+  // Fetch the issuer's default signing certificate
+  const certResp = await issuerClient.get('/mso_mdoc/certificates/default');
+  const certPem: string = certResp.data.certificate_pem;
+  if (!certPem) {
+    throw new Error('No certificate_pem in issuer /mso_mdoc/certificates/default response');
   }
+
+  // Upload it as a trust anchor to the verifier
+  await verifierClient.post('/mso_mdoc/trust-anchors', {
+    certificate_pem: certPem,
+    anchor_id: `playwright_test_${Date.now()}`,
+  });
+
+  console.log('Trust anchor uploaded to verifier from issuer certificate');
 }
 
 /**

@@ -38,7 +38,7 @@ wait_for_ready() {
   local label="$2"
   info "Waiting for $label to be ready…"
   for i in $(seq 1 60); do
-    if curl -sf "$url" | grep -q '"ready":true'; then
+    if curl -sf "$url" | grep -qE '"ready":\s*true'; then
       success "$label is ready"
       return 0
     fi
@@ -128,51 +128,15 @@ MDL_RESP=$(post_json "$ISSUER_ADMIN/oid4vci/credential-supported/create" "$MDL_C
 MDL_CRED_ID=$(echo "$MDL_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin)['supported_cred_id'])")
 success "mDL credential config: $MDL_CRED_ID"
 
-# ── Step 4: Create SD-JWT credential configuration (for comparison demos) ─────
-
-SDJWT_CONFIG_ID="TestCredential_demo"
-info "Creating SD-JWT credential configuration (id=$SDJWT_CONFIG_ID)…"
-
-SDJWT_CONFIG=$(python3 - <<PYEOF
-import json
-config = {
-    "id": "$SDJWT_CONFIG_ID",
-    "format": "vc+sd-jwt",
-    "scope": "TestCredential",
-    "cryptographic_binding_methods_supported": ["did:key"],
-    "cryptographic_suites_supported": ["EdDSA", "ES256"],
-    "proof_types_supported": {
-        "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
-    },
-    "display": [
-        {
-            "name": "Demo Identity Credential",
-            "locale": "en-US",
-            "description": "SD-JWT demo credential"
-        }
-    ],
-    "format_data": {
-        "vct": "TestCredential",
-        "types": ["VerifiableCredential", "TestCredential"],
-        "claims": {
-            "given_name": {"mandatory": True},
-            "family_name": {"mandatory": True},
-            "email":       {"mandatory": False}
-        }
-    },
-    "vc_additional_data": {
-        "sd_list": ["/given_name", "/family_name", "/email"]
-    }
-}
-print(json.dumps(config))
-PYEOF
-)
-
-SDJWT_RESP=$(post_json "$ISSUER_ADMIN/oid4vci/credential-supported/create" "$SDJWT_CONFIG")
-SDJWT_CRED_ID=$(echo "$SDJWT_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin)['supported_cred_id'])")
-success "SD-JWT credential config: $SDJWT_CRED_ID"
-
-# ── Step 5: Store config for Playwright ──────────────────────────────────────
+# ── Step 4: Store config for Playwright ──────────────────────────────────────
+#
+# NOTE: The SD-JWT credential configuration is intentionally skipped here.
+# ACA-Py serialises vc+sd-jwt claims in path-based array format in the
+# /.well-known/openid-credential-issuer metadata, which the waltid wallet
+# cannot parse (it expects a JSON object at $.claims).  The mDL demo only
+# needs the mso_mdoc credential, so the SD-JWT config is omitted to keep the
+# metadata compatible with the waltid wallet.
+SDJWT_CRED_ID=""
 
 cat > /tmp/demo-config.env <<EOF
 ISSUER_DID=$ISSUER_DID
@@ -195,7 +159,6 @@ echo -e "  Verifier admin API:   ${CYAN}${VERIFIER_ADMIN}${RESET}"
 echo ""
 echo -e "  Issuer DID:           ${YELLOW}${ISSUER_DID}${RESET}"
 echo -e "  mDL config ID:        ${YELLOW}${MDL_CRED_ID}${RESET}"
-echo -e "  SD-JWT config ID:     ${YELLOW}${SDJWT_CRED_ID}${RESET}"
 echo ""
 echo -e "  Run the Playwright demo:"
 echo -e "    ${CYAN}cd playwright && npm install && npx playwright test --headed${RESET}"

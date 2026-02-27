@@ -159,14 +159,80 @@ Restart the stack: `docker compose up -d` and re-run `./setup.sh`.
 
 ---
 
-## Credential formats supported
+## Demo flow
+
+The Playwright tests drive the following sequence of API calls and browser
+interactions:
+
+```mermaid
+%%{init: {'theme': 'default'}}%%
+sequenceDiagram
+    participant PW as Playwright
+    participant ISS as ACA-Py Issuer
+    participant VER as ACA-Py Verifier
+    participant W as walt.id Wallet
+
+    rect rgb(220,235,255)
+        Note over PW,W: Setup (beforeAll)
+        PW->>ISS: create issuer DID (P-256)
+        PW->>ISS: generate mDOC signing keys
+        PW->>ISS: register credential config
+        PW->>VER: upload trust anchor (x.509)
+        PW->>W: register demo user
+    end
+
+    rect rgb(220,255,220)
+        Note over PW,W: Test 1 — OID4VCI Issuance
+        PW->>ISS: create credential offer → offerUrl
+        Note over PW: screenshot: credential configs
+        Note over PW: screenshot: exchange active
+        PW->>W: resolveCredentialOffer(offerUrl)
+        W->>ISS: OID4VCI pre-auth token exchange
+        ISS-->>W: signed mDOC (CBOR)
+        Note over PW: screenshot: exchange issued
+        Note over W: browser: wallet → mDL card visible
+        Note over W: browser: DIDs page
+        PW->>W: GET credentials → assert mDL present
+    end
+
+    rect rgb(255,240,220)
+        Note over PW,W: Test 2 — OID4VP Presentation
+        PW->>VER: create presentation request → requestUrl
+        Note over VER: browser: pending request
+        PW->>W: resolvePresentationRequest(requestUrl)
+        PW->>W: usePresentationRequest(credId, holderDid)
+        W->>VER: OID4VP authorization response (CBOR)
+        VER->>VER: verify mDOC sig against trust anchor
+        VER-->>W: 200 OK
+        PW->>VER: poll → state: presentation-valid
+        Note over VER: browser: verified result
+        Note over W: browser: wallet home (cred retained)
+        Note over W: browser: event log
+    end
+```
+
+> **Why the wallet API instead of the browser UI?**
+> The `waltid/waltid-web-wallet:latest` image has known bugs for `mso_mdoc`
+> credentials: the issuance UI crashes (checks `types`/`vct`, not `doctype`)
+> and the credential detail page crashes (`issuerSigned` null reference).
+> The wallet *backend* handles mDOC correctly, so Playwright calls the
+> wallet REST API directly for issuance acceptance and presentation
+> submission, then opens the browser to show the result pages.
+
+---
+
+## Credential format
 
 | Format | Schema |
 |---|---|
 | `mso_mdoc` | `org.iso.18013.5.1.mDL` (mobile driving licence) |
-| `vc+sd-jwt` | `TestCredential` (demo identity credential) |
 
-Both are configured by `setup.sh`. To issue a credential manually:
+> **Note:** `setup.sh` and the Playwright demo use `mso_mdoc` only. A
+> `vc+sd-jwt` helper (`TestCredential`) exists in `acapy-client.ts` but is
+> not exercised — ACA-Py serialises SD-JWT claims in a path-based array
+> format that the walt.id wallet cannot parse.
+
+To issue a credential manually:
 
 ```bash
 # Get the credential config IDs

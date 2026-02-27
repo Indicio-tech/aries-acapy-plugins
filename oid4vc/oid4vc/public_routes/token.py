@@ -362,11 +362,22 @@ async def handle_proof_of_posession(
         decoded_signature,
         sig_type=headers.get("alg", ""),
     )
+
+    # If the wallet sent a kid-based proof (no jwk in header), derive the public
+    # JWK from the resolved key so credential processors that need the raw JWK
+    # (e.g. mso_mdoc for holder key binding in DeviceKey) can access it.
+    holder_jwk = headers.get("jwk")
+    if holder_jwk is None and "kid" in headers:
+        try:
+            holder_jwk = json.loads(key.get_jwk_public())
+        except Exception:
+            LOGGER.debug("Could not derive holder JWK from kid-resolved key")
+
     return PopResult(
         headers,
         payload,
         verified,
         holder_kid=headers.get("kid"),
-        holder_jwk=headers.get("jwk"),
+        holder_jwk=holder_jwk,
         holder_x5c=headers.get("x5c"),
     )

@@ -86,9 +86,15 @@ async def credential_issuer_metadata(request: web.Request):
             metadata["authorization_servers"] = [
                 f"{config.auth_server_url}{auth_tenant_subpath}"
             ]
-        # NOTE: token_endpoint is NOT part of credential issuer metadata per
-        # OID4VCI spec (§11.2.1). It belongs in the authorization server metadata
-        # (/.well-known/oauth-authorization-server or /.well-known/openid-configuration).
+        else:
+            # When ACA-Py is its own authorization server (no external auth server),
+            # include token_endpoint directly in the credential issuer metadata.
+            # This is technically an extension beyond OID4VCI spec §11.2.1 (which
+            # says token_endpoint belongs in AS metadata via /.well-known/oauth-
+            # authorization-server), but some wallets (e.g. waltid) read
+            # token_endpoint from resolveCIProviderMetadata() and NPE if absent,
+            # rather than performing AS discovery.
+            metadata["token_endpoint"] = f"{public_url}{subpath}/token"
         metadata["credential_endpoint"] = f"{public_url}{subpath}/credential"
         metadata["notification_endpoint"] = f"{public_url}{subpath}/notification"
         metadata["nonce_endpoint"] = f"{public_url}{subpath}/nonce"

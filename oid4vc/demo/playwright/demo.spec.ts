@@ -41,12 +41,14 @@ import {
   loginViaBrowser,
   listWalletCredentials,
 } from './helpers/wallet-factory';
-import { buildPresentationUrl } from './helpers/url-encoding';
+
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const WALTID_WALLET_URL = process.env.WALTID_WALLET_URL || 'http://localhost:7101';
 const WALTID_WALLET_API_URL = process.env.WALTID_WALLET_API_URL || 'http://localhost:7001';
+const ACAPY_ISSUER_ADMIN_URL = process.env.ACAPY_ISSUER_ADMIN_URL || 'http://localhost:8021';
+const ACAPY_VERIFIER_ADMIN_URL = process.env.ACAPY_VERIFIER_ADMIN_URL || 'http://localhost:8031';
 
 // ── Shared demo state ─────────────────────────────────────────────────────────
 
@@ -98,6 +100,66 @@ async function acceptCredentialOfferViaApi(
   console.log(`[wallet-api] claimCredential status: ${useResp.status}`);
 }
 
+/**
+ * Submit a presentation request via the wallet API, bypassing the web UI.
+ *
+ * The walt.id web UI fails to match mso_mdoc credentials against the
+ * presentation definition.  This function calls the wallet-api directly:
+ *   1. List wallet credentials to find the mDL credential ID.
+ *   2. POST usePresentationRequest with the request URL + selected credential.
+ */
+async function submitPresentationViaApi(
+  requestUrl: string,
+  walletId: string,
+  token: string,
+): Promise<void> {
+  const client = axios.create({
+    baseURL: WALTID_WALLET_API_URL,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    timeout: 30_000,
+  });
+
+  // Find the mDL credential ID in the wallet.
+  const credsResp = await client.get(`/wallet-api/wallet/${walletId}/credentials`);
+  const credentials: any[] = credsResp.data;
+  const mdlCred = credentials.find(
+    (c: any) => JSON.stringify(c).includes('org.iso.18013.5.1.mDL'),
+  );
+  if (!mdlCred) throw new Error('mDL credential not found in wallet');
+  const credentialId: string = mdlCred.id;
+  console.log(`[wallet-api] Presenting credential: ${credentialId}`);
+
+  // Resolve the presentation request first — returns the parsed request URL
+  // with presentation_definition embedded, which usePresentationRequest requires.
+  const resolveResp = await client.post(
+    `/wallet-api/wallet/${walletId}/exchange/resolvePresentationRequest`,
+    requestUrl,
+    { headers: { 'Content-Type': 'text/plain' } },
+  );
+  const resolvedRequest: string = resolveResp.data;
+  console.log(`[wallet-api] resolvePresentationRequest status: ${resolveResp.status}`);
+
+  // Get the wallet's default DID to present from.
+  const didsResp = await client.get(`/wallet-api/wallet/${walletId}/dids`);
+  const dids: any[] = didsResp.data;
+  const holderDid: string | undefined = dids?.find((d: any) => d.default)?.did ?? dids?.[0]?.did;
+
+  // Submit the presentation — field is `selectedCredentials` (not selectedCredentialIds).
+  const useResp = await client.post(
+    `/wallet-api/wallet/${walletId}/exchange/usePresentationRequest`,
+    {
+      did: holderDid ?? null,
+      presentationRequest: resolvedRequest,
+      selectedCredentials: [credentialId],
+      disclosures: null,
+    },
+  );
+  console.log(`[wallet-api] usePresentationRequest status: ${useResp.status}`);
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 test.describe('OID4VC mDOC Demo', () => {
@@ -113,7 +175,7 @@ test.describe('OID4VC mDOC Demo', () => {
     await generateMdocSigningKeys();
     console.log('mDOC signing keys ready');
 
-    credConfigId = await createMdocCredentialConfig(`org.iso.18013.5.1.mDL_demo_${Date.now()}`);
+    credConfigId = await createMdocCredentialConfig('Mobile-Driving-License');
     console.log(`mDL credential config: ${credConfigId}`);
 
     // Upload trust anchor to verifier so mDOC signatures can be verified.
@@ -129,6 +191,12 @@ test.describe('OID4VC mDOC Demo', () => {
   // ── Test 1: Issuance ────────────────────────────────────────────────────────
 
   test('Issue mDL credential to wallet', async ({ page }) => {
+    // ── Show credential configs registered in ACA-Py ──
+    await page.goto(`${ACAPY_ISSUER_ADMIN_URL}/oid4vci/credential-supported/records`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2500);
+    await page.screenshot({ path: '../test-results/demo-01a-credential-configs.png' });
+
     // ── Create credential offer ──
     const credentialSubject = {
       'org.iso.18013.5.1': {
@@ -154,19 +222,47 @@ test.describe('OID4VC mDOC Demo', () => {
     );
     console.log(`Credential offer created: ${exchangeId}`);
 
+    // ── Show the active (pre-issued) exchange record in ACA-Py ──
+    await page.goto(`${ACAPY_ISSUER_ADMIN_URL}/oid4vci/exchange/records`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2500);
+    await page.screenshot({ path: '../test-results/demo-01b-exchange-active.png' });
+
     // ── Accept via wallet API (bypasses the waltid UI mso_mdoc bug) ──
     await acceptCredentialOfferViaApi(offerUrl, demoUser.walletId, demoUser.token);
     console.log('Credential accepted via wallet API');
 
+    // ── Show the exchange record now marked "issued" in ACA-Py ──
+    await page.goto(`${ACAPY_ISSUER_ADMIN_URL}/oid4vci/exchange/records`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2500);
+    await page.screenshot({ path: '../test-results/demo-01c-exchange-issued.png' });
+
     // ── Open the wallet in the browser and verify the credential appears ──
     await loginViaBrowser(page, demoUser.email, demoUser.password, WALTID_WALLET_URL);
 
-    // Navigate to the credentials list.
-    await page.goto(`${WALTID_WALLET_URL}/wallet/${demoUser.walletId}/credentials`);
+    // loginViaBrowser already navigated to the wallet selector page (/).
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2500);
+    // Wallet selector — shows all wallets available for this user.
+    await page.screenshot({ path: '../test-results/demo-01d-wallet-select.png' });
+
+    // Click "View wallet" to enter the wallet — just like a real user would.
+    await page.getByRole('button', { name: 'View wallet' }).click();
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2500);
+    // Credentials list — the issued mDL card should be visible here.
+    await page.screenshot({ path: '../test-results/demo-01-wallet-credentials.png' });
+
+    // Note: waltid credential detail view crashes on mso_mdoc credentials
+    // (TypeError: Cannot read properties of null (reading 'issuerSigned')),
+    // the same known bug as the issuance UI. We stay on the credentials list.
+
+    // Navigate to the DIDs page to show the wallet's cryptographic identity.
+    await page.getByRole('link', { name: 'DIDs' }).click();
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
-
-    await page.screenshot({ path: '../test-results/demo-01-wallet-credentials.png' });
+    await page.screenshot({ path: '../test-results/demo-01f-wallet-dids.png' });
 
     // ── Verify via API ──
     const credentials = await listWalletCredentials(demoUser);
@@ -191,61 +287,39 @@ test.describe('OID4VC mDOC Demo', () => {
     console.log(`Presentation request: ${presentationId}`);
     console.log(`Request URI: ${requestUrl}`);
 
-    // ── Build the wallet presentation URL ──
-    const presentationDeepLink = buildPresentationUrl(
-      WALTID_WALLET_URL,
-      requestUrl,
-      demoUser.walletId,
-    );
+    // ── Show the pending presentation request in ACA-Py verifier ──
+    await page.goto(`${ACAPY_VERIFIER_ADMIN_URL}/oid4vp/presentation/${presentationId}`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2500);
+    await page.screenshot({ path: '../test-results/demo-02a-presentation-pending.png' });
 
-    // ── Login and navigate to the presentation page ──
+    // ── Submit the presentation via wallet API (bypasses the waltid UI matcher bug) ──
+    await submitPresentationViaApi(requestUrl, demoUser.walletId, demoUser.token);
+    console.log('Presentation submitted via wallet API');
+
+    // ── Poll for verification result ──
+    const result = await waitForPresentationState(presentationId, 'presentation-valid', 20);
+    console.log(`✓ Presentation verified: ${result.state}`);
+
+    // ── Show the verified result in the ACA-Py verifier browser ──
+    await page.goto(`${ACAPY_VERIFIER_ADMIN_URL}/oid4vp/presentation/${presentationId}`);
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2500);
+    await page.screenshot({ path: '../test-results/demo-02b-presentation-result.png' });
+
+    // ── Show the wallet home to close the loop ──
     await loginViaBrowser(page, demoUser.email, demoUser.password, WALTID_WALLET_URL);
 
-    await page.goto(presentationDeepLink);
+    // Navigate into the specific wallet to show the credential is still there after presentation.
+    await page.goto(`${WALTID_WALLET_URL}/wallet/${demoUser.walletId}`);
     await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(2500);
+    await page.screenshot({ path: '../test-results/demo-03-wallet-after-presentation.png' });
 
-    // Wait for Vue to hydrate.
-    try {
-      await page.waitForFunction(
-        () => {
-          const el = document.querySelector('#__nuxt');
-          return el && el.children.length > 0 && (el.textContent ?? '').trim().length > 10;
-        },
-        { timeout: 15_000 },
-      );
-    } catch {
-      // Continue — the page may still work.
-    }
-
+    // Navigate to the event log to show the full credential lifecycle.
+    await page.getByRole('link', { name: 'Event log' }).click();
+    await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
-    await page.screenshot({ path: '../test-results/demo-02-presentation-page.png' });
-
-    // ── Look for a credential selection checkbox or share button ──
-    const credCheckbox = page.locator('input[type="checkbox"]').first();
-    if (await credCheckbox.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      await credCheckbox.check();
-    }
-
-    // Click the Share / Present button.
-    const shareButton = page.getByRole('button', { name: /share|present|submit|send/i });
-    if (await shareButton.isVisible({ timeout: 10_000 }).catch(() => false)) {
-      await shareButton.click();
-      await page.waitForTimeout(5_000);
-    } else {
-      console.warn('Share button not found — the wallet UI may have changed.');
-    }
-
-    await page.screenshot({ path: '../test-results/demo-03-after-presentation.png' });
-
-    // ── Wait for the verifier to receive and validate the presentation ──
-    try {
-      const result = await waitForPresentationState(presentationId, 'presentation-valid', 20);
-      console.log(`✓ Presentation verified: ${result.state}`);
-    } catch (err) {
-      // The waltid wallet has a known limitation with mDOC UI presentation.
-      // Log the error but don't fail the demo — the issuance part is the main event.
-      console.warn(`Presentation verification note: ${(err as Error).message}`);
-      console.warn('This may be due to the walt.id web wallet UI mDOC limitation.');
-    }
+    await page.screenshot({ path: '../test-results/demo-04-event-log.png' });
   });
 });
