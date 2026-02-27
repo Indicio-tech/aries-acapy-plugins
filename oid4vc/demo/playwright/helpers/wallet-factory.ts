@@ -8,7 +8,7 @@ import axios from 'axios';
 import type { AxiosInstance } from 'axios';
 import type { BrowserContext, Page } from '@playwright/test';
 
-const WALLET_API_URL = process.env.WALTID_WALLET_API_URL || 'http://localhost:7001';
+const WALLET_API_URL = process.env.WALTID_WALLET_API_URL || 'http://localhost:7101';
 
 interface WalletUser {
   email: string;
@@ -186,7 +186,7 @@ export async function loginViaBrowser(
   baseUrl?: string
 ): Promise<void> {
   const walletUrl = baseUrl || process.env.WALTID_WALLET_URL || 'http://localhost:7101';
-  const walletApiUrl = process.env.WALTID_WALLET_API_URL || 'http://localhost:7001';
+  const walletApiUrl = process.env.WALTID_WALLET_API_URL || 'http://localhost:7101';
   
   // Authenticate via API (more reliable than UI login)
   const client = createApiClient();
