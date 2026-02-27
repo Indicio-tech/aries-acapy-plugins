@@ -5,7 +5,86 @@ import { Jwt, ProofOfPossessionCallbacks, Alg } from '@sphereon/oid4vci-common';
 import * as jose from 'jose';
 import { DIDDocument } from 'did-resolver';
 import { v4 as uuidv4 } from 'uuid';
-import { encode as cborEncode, decode as cborDecode } from 'cbor-x';
+import { decode as cborDecode } from 'cbor-x';
+
+/**
+ * Encode a text string as a CBOR text item (major type 3).
+ */
+function cborText(s: string): Buffer {
+    const bytes = Buffer.from(s, 'utf8');
+    const len = bytes.length;
+    if (len <= 23)    return Buffer.concat([Buffer.from([0x60 | len]), bytes]);
+    if (len <= 0xff)  return Buffer.concat([Buffer.from([0x78, len]), bytes]);
+    if (len <= 0xffff) {
+        const h = Buffer.alloc(3);
+        h[0] = 0x79;
+        h.writeUInt16BE(len, 1);
+        return Buffer.concat([h, bytes]);
+    }
+    throw new Error('cborText: string too long');
+}
+
+/** Encode a small unsigned integer as a CBOR uint item (major type 0). */
+function cborUint(n: number): Buffer {
+    if (n <= 23)    return Buffer.from([n]);
+    if (n <= 0xff)  return Buffer.from([0x18, n]);
+    if (n <= 0xffff) {
+        const h = Buffer.alloc(3);
+        h[0] = 0x19;
+        h.writeUInt16BE(n, 1);
+        return h;
+    }
+    throw new Error('cborUint: value too large');
+}
+
+/** Return a CBOR map header for n items (major type 5). */
+function cborMapHeader(n: number): Buffer {
+    if (n <= 23)   return Buffer.from([0xa0 | n]);
+    if (n <= 0xff) return Buffer.from([0xb8, n]);
+    throw new Error('cborMapHeader: too many items');
+}
+
+/** Return a CBOR array header for n items (major type 4). */
+function cborArrayHeader(n: number): Buffer {
+    if (n <= 23)   return Buffer.from([0x80 | n]);
+    if (n <= 0xff) return Buffer.from([0x98, n]);
+    throw new Error('cborArrayHeader: too many items');
+}
+
+/**
+ * Build an ISO 18013-5 §8.3.2.1 DeviceResponse CBOR directly from the raw
+ * IssuerSigned bytes, WITHOUT re-encoding through a JavaScript object.
+ *
+ * cbor-x and similar libraries convert integer CBOR map keys (e.g. the COSE
+ * unprotected header key 33 for x5chain) into JavaScript string properties
+ * when round-tripping through a JS object.  This produces CBOR text("33")
+ * instead of the required CBOR uint(33), making the isomdl verifier unable to
+ * find the x5chain certificate.
+ *
+ * By embedding `issuerSignedRawCbor` as-is in the canonical CBOR byte
+ * sequence we guarantee that the COSE header integer keys are preserved.
+ */
+function buildDeviceResponseCbor(
+    docType: string,
+    issuerSignedRawCbor: Buffer,
+    version: string = '1.0',
+    status: number = 0,
+): Buffer {
+    // Document map: { "docType": docType, "issuerSigned": <raw cbor> }
+    const docMap = Buffer.concat([
+        cborMapHeader(2),
+        cborText('docType'),     cborText(docType),
+        cborText('issuerSigned'), issuerSignedRawCbor,   // ← raw bytes, no re-encode
+    ]);
+
+    // DeviceResponse map: { "version": v, "documents": [docMap], "status": s }
+    return Buffer.concat([
+        cborMapHeader(3),
+        cborText('version'),   cborText(version),
+        cborText('documents'), cborArrayHeader(1), docMap,
+        cborText('status'),    cborUint(status),
+    ]);
+}
 
 const app = express();
 const port = process.env.PORT || 3010;
@@ -340,13 +419,11 @@ app.post('/oid4vp/present-credential', async (req: Request, res: Response) => {
             console.warn('Could not extract docType from MSO, using fallback:', _e);
         }
 
-        // Wrap IssuerSigned in a DeviceResponse
-        const deviceResponse = {
-            version: '1.0',
-            documents: [{ docType, issuerSigned: issuerSignedObj }],
-            status: 0,
-        };
-        const deviceResponseBytes = cborEncode(deviceResponse);
+        // Wrap IssuerSigned in a ISO 18013-5 DeviceResponse.
+        // Use buildDeviceResponseCbor to embed rawCredBytes directly—
+        // bypassing the cbor-x decode→re-encode cycle that would corrupt
+        // COSE integer header keys (e.g. key 33 for x5chain becomes "33").
+        const deviceResponseBytes = buildDeviceResponseCbor(docType, rawCredBytes);
         vpToken = Buffer.from(deviceResponseBytes).toString('base64url');
         console.log(`mso_mdoc presentation: built DeviceResponse for docType=${docType}`);
 
