@@ -687,12 +687,28 @@ class MsoMdocPresVerifier(PresVerifier):
                     trust_anchor_registry,
                 )
 
-                if (
+                # Per ISO 18013-5, deviceSigned is optional (marked with '?' in
+                # the CDDL).  For OID4VP web-wallet flows a device key binding
+                # round-trip is not performed, so device_authentication will not
+                # be VALID.  Issuer authentication is sufficient to trust that
+                # the credential was issued by a known authority.
+                issuer_ok = (
                     verified_data.issuer_authentication
                     == isomdl_uniffi.AuthenticationStatus.VALID
-                    and verified_data.device_authentication
+                )
+                device_ok = (
+                    verified_data.device_authentication
                     == isomdl_uniffi.AuthenticationStatus.VALID
-                ):
+                )
+
+                if issuer_ok:
+                    if not device_ok:
+                        LOGGER.info(
+                            "Device authentication not present/valid (issuer-only "
+                            "OID4VP presentation — deviceSigned is optional per "
+                            "ISO 18013-5): Device=%s",
+                            verified_data.device_authentication,
+                        )
                     try:
                         claims = extract_verified_claims(verified_data.verified_response)
                     except Exception as e:
