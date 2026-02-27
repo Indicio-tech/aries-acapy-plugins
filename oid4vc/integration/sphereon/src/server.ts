@@ -278,55 +278,83 @@ app.post('/oid4vp/present-credential', async (req: Request, res: Response) => {
         throw new Error('No response_uri in authorization request');
     }
 
-    // Create VP
-    const { privateKey, publicKey } = await jose.generateKeyPair('ES256');
-    const publicJwk = await jose.exportJWK(publicKey);
-    const didJwk = `did:jwk:${Buffer.from(JSON.stringify(publicJwk)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')}`;
-    const kid = `${didJwk}#0`;
-    
-    const vpPayload = {
-        iss: didJwk,
-        sub: didJwk,
-        vp: {
-            '@context': ['https://www.w3.org/2018/credentials/v1'],
-            type: ['VerifiablePresentation'],
-            verifiableCredential: verifiable_credentials
-        },
-        nonce: nonce,
-        aud: client_id
-    };
-    
-    const vpToken = await new jose.SignJWT(vpPayload as any)
-        .setProtectedHeader({ alg: 'ES256', typ: 'JWT', kid: kid })
-        .setIssuedAt()
-        .setIssuer(didJwk)
-        .setAudience(client_id as string)
-        .sign(privateKey);
-        
-    // Create Presentation Submission
+    // Detect whether this is an mso_mdoc presentation request.
+    // OID4VP for mso_mdoc: vp_token = raw credential bytes (hex/base64url),
+    // descriptor_map format = "mso_mdoc", no path_nested.
     const presentationDefinition = (requestPayload as any).presentation_definition;
-    let submission = null;
-    
-    if (presentationDefinition) {
-        const descriptorId = presentationDefinition.input_descriptors[0].id;
-        submission = {
-            id: uuidv4(),
-            definition_id: presentationDefinition.id,
-            descriptor_map: [
-                {
-                    id: descriptorId,
-                    format: 'jwt_vp',
-                    path: '$',
-                    path_nested: {
+    const vpFormats = (requestPayload as any).vp_formats ?? {};
+    const isMsoMdoc = !!vpFormats['mso_mdoc'] ||
+        !!(presentationDefinition?.input_descriptors?.[0]?.format?.['mso_mdoc']);
+
+    let vpToken: string;
+    let submission: any = null;
+
+    if (isMsoMdoc) {
+        // mso_mdoc path: send the credential directly as vp_token (base64url/hex bytes)
+        vpToken = verifiable_credentials[0];
+        console.log('mso_mdoc presentation: sending credential directly as vp_token');
+
+        if (presentationDefinition) {
+            const descriptorId = presentationDefinition.input_descriptors[0].id;
+            submission = {
+                id: uuidv4(),
+                definition_id: presentationDefinition.id,
+                descriptor_map: [
+                    {
                         id: descriptorId,
-                        format: 'jwt_vc',
-                        path: '$.vp.verifiableCredential[0]'
+                        format: 'mso_mdoc',
+                        path: '$',
                     }
-                }
-            ]
+                ]
+            };
+        }
+    } else {
+        // JWT VP path: wrap credentials in a signed JWT VP
+        const { privateKey, publicKey } = await jose.generateKeyPair('ES256');
+        const publicJwk = await jose.exportJWK(publicKey);
+        const didJwk = `did:jwk:${Buffer.from(JSON.stringify(publicJwk)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')}`;
+        const kid = `${didJwk}#0`;
+
+        const vpPayload = {
+            iss: didJwk,
+            sub: didJwk,
+            vp: {
+                '@context': ['https://www.w3.org/2018/credentials/v1'],
+                type: ['VerifiablePresentation'],
+                verifiableCredential: verifiable_credentials
+            },
+            nonce: nonce,
+            aud: client_id
         };
+
+        vpToken = await new jose.SignJWT(vpPayload as any)
+            .setProtectedHeader({ alg: 'ES256', typ: 'JWT', kid: kid })
+            .setIssuedAt()
+            .setIssuer(didJwk)
+            .setAudience(client_id as string)
+            .sign(privateKey);
+
+        if (presentationDefinition) {
+            const descriptorId = presentationDefinition.input_descriptors[0].id;
+            submission = {
+                id: uuidv4(),
+                definition_id: presentationDefinition.id,
+                descriptor_map: [
+                    {
+                        id: descriptorId,
+                        format: 'jwt_vp',
+                        path: '$',
+                        path_nested: {
+                            id: descriptorId,
+                            format: 'jwt_vc',
+                            path: '$.vp.verifiableCredential[0]'
+                        }
+                    }
+                ]
+            };
+        }
     }
-    
+
     // Send Response
     const formData = new URLSearchParams();
     formData.append('vp_token', vpToken);
