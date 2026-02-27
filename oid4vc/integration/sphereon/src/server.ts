@@ -5,6 +5,7 @@ import { Jwt, ProofOfPossessionCallbacks, Alg } from '@sphereon/oid4vci-common';
 import * as jose from 'jose';
 import { DIDDocument } from 'did-resolver';
 import { v4 as uuidv4 } from 'uuid';
+import { encode as cborEncode, decode as cborDecode } from 'cbor-x';
 
 const app = express();
 const port = process.env.PORT || 3010;
@@ -290,9 +291,64 @@ app.post('/oid4vp/present-credential', async (req: Request, res: Response) => {
     let submission: any = null;
 
     if (isMsoMdoc) {
-        // mso_mdoc path: send the credential directly as vp_token (base64url/hex bytes)
-        vpToken = verifiable_credentials[0];
-        console.log('mso_mdoc presentation: sending credential directly as vp_token');
+        // mso_mdoc path: build a spec-compliant DeviceResponse (ISO 18013-5 §8.3.2.1)
+        // per OID4VP spec the vp_token for mso_mdoc MUST be a CBOR-encoded DeviceResponse:
+        //   DeviceResponse = { version: "1.0", documents: [Document], status: 0 }
+        //   Document       = { docType, issuerSigned: <IssuerSigned> }
+        const cred = verifiable_credentials[0] as string;
+        let rawCredBytes: Buffer;
+        if (/^[0-9a-fA-F]+$/.test(cred)) {
+            rawCredBytes = Buffer.from(cred, 'hex');
+        } else {
+            // base64url → Buffer
+            rawCredBytes = Buffer.from(cred.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+        }
+
+        // Decode the IssuerSigned CBOR
+        const issuerSignedObj = cborDecode(rawCredBytes) as any;
+
+        // Extract docType from the MSO inside the COSE_Sign1 payload
+        // COSE_Sign1 = [protected_bstr, unprotected_map, payload, signature_bstr]
+        // payload = Tag(24, mso_bstr) where Tag 24 = embedded CBOR data item
+        let docType = 'org.iso.18013.5.1.mDL';
+        try {
+            const issuerAuth = (issuerSignedObj instanceof Map)
+                ? issuerSignedObj.get('issuerAuth')
+                : issuerSignedObj['issuerAuth'];
+            const cosePayload = issuerAuth[2];
+            let msoBytes: Uint8Array | undefined;
+            if (
+                cosePayload !== null &&
+                typeof cosePayload === 'object' &&
+                'tag' in cosePayload &&
+                Number(cosePayload.tag) === 24
+            ) {
+                // cbor-x represents tagged values as { tag, value } objects
+                const tagValue = (cosePayload as any).value;
+                msoBytes = tagValue instanceof Uint8Array ? tagValue : Uint8Array.from(tagValue);
+            } else if (cosePayload instanceof Uint8Array) {
+                msoBytes = cosePayload;
+            } else if (Buffer.isBuffer(cosePayload)) {
+                msoBytes = Uint8Array.from(cosePayload as Buffer);
+            }
+            if (msoBytes) {
+                const mso = cborDecode(msoBytes) as any;
+                const dt = (mso instanceof Map) ? mso.get('docType') : mso['docType'];
+                if (typeof dt === 'string' && dt) docType = dt;
+            }
+        } catch (_e) {
+            console.warn('Could not extract docType from MSO, using fallback:', _e);
+        }
+
+        // Wrap IssuerSigned in a DeviceResponse
+        const deviceResponse = {
+            version: '1.0',
+            documents: [{ docType, issuerSigned: issuerSignedObj }],
+            status: 0,
+        };
+        const deviceResponseBytes = cborEncode(deviceResponse);
+        vpToken = Buffer.from(deviceResponseBytes).toString('base64url');
+        console.log(`mso_mdoc presentation: built DeviceResponse for docType=${docType}`);
 
         if (presentationDefinition) {
             const descriptorId = presentationDefinition.input_descriptors[0].id;
