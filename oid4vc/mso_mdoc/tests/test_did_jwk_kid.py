@@ -46,9 +46,7 @@ _HOLDER_JWK = {
 }
 # did:jwk encodes the JWK as a base64url value between "did:jwk:" and "#0".
 _JWK_IDENTIFIER = (
-    base64.urlsafe_b64encode(
-        json.dumps(_HOLDER_JWK, separators=(",", ":")).encode()
-    )
+    base64.urlsafe_b64encode(json.dumps(_HOLDER_JWK, separators=(",", ":")).encode())
     .rstrip(b"=")
     .decode()
 )
@@ -234,9 +232,7 @@ class TestDidJwkEndToEnd:
         proc = MsoMdocCredProcessor()
         result = proc._extract_device_key(_make_pop(holder_kid=did_key), _make_ex())
 
-        assert result == "keyref", (
-            f"did:key fragment handling regressed; got {result!r}"
-        )
+        assert result == "keyref", f"did:key fragment handling regressed; got {result!r}"
 
     def test_did_key_without_fragment_returns_full_did(self):
         """did:key without a fragment returns the whole DID string."""

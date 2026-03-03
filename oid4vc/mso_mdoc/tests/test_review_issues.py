@@ -50,9 +50,11 @@ _cred_proc_mock.PresVerifierError = type("PresVerifierError", (Exception,), {})
 _cred_proc_mock.VerifyResult = type(
     "VerifyResult",
     (),
-    {"__init__": lambda self, verified, payload=None: (
-        setattr(self, "verified", verified) or setattr(self, "payload", payload)
-    )},
+    {
+        "__init__": lambda self, verified, payload=None: (
+            setattr(self, "verified", verified) or setattr(self, "payload", payload)
+        )
+    },
 )
 _cred_proc_mock.Issuer = object
 _cred_proc_mock.CredVerifier = object
@@ -89,6 +91,7 @@ from ..cred_processor import MsoMdocCredProcessor  # noqa: E402
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def make_mock_profile():
     """Return a mock Profile with an async session context manager."""
@@ -197,9 +200,7 @@ class TestCrit1TrustAnchorRegistryNotNone:
 
             call_args = mock_iso.verify_oid4vp_response.call_args
             registry_arg = call_args[0][4]
-            assert registry_arg == [], (
-                f"Expected empty list [], got {registry_arg!r}."
-            )
+            assert registry_arg == [], f"Expected empty list [], got {registry_arg!r}."
 
 
 class TestCrit4TrustAnchorsNotNoneCredVerifier:
@@ -291,15 +292,14 @@ class TestCrit2HolderKidIssuance:
         ex = self._make_ex_record()
         result = proc._extract_device_key(pop, ex)
         import json
+
         assert json.loads(result) == jwk
 
     def test_no_holder_key_falls_back_to_verification_method(self):
         """When holder_jwk and holder_kid are absent, verification_method is used."""
         proc = MsoMdocCredProcessor()
         pop = self._make_pop()
-        ex = self._make_ex_record(
-            verification_method="did:key:z6Mk#vm-fragment"
-        )
+        ex = self._make_ex_record(verification_method="did:key:z6Mk#vm-fragment")
         result = proc._extract_device_key(pop, ex)
         assert result == "vm-fragment"
 
@@ -381,7 +381,9 @@ class TestMin6WalletTrustStoreNoDeadSyncFallback:
         """After _cached_anchors is set, get_trust_anchors() returns it."""
         profile = MagicMock()
         store = WalletTrustStore(profile)
-        store._cached_anchors = ["-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----"]
+        store._cached_anchors = [
+            "-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----"
+        ]
 
         result = store.get_trust_anchors()
         assert result == store._cached_anchors
@@ -460,15 +462,13 @@ class TestMaj5StoreCertificateRaisesOnFailure:
         with patch("mso_mdoc.storage.certificates.get_storage") as mock_get_storage:
             mock_storage = MagicMock()
             mock_storage.add_record = AsyncMock(
-                side_effect=sys.modules[
-                    "acapy_agent.storage.error"
-                ].StorageError("disk full")
+                side_effect=sys.modules["acapy_agent.storage.error"].StorageError(
+                    "disk full"
+                )
             )
             mock_get_storage.return_value = mock_storage
 
-            with pytest.raises(
-                sys.modules["acapy_agent.storage.error"].StorageError
-            ):
+            with pytest.raises(sys.modules["acapy_agent.storage.error"].StorageError):
                 await store_certificate(
                     mock_session,
                     cert_id="cert-001",
@@ -521,9 +521,7 @@ class TestMin8ConfigStorageDuplicateError:
         with patch("mso_mdoc.storage.config.get_storage") as mock_get_storage:
             mock_storage = MagicMock()
             mock_storage.add_record = AsyncMock(side_effect=StorageDuplicateError())
-            mock_storage.update_record = AsyncMock(
-                side_effect=StorageError("db gone")
-            )
+            mock_storage.update_record = AsyncMock(side_effect=StorageError("db gone"))
             mock_get_storage.return_value = mock_storage
 
             with pytest.raises(StorageError):
@@ -551,9 +549,7 @@ class TestMin5PayloadFlatteningDebugLog:
         assert "given_name" in result
         assert doctype not in result
         # Ensure a debug log was emitted about the flattening
-        flattening_logs = [
-            r for r in caplog.records if "flatten" in r.message.lower()
-        ]
+        flattening_logs = [r for r in caplog.records if "flatten" in r.message.lower()]
         assert flattening_logs, "Expected a debug log about doctype flattening"
 
     def test_no_overwrite_when_keys_conflict(self):

@@ -272,9 +272,7 @@ class MdocStorageManager:
 
                     parsed = _cx509.load_pem_x509_certificate(cert_pem.encode())
                     return (
-                        parsed.not_valid_before_utc
-                        <= now
-                        <= parsed.not_valid_after_utc
+                        parsed.not_valid_before_utc <= now <= parsed.not_valid_after_utc
                     )
                 except Exception:
                     LOGGER.debug(
@@ -290,20 +288,14 @@ class MdocStorageManager:
                     "Certificate %s has no valid_from metadata; assuming valid",
                     cert.get("cert_id"),
                 )
-            valid_from = datetime.fromisoformat(
-                meta.get("valid_from", now.isoformat())
-            )
-            valid_to = datetime.fromisoformat(
-                meta.get("valid_to", now.isoformat())
-            )
+            valid_from = datetime.fromisoformat(meta.get("valid_from", now.isoformat()))
+            valid_to = datetime.fromisoformat(meta.get("valid_to", now.isoformat()))
             return valid_from <= now <= valid_to
 
         cfg = await config.get_config(session, "default_certificate")
         if not cfg:
             # Try to auto-select first available certificate
-            cert_list = await certificates.list_certificates(
-                session, include_pem=True
-            )
+            cert_list = await certificates.list_certificates(session, include_pem=True)
             if cert_list:
                 default_cert = cert_list[0]
                 if _is_valid(default_cert):
