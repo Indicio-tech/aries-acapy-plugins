@@ -287,16 +287,23 @@ async def handle_proof_of_posession(
     if "kid" in headers:
         try:
             key = await key_material_for_kid(profile, headers["kid"])
-        except ValueError as exc:
-            raise web.HTTPBadRequest(
-                text=json.dumps(
-                    {
-                        "error": "invalid_proof",
-                        "error_description": "invalid kid in proof",
-                    }
-                ),
-                content_type="application/json",
-            ) from exc
+        except ValueError:
+            # kid is not a DID URL (e.g. a raw key fingerprint sent by walt.id).
+            # The wallet may also include the full JWK in the header — try that
+            # before rejecting the proof.  This matches OID4VCI 1.0 § 7.2.2
+            # which allows "kid" + "jwk" together in the proof header.
+            if "jwk" in headers:
+                key = Key.from_jwk(headers["jwk"])
+            else:
+                raise web.HTTPBadRequest(
+                    text=json.dumps(
+                        {
+                            "error": "invalid_proof",
+                            "error_description": "invalid kid in proof",
+                        }
+                    ),
+                    content_type="application/json",
+                )
     elif "jwk" in headers:
         key = Key.from_jwk(headers["jwk"])
     elif "x5c" in headers:
