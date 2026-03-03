@@ -6,7 +6,7 @@ used to verify mDoc issuer certificate chains during credential verification.
 
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 
 from acapy_agent.core.profile import ProfileSession
@@ -52,7 +52,7 @@ async def store_trust_anchor(
 
     record_data = {
         "certificate_pem": certificate_pem,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "metadata": metadata or {},
     }
 

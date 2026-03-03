@@ -102,7 +102,20 @@ async def list_keys(request: web.BaseRequest):
     try:
         async with context.profile.session() as session:
             keys = await storage_manager.list_keys(session)
-        # Remove sensitive private key data from response
+        # Remove sensitive key material from response.  The metadata dict may
+        # contain private_key_pem / public_key_pem from store_signing_key(), and
+        # the raw JWK (including the 'd' parameter) under both 'jwk' and metadata
+        # keys.  Explicitly allowlist safe fields rather than trying to blocklist.
+        _SAFE_METADATA_KEYS = {
+            "verification_method",
+            "key_id",
+            "key_type",
+            "curve",
+            "purpose",
+            "is_default",
+            "generated_on_demand",
+            "static",
+        }
         safe_keys = []
         for key in keys:
             safe_key = {
@@ -110,7 +123,9 @@ async def list_keys(request: web.BaseRequest):
                 "key_type": key.get("key_type", "ES256"),  # Default to ES256 if not set
                 "created_at": key.get("created_at"),
                 "metadata": {
-                    k: v for k, v in key.get("metadata", {}).items() if k != "jwk"
+                    k: v
+                    for k, v in key.get("metadata", {}).items()
+                    if k in _SAFE_METADATA_KEYS
                 },
             }
             safe_keys.append(safe_key)

@@ -10,7 +10,7 @@ from typing import Dict, Optional
 
 from acapy_agent.core.profile import ProfileSession
 from acapy_agent.storage.base import StorageRecord
-from acapy_agent.storage.error import StorageError
+from acapy_agent.storage.error import StorageDuplicateError, StorageError
 
 from .base import MDOC_CONFIG_RECORD_TYPE, get_storage
 
@@ -35,17 +35,9 @@ async def store_config(
 
     try:
         await storage.add_record(record)
-    except StorageError:
-        # Record might exist, try updating
-        try:
-            await storage.update_record(record, record.value, record.tags)
-        except StorageError as update_error:
-            LOGGER.error(
-                "Failed to store/update config %s: %s",
-                config_id,
-                update_error,
-            )
-            raise
+    except StorageDuplicateError:
+        # Record already exists — update in place
+        await storage.update_record(record, record.value, record.tags)
 
     LOGGER.info("Stored mDoc config: %s", config_id)
 

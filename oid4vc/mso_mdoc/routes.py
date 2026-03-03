@@ -13,7 +13,7 @@ Protocol Compliance:
 
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.messaging.models.openapi import OpenAPISchema
@@ -22,7 +22,7 @@ from aiohttp import web
 from aiohttp_apispec import docs, request_schema, response_schema
 from marshmallow import fields
 
-from .cred_processor import resolve_signing_key_for_credential
+from .cred_processor import MsoMdocCredProcessor
 from .key_generation import generate_self_signed_certificate
 from .key_routes import register_key_management_routes
 from .mdoc import isomdl_mdoc_sign
@@ -162,52 +162,17 @@ async def mdoc_sign(request: web.BaseRequest):
     payload = body.get("payload", {})
 
     try:
-        # Get storage manager for key lookup and use session for storage operations
+        # Delegate key resolution entirely to the credential processor, which
+        # handles env-var static keys, verification-method lookup, default-key
+        # fallback, and on-demand generation — avoiding duplicated logic.
+        processor = MsoMdocCredProcessor()
         storage_manager = MdocStorageManager(context.profile)
 
         async with context.profile.session() as session:
-            jwk = None
-            key_data = None
-
-            if verification_method:
-                # Try to get signing key by verification method
-                key_data = await storage_manager.get_signing_key(
-                    session, verification_method=verification_method
-                )
-                if key_data and key_data.get("jwk"):
-                    jwk = key_data["jwk"]
-                    LOGGER.info(
-                        "Using signing key for verification method: %s",
-                        verification_method,
-                    )
-
-            if not jwk:
-                # Fall back to default signing key
-                key_data = await storage_manager.get_default_signing_key(session)
-                if key_data and key_data.get("jwk"):
-                    jwk = key_data["jwk"]
-                    LOGGER.info("Using default signing key for mDoc signing")
-                elif verification_method:
-                    # Generate and resolve verification method if needed
-                    jwk = await resolve_signing_key_for_credential(
-                        context.profile,
-                        session,
-                        verification_method=verification_method,
-                    )
-                    # Re-fetch key data to get PEMs
-                    key_data = await storage_manager.get_signing_key(
-                        session, verification_method=verification_method
-                    )
-                    LOGGER.info("Generated new signing key for verification method")
-                else:
-                    raise ValueError(
-                        "No signing key available and no verification method provided"
-                    )
-
-            if not jwk or not key_data:
-                raise ValueError("Failed to obtain signing key")
-
-            # Extract key material
+            key_data = await processor._resolve_signing_key(
+                context, session, verification_method
+            )
+            signing_jwk = key_data.get("jwk")
             key_id = key_data.get("key_id")
             private_key_pem = key_data.get("metadata", {}).get("private_key_pem")
 
@@ -234,13 +199,13 @@ async def mdoc_sign(request: web.BaseRequest):
                         "self_signed": True,
                         "purpose": "mdoc_issuing",
                         "generated_on_demand": True,
-                        "valid_from": datetime.now().isoformat(),
-                        "valid_to": (datetime.now() + timedelta(days=365)).isoformat(),
+                        "valid_from": datetime.now(UTC).isoformat(),
+                        "valid_to": (datetime.now(UTC) + timedelta(days=365)).isoformat(),
                     },
                 )
 
         mso_mdoc = isomdl_mdoc_sign(
-            jwk, headers, payload, certificate_pem, private_key_pem
+            signing_jwk, headers, payload, certificate_pem, private_key_pem
         )
     except ValueError as err:
         raise web.HTTPBadRequest(reason=str(err)) from err
@@ -279,11 +244,19 @@ async def mdoc_verify(request: web.BaseRequest):
                 CBOR-encoded mDoc per ISO 18013-5 § 8.3 and OID4VCI 1.0 § E.1.1
             }
     """
+    context: AdminRequestContext = request["context"]
     body = await request.json()
     mso_mdoc = body["mso_mdoc"]
     try:
-        # Use new mdoc_verify function (sync, no profile needed)
-        result = mso_mdoc_verify(mso_mdoc)
+        # Load configured trust anchors from the wallet so verification is
+        # authenticated against the known trust chain.  Without this, the
+        # endpoint always accepts any self-signed issuer certificate, which
+        # defeats the purpose of having a trust store.
+        storage_manager = MdocStorageManager(context.profile)
+        async with context.profile.session() as session:
+            trust_anchor_pems = await storage_manager.get_all_trust_anchor_pems(session)
+
+        result = mso_mdoc_verify(mso_mdoc, trust_anchors=trust_anchor_pems or None)
     except ValueError as err:
         raise web.HTTPBadRequest(reason=str(err)) from err
     except Exception as err:

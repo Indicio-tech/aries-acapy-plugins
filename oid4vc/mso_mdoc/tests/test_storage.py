@@ -1,7 +1,7 @@
 """Unit tests for MdocStorageManager."""
 
 import json
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -337,7 +337,7 @@ async def test_get_signing_key_matches_verification_method_fragment(
 async def test_get_default_certificate_returns_configured_certificate(
     storage_manager, session, storage
 ):
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     cert_data = {
         "certificate_pem": "pem-data",
         "key_id": "key-1",

@@ -88,7 +88,12 @@ def _prepare_generic_namespaces(doctype: str, payload: Mapping[str, Any]) -> dic
 def _patch_mdoc_keys(mdoc_b64: str) -> str:
     """Patch mdoc CBOR keys to match ISO 18013-5 spec.
 
-    Fixes key naming: issuer_auth -> issuerAuth, namespaces -> nameSpaces
+    Fixes key naming: issuer_auth -> issuerAuth, namespaces -> nameSpaces.
+
+    .. note::
+       This is a workaround for isomdl-uniffi emitting snake_case keys
+       instead of the camelCase required by ISO 18013-5 § 8.3.
+       TODO: Remove once upstream isomdl-uniffi is updated.
 
     Args:
         mdoc_b64: Base64url-encoded mdoc
@@ -174,9 +179,9 @@ def isomdl_mdoc_sign(
         doctype = headers.get("doctype")
         holder_jwk = json.dumps(jwk)
 
-        LOGGER.info(f"holder_jwk: {holder_jwk}")
-        LOGGER.info(f"iaca_cert_pem length: {len(iaca_cert_pem)}")
-        LOGGER.info(f"iaca_key_pem length: {len(iaca_key_pem)}")
+        LOGGER.debug("holder_jwk: %s", holder_jwk)
+        LOGGER.debug("iaca_cert_pem length: %d", len(iaca_cert_pem))
+        LOGGER.debug("iaca_key_pem length: %d", len(iaca_key_pem))
 
         # If iaca_cert_pem contains a chain (multiple PEM blocks), Rust's
         # x509_cert crate only reads the first certificate and silently drops
@@ -196,7 +201,7 @@ def isomdl_mdoc_sign(
         else:
             namespaces = _prepare_generic_namespaces(doctype, payload)
 
-        LOGGER.info(f"Creating mdoc with namespaces: {list(namespaces.keys())}")
+        LOGGER.info("Creating mdoc with namespaces: %s", list(namespaces.keys()))
 
         mdoc = Mdoc.create_and_sign(
             doctype,
@@ -213,7 +218,7 @@ def isomdl_mdoc_sign(
         try:
             return _patch_mdoc_keys(mdoc_b64)
         except Exception as e:
-            LOGGER.warning(f"Failed to patch mdoc keys: {e}")
+            LOGGER.warning("Failed to patch mdoc keys: %s", e)
             return mdoc_b64
 
     except Exception as ex:

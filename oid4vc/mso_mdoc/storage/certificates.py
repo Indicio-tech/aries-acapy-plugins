@@ -6,7 +6,7 @@ mDoc issuer authentication following ISO/IEC 18013-5:2021 § 7.2.4.
 
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Dict, List, Optional, Tuple
 
 from acapy_agent.core.profile import ProfileSession
@@ -25,21 +25,18 @@ async def store_certificate(
     key_id: str,
     metadata: Optional[Dict] = None,
 ) -> None:
-    """Store a PEM certificate."""
-    try:
-        storage = get_storage(session)
-    except Exception as e:
-        LOGGER.warning(
-            "Storage not available for storing certificate %s: %s",
-            cert_id,
-            e,
-        )
-        return
+    """Store a PEM certificate.
+
+    Raises:
+        StorageError: If the storage backend is unavailable or the
+            record cannot be persisted.
+    """
+    storage = get_storage(session)
 
     record_data = {
         "certificate_pem": certificate_pem,
         "key_id": key_id,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "metadata": metadata or {},
     }
 

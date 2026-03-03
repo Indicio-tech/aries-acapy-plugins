@@ -18,7 +18,8 @@ Storage Types:
 - Device authentication public keys
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
+import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from acapy_agent.core.profile import Profile, ProfileSession
@@ -34,6 +35,8 @@ from .base import (
     MDOC_TRUST_ANCHOR_RECORD_TYPE,
     get_storage,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 __all__ = [
     "MdocStorageManager",
@@ -258,19 +261,49 @@ class MdocStorageManager:
         """Get the default certificate."""
 
         def _is_valid(cert: Dict[str, Any]) -> bool:
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
+            # Prefer validating against actual X.509 notBefore/notAfter fields
+            # rather than application-level metadata, which may be stale or
+            # missing.  Fall back to metadata timestamps when the PEM is absent.
+            cert_pem = cert.get("certificate_pem")
+            if cert_pem:
+                try:
+                    from cryptography import x509 as _cx509
+
+                    parsed = _cx509.load_pem_x509_certificate(cert_pem.encode())
+                    return (
+                        parsed.not_valid_before_utc
+                        <= now
+                        <= parsed.not_valid_after_utc
+                    )
+                except Exception:
+                    LOGGER.debug(
+                        "Could not parse certificate PEM for cert %s; "
+                        "falling back to metadata timestamps",
+                        cert.get("cert_id"),
+                    )
+            # Metadata fallback: missing timestamps default to now, making the
+            # window [now, now] which is treated as valid and logged as a warning.
+            meta = cert.get("metadata", {})
+            if not meta.get("valid_from"):
+                LOGGER.debug(
+                    "Certificate %s has no valid_from metadata; assuming valid",
+                    cert.get("cert_id"),
+                )
             valid_from = datetime.fromisoformat(
-                cert.get("metadata", {}).get("valid_from", now.isoformat())
+                meta.get("valid_from", now.isoformat())
             )
             valid_to = datetime.fromisoformat(
-                cert.get("metadata", {}).get("valid_to", now.isoformat())
+                meta.get("valid_to", now.isoformat())
             )
             return valid_from <= now <= valid_to
 
         cfg = await config.get_config(session, "default_certificate")
         if not cfg:
             # Try to auto-select first available certificate
-            cert_list = await certificates.list_certificates(session)
+            cert_list = await certificates.list_certificates(
+                session, include_pem=True
+            )
             if cert_list:
                 default_cert = cert_list[0]
                 if _is_valid(default_cert):
@@ -286,7 +319,7 @@ class MdocStorageManager:
         if not cert_id:
             return None
 
-        cert_list = await certificates.list_certificates(session)
+        cert_list = await certificates.list_certificates(session, include_pem=True)
         for certificate in cert_list:
             if certificate["cert_id"] == cert_id and _is_valid(certificate):
                 return certificate

@@ -12,14 +12,14 @@ Key Protocol Compliance:
 - RFC 8949 - Concise Binary Object Representation (CBOR)
 """
 
-import ast
 import base64
+import codecs
 import json
 import logging
 import os
 import re
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, Optional
 
 from acapy_agent.admin.request_context import AdminRequestContext
@@ -235,7 +235,34 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             # If a DID with fragment, prefer fragment (key id); otherwise raw string
             m = re.match(r"did:(.+?):(.+?)(?:#(.*))?$", device_candidate)
             if m:
-                return m.group(3) if m.group(3) else device_candidate
+                method = m.group(1)
+                identifier = m.group(2)
+                fragment = m.group(3)
+
+                if method == "jwk":
+                    # did:jwk encodes the holder's public JWK as a base64url
+                    # value in the DID identifier itself (i.e. between
+                    # "did:jwk:" and "#0").  ACA-Py uses this method natively
+                    # when a wallet generates ephemeral keys.
+                    #
+                    # Without special handling the generic DID regex returns
+                    # only the fragment "0", and json.loads("0") silently
+                    # produces the integer 0 — which the Rust isomdl library
+                    # then receives as the holder key, causing an opaque
+                    # failure with no hint that the root cause is a
+                    # mis-parsed DID method.
+                    try:
+                        # Base64url may be missing padding — add it back.
+                        padding = "=" * (-len(identifier) % 4)
+                        jwk_bytes = base64.urlsafe_b64decode(identifier + padding)
+                        return jwk_bytes.decode("utf-8")
+                    except Exception as exc:
+                        raise CredProcessorError(
+                            f"Invalid did:jwk identifier — could not decode "
+                            f"embedded JWK from '{device_candidate}': {exc}"
+                        ) from exc
+
+                return fragment if fragment else device_candidate
             else:
                 return device_candidate
 
@@ -418,9 +445,9 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                             "self_signed": True,
                             "purpose": "mdoc_issuing",
                             "generated_on_demand": True,
-                            "valid_from": datetime.now().isoformat(),
+                            "valid_from": datetime.now(UTC).isoformat(),
                             "valid_to": (
-                                datetime.now() + timedelta(days=365)
+                                datetime.now(UTC) + timedelta(days=365)
                             ).isoformat(),
                         },
                     )
@@ -431,14 +458,29 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             if not certificate_pem:
                 raise CredProcessorError("Certificate PEM not found for signing key")
 
-            if not pop.holder_jwk:
-                raise CredProcessorError("Holder JWK not found in proof of possession")
+            if not device_key_str and not pop.holder_jwk:
+                raise CredProcessorError(
+                    "No device key available: provide holder_jwk, "
+                    "holder_kid, or verification_method"
+                )
 
             # Clean up JWK for isomdl (remove extra fields like kid, alg, use)
-            # isomdl seems to reject alg and use fields in the holder JWK
-            holder_jwk_clean = {
-                k: v for k, v in pop.holder_jwk.items() if k in ["kty", "crv", "x", "y"]
-            }
+            # isomdl rejects alg and use fields in the holder JWK
+            if pop.holder_jwk and isinstance(pop.holder_jwk, dict):
+                if pop.holder_jwk.get("kty") != "EC":
+                    raise CredProcessorError(
+                        "mso_mdoc requires an EC holder key, "
+                        f"got kty={pop.holder_jwk.get('kty')}"
+                    )
+                holder_jwk_clean = {
+                    k: v
+                    for k, v in pop.holder_jwk.items()
+                    if k in ["kty", "crv", "x", "y"]
+                }
+            else:
+                # Fallback: build a minimal JWK placeholder from device_key_str
+                # The Rust library needs a JWK dict for the holder key binding
+                holder_jwk_clean = None
 
             # Issue mDoc using isomdl-uniffi library with ISO 18013-5 compliance
             LOGGER.debug(
@@ -447,8 +489,30 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                 headers,
                 (list(payload.keys()) if isinstance(payload, dict) else type(payload)),
             )
+            # Use cleaned JWK if available, otherwise fall back to
+            # the device key extracted from holder_kid / verification_method.
+            # isomdl_mdoc_sign expects a dict-like JWK.
+            signing_holder_key = holder_jwk_clean
+            if signing_holder_key is None and device_key_str:
+                try:
+                    signing_holder_key = json.loads(device_key_str)
+                except (json.JSONDecodeError, TypeError):
+                    # device_key_str is a key-id, not a JWK —
+                    # cannot bind holder key without a JWK.
+                    raise CredProcessorError(
+                        "Holder key identifier provided but a full "
+                        "EC JWK is required for mso_mdoc device "
+                        "key binding. Provide holder_jwk in the "
+                        "proof of possession."
+                    )
+
+            if signing_holder_key is None:
+                raise CredProcessorError(
+                    "Unable to resolve a holder JWK for device key binding."
+                )
+
             mso_mdoc = isomdl_mdoc_sign(
-                holder_jwk_clean, headers, payload, certificate_pem, private_key_pem
+                signing_holder_key, headers, payload, certificate_pem, private_key_pem
             )
 
             # Normalize mDoc result handling for robust string/bytes processing
@@ -482,6 +546,22 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
         if doctype and doctype in prepared:
             doctype_claims = prepared.pop(doctype)
             if isinstance(doctype_claims, dict):
+                # Warn if flattening would silently overwrite existing top-level
+                # keys — callers should not mix namespaced and flat claims for
+                # the same fields.
+                conflicts = set(doctype_claims.keys()) & set(prepared.keys())
+                if conflicts:
+                    LOGGER.warning(
+                        "Payload namespace flattening for doctype '%s': "
+                        "top-level keys %s will be overwritten by doctype claims",
+                        doctype,
+                        sorted(conflicts),
+                    )
+                LOGGER.debug(
+                    "Flattening doctype wrapper '%s' (%d claims) into top-level payload",
+                    doctype,
+                    len(doctype_claims),
+                )
                 prepared.update(doctype_claims)
 
         # Encode portrait if present
@@ -538,19 +618,16 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             # Remove b' prefix and ' suffix if present
             if result.startswith("b'") and result.endswith("'"):
                 cleaned = result[2:-1]
-                # Handle escaped quotes and other characters
                 try:
-                    # Use literal_eval to safely parse escape sequences
-                    return ast.literal_eval(f"'{cleaned}'")
-                except (ValueError, SyntaxError):
-                    # Fallback to simple string cleanup
+                    return codecs.decode(cleaned, "unicode_escape")
+                except (ValueError, UnicodeDecodeError):
                     return cleaned
             # Remove b" prefix and " suffix if present
             elif result.startswith('b"') and result.endswith('"'):
                 cleaned = result[2:-1]
                 try:
-                    return ast.literal_eval(f'"{cleaned}"')
-                except (ValueError, SyntaxError):
+                    return codecs.decode(cleaned, "unicode_escape")
+                except (ValueError, UnicodeDecodeError):
                     return cleaned
             else:
                 return result

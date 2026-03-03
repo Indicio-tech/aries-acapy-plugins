@@ -1,6 +1,5 @@
 """Mdoc Verifier implementation using isomdl-uniffi."""
 
-import asyncio
 import base64
 import json
 import logging
@@ -96,7 +95,7 @@ class FileTrustStore:
         """Retrieve trust anchors from the directory."""
         anchors = []
         if not os.path.isdir(self.path):
-            LOGGER.warning(f"Trust store path {self.path} is not a directory.")
+            LOGGER.warning("Trust store path %s is not a directory.", self.path)
             return anchors
 
         for filename in os.listdir(self.path):
@@ -105,7 +104,7 @@ class FileTrustStore:
                     with open(os.path.join(self.path, filename), "r") as f:
                         anchors.append(f.read())
                 except Exception as e:
-                    LOGGER.warning(f"Failed to read trust anchor {filename}: {e}")
+                    LOGGER.warning("Failed to read trust anchor %s: %s", filename, e)
         return anchors
 
 
@@ -129,41 +128,26 @@ class WalletTrustStore:
     def get_trust_anchors(self) -> List[str]:
         """Retrieve trust anchors from wallet storage.
 
-        Note: This method is synchronous to match the TrustStore protocol,
-        but internally runs an async operation. The cache helps minimize
-        repeated async calls during verification.
+        This method is synchronous to satisfy the TrustStore protocol
+        expected by the isomdl-uniffi Rust layer.  The cache **must**
+        be populated by ``await refresh_cache()`` before calling this
+        method (all ACA-Py verification paths do this).
 
         Returns:
             List of PEM-encoded trust anchor certificates
 
         Raises:
-            RuntimeError: If called from async context without cache.
-                Call refresh_cache() before verification operations.
+            RuntimeError: If called before ``refresh_cache()`` has been
+                awaited.  Always call ``await refresh_cache()`` before
+                any verification operation.
         """
-        # Use cached value if available
         if self._cached_anchors is not None:
             return self._cached_anchors
 
-        # Run async retrieval synchronously
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # We're in an async context - cache must be populated first
-                raise RuntimeError(
-                    "WalletTrustStore.get_trust_anchors called from async context "
-                    "without cache. Call await refresh_cache() before verification."
-                )
-            else:
-                self._cached_anchors = loop.run_until_complete(
-                    self._fetch_trust_anchors()
-                )
-        except RuntimeError as e:
-            if "async context" in str(e):
-                raise  # Re-raise our custom error
-            # No event loop, create one
-            self._cached_anchors = asyncio.run(self._fetch_trust_anchors())
-
-        return self._cached_anchors or []
+        raise RuntimeError(
+            "WalletTrustStore.get_trust_anchors() called before cache was "
+            "populated.  Always await refresh_cache() before verification."
+        )
 
     async def refresh_cache(self) -> List[str]:
         """Refresh the cached trust anchors from wallet storage.
@@ -231,7 +215,7 @@ def _parse_string_credential(credential: str) -> tuple[Optional[Any], Optional[s
             return isomdl_uniffi.Mdoc.from_string(credential), None
     except Exception as hex_err:
         last_error = str(hex_err)
-        LOGGER.debug(f"Hex parsing failed: {hex_err}")
+        LOGGER.debug("Hex parsing failed: %s", hex_err)
 
     # Try base64url-encoded IssuerSigned
     try:
@@ -242,7 +226,7 @@ def _parse_string_credential(credential: str) -> tuple[Optional[Any], Optional[s
         return mdoc, None
     except Exception as issuer_signed_err:
         last_error = str(issuer_signed_err)
-        LOGGER.debug(f"IssuerSigned parsing failed: {issuer_signed_err}")
+        LOGGER.debug("IssuerSigned parsing failed: %s", issuer_signed_err)
 
     # Try base64url decoding to hex, then DeviceResponse parsing
     try:
@@ -257,7 +241,7 @@ def _parse_string_credential(credential: str) -> tuple[Optional[Any], Optional[s
         return isomdl_uniffi.Mdoc.from_string(decoded_bytes.hex()), None
     except Exception as b64_err:
         last_error = str(b64_err)
-        LOGGER.debug(f"Base64 parsing failed: {b64_err}")
+        LOGGER.debug("Base64 parsing failed: %s", b64_err)
 
     # Last resort: try direct string parsing
     try:
@@ -265,8 +249,6 @@ def _parse_string_credential(credential: str) -> tuple[Optional[Any], Optional[s
     except Exception as final_err:
         last_error = str(final_err)
         return None, last_error
-
-    return None, last_error
 
 
 def _extract_mdoc_claims(mdoc: Any) -> dict:
@@ -281,7 +263,7 @@ def _extract_mdoc_claims(mdoc: Any) -> dict:
     claims = {}
     try:
         details = mdoc.details()
-        LOGGER.debug(f"mdoc details keys: {list(details.keys())}")
+        LOGGER.debug("mdoc details keys: %s", list(details.keys()))
         for namespace, elements in details.items():
             ns_claims = {}
             for element in elements:
@@ -294,7 +276,7 @@ def _extract_mdoc_claims(mdoc: Any) -> dict:
                     ns_claims[element.identifier] = None
             claims[namespace] = ns_claims
     except Exception as e:
-        LOGGER.warning(f"Failed to extract claims from mdoc: {e}")
+        LOGGER.warning("Failed to extract claims from mdoc: %s", e)
     return claims
 
 
@@ -353,7 +335,7 @@ class MsoMdocCredVerifier(CredVerifier):
                 await self.trust_store.refresh_cache()
 
             trust_anchors = (
-                self.trust_store.get_trust_anchors() if self.trust_store else None
+                self.trust_store.get_trust_anchors() if self.trust_store else []
             )
 
             # Flatten any concatenated PEM chains into individual cert PEMs.
@@ -376,7 +358,7 @@ class MsoMdocCredVerifier(CredVerifier):
                         "issuer_common_name": verification_result.common_name,
                     }
                     payload.update(claims)
-                    LOGGER.debug(f"Mdoc Payload: {json.dumps(payload)}")
+                    LOGGER.debug("Mdoc Payload: %s", json.dumps(payload))
                     return VerifyResult(verified=True, payload=payload)
                 else:
                     return VerifyResult(
@@ -389,7 +371,7 @@ class MsoMdocCredVerifier(CredVerifier):
                         },
                     )
             except isomdl_uniffi.MdocVerificationError as e:
-                LOGGER.error(f"Issuer signature verification failed: {e}")
+                LOGGER.error("Issuer signature verification failed: %s", e)
                 return VerifyResult(
                     verified=False,
                     payload={
@@ -400,7 +382,7 @@ class MsoMdocCredVerifier(CredVerifier):
                 )
 
         except Exception as e:
-            LOGGER.error(f"Failed to parse mdoc credential: {e}")
+            LOGGER.error("Failed to parse mdoc credential: %s", e)
             return VerifyResult(verified=False, payload={"error": str(e)})
 
 
@@ -499,7 +481,7 @@ def _verify_single_presentation(
     client_id: str,
     response_uri: str,
     trust_anchor_registry: List[str],
-) -> Optional[dict]:
+) -> Any:
     """Verify a single OID4VP presentation.
 
     Args:
@@ -513,13 +495,14 @@ def _verify_single_presentation(
     Returns:
         Verified payload dict if successful, None if failed
     """
-    LOGGER.info(
-        f"DEBUG: Calling verify_oid4vp_response with:\n"
-        f"  nonce={nonce}\n"
-        f"  client_id={client_id}\n"
-        f"  response_uri={response_uri}\n"
-        f"  response_bytes_len={len(response_bytes)}\n"
-        f"  response_bytes_hex={response_bytes[:50].hex()}..."
+    LOGGER.debug(
+        "Calling verify_oid4vp_response with: "
+        "nonce=%s client_id=%s response_uri=%s "
+        "response_bytes_len=%d",
+        nonce,
+        client_id,
+        response_uri,
+        len(response_bytes),
     )
 
     # Try spec-compliant format (2024) first
@@ -605,28 +588,28 @@ class MsoMdocPresVerifier(PresVerifier):
             trust_anchors = (
                 self.trust_store.get_trust_anchors() if self.trust_store else []
             )
-            LOGGER.info(
+            LOGGER.debug(
                 "Trust anchors loaded: %d cert(s)",
                 len(trust_anchors) if trust_anchors else 0,
             )
             for i, pem in enumerate(trust_anchors or []):
                 pem_stripped = pem.strip() if pem else ""
-                LOGGER.info(
-                    "Trust anchor %d: len=%d first80=%r last20=%r",
+                LOGGER.debug(
+                    "Trust anchor %d: len=%d",
                     i,
                     len(pem_stripped),
-                    pem_stripped[:80],
-                    pem_stripped[-20:],
                 )
-                # Validate that the PEM is parseable by Python before passing to Rust
+                # Validate that the PEM is parseable by Python before
+                # passing to Rust
                 try:
                     from cryptography import x509 as _x509
 
                     _x509.load_pem_x509_certificate(pem_stripped.encode())
-                    LOGGER.info("Trust anchor %d: Python PEM validation OK", i)
                 except Exception as pem_err:
                     LOGGER.error(
-                        "Trust anchor %d: Python PEM validation FAILED: %s", i, pem_err
+                        "Trust anchor %d: PEM validation FAILED: %s",
+                        i,
+                        pem_err,
                     )
 
             # Flatten concatenated PEM chains into individual certs BEFORE
@@ -635,7 +618,7 @@ class MsoMdocPresVerifier(PresVerifier):
             # are silently dropped, breaking trust-anchor validation.
             if trust_anchors:
                 trust_anchors = flatten_trust_anchors(trust_anchors)
-                LOGGER.info(
+                LOGGER.debug(
                     "Trust anchors after chain-splitting: %d individual cert(s)",
                     len(trust_anchors),
                 )
@@ -649,10 +632,10 @@ class MsoMdocPresVerifier(PresVerifier):
                     for pem in trust_anchors
                 ]
                 if trust_anchors
-                else None
+                else []
             )
             if trust_anchor_registry:
-                LOGGER.info(
+                LOGGER.debug(
                     "trust_anchor_registry[0] first100: %r",
                     trust_anchor_registry[0][:100],
                 )
@@ -670,11 +653,10 @@ class MsoMdocPresVerifier(PresVerifier):
             verified_payloads = []
 
             for pres_item in presentations_to_verify:
-                pres_preview = str(pres_item)[:100] if pres_item else "None"
-                LOGGER.info(
-                    f"DEBUG: vp_token type={type(pres_item).__name__}, "
-                    f"len={len(pres_item) if hasattr(pres_item, '__len__') else 'N/A'}, "
-                    f"preview={pres_preview}..."
+                LOGGER.debug(
+                    "vp_token type=%s len=%s",
+                    type(pres_item).__name__,
+                    len(pres_item) if hasattr(pres_item, "__len__") else "N/A",
                 )
 
                 response_bytes = _decode_presentation_bytes(pres_item)
@@ -712,7 +694,7 @@ class MsoMdocPresVerifier(PresVerifier):
                     try:
                         claims = extract_verified_claims(verified_data.verified_response)
                     except Exception as e:
-                        LOGGER.warning(f"Failed to extract claims: {e}")
+                        LOGGER.warning("Failed to extract claims: %s", e)
                         claims = {}
 
                     payload = {
