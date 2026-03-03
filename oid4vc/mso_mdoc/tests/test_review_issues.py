@@ -80,7 +80,6 @@ from ..mdoc.verifier import (  # noqa: E402
     FileTrustStore,
     MsoMdocCredVerifier,
     MsoMdocPresVerifier,
-    VerifyResult,
     WalletTrustStore,
     _parse_string_credential,
 )

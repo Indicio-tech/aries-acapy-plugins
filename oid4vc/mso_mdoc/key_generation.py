@@ -179,7 +179,7 @@ def generate_self_signed_certificate(
 
     # Parse subject and issuer names
     def parse_dn(dn_string: str) -> x509.Name:
-        """Parse a DN string into an x509.Name.
+        r"""Parse a DN string into an x509.Name.
 
         Prefers ``x509.Name.from_rfc4514_string()`` (cryptography >= 38.0),
         which correctly handles RFC 4514 escaping (commas inside values,
