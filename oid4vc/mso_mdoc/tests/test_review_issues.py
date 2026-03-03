@@ -42,32 +42,6 @@ _MOCK_MODULES = [
 for _mod in _MOCK_MODULES:
     sys.modules.setdefault(_mod, MagicMock())
 
-# Set up the oid4vc.cred_processor exceptions so they behave like real
-# exception classes.
-_cred_proc_mock = sys.modules["oid4vc.cred_processor"]
-_cred_proc_mock.CredProcessorError = type("CredProcessorError", (Exception,), {})
-_cred_proc_mock.PresVerifierError = type("PresVerifierError", (Exception,), {})
-_cred_proc_mock.VerifyResult = type(
-    "VerifyResult",
-    (),
-    {
-        "__init__": lambda self, verified, payload=None: (
-            setattr(self, "verified", verified) or setattr(self, "payload", payload)
-        )
-    },
-)
-_cred_proc_mock.Issuer = object
-_cred_proc_mock.CredVerifier = object
-_cred_proc_mock.PresVerifier = object
-
-# Expose storage error classes needed by storage modules.
-_storage_error_mock = sys.modules["acapy_agent.storage.error"]
-_storage_error_mock.StorageError = type("StorageError", (Exception,), {})
-_storage_error_mock.StorageDuplicateError = type(
-    "StorageDuplicateError", (Exception,), {}
-)
-_storage_error_mock.StorageNotFoundError = type("StorageNotFoundError", (Exception,), {})
-
 # Expose AuthenticationStatus enum-like constants on isomdl_uniffi.
 _iso_mock = sys.modules["isomdl_uniffi"]
 _iso_mock.AuthenticationStatus = MagicMock()

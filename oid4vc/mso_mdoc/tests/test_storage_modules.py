@@ -10,7 +10,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from acapy_agent.storage.base import StorageRecord
-from acapy_agent.storage.error import StorageError, StorageNotFoundError
+from acapy_agent.storage.error import (
+    StorageDuplicateError,
+    StorageError,
+    StorageNotFoundError,
+)
 
 from ..storage import (
     MDOC_CERT_RECORD_TYPE,
@@ -227,14 +231,15 @@ class TestCertificatesModule:
     async def test_store_certificate_handles_storage_unavailable(
         self, mock_session, sample_pem
     ):
-        """Test store_certificate silently handles unavailable storage."""
+        """Test store_certificate raises when storage is unavailable (MAJ-5)."""
         with patch.object(
             certificates, "get_storage", side_effect=Exception("unavailable")
         ):
-            # Should not raise, just log warning
-            await certificates.store_certificate(
-                mock_session, "cert-1", sample_pem, "key-1"
-            )
+            # MAJ-5: store_certificate now raises instead of silently failing
+            with pytest.raises(Exception, match="unavailable"):
+                await certificates.store_certificate(
+                    mock_session, "cert-1", sample_pem, "key-1"
+                )
 
     @pytest.mark.asyncio
     async def test_store_certificate_with_metadata(
@@ -548,8 +553,8 @@ class TestConfigModule:
 
     @pytest.mark.asyncio
     async def test_store_config_updates_existing_record(self, mock_session, mock_storage):
-        """Test store_config updates when record exists."""
-        mock_storage.add_record = AsyncMock(side_effect=StorageError("duplicate"))
+        """Test store_config updates when record exists (MIN-8: catches StorageDuplicateError)."""
+        mock_storage.add_record = AsyncMock(side_effect=StorageDuplicateError())
         mock_storage.update_record = AsyncMock()
 
         with patch.object(config, "get_storage", return_value=mock_storage):
@@ -561,8 +566,8 @@ class TestConfigModule:
     async def test_store_config_raises_on_update_failure(
         self, mock_session, mock_storage
     ):
-        """Test store_config raises when both add and update fail."""
-        mock_storage.add_record = AsyncMock(side_effect=StorageError("duplicate"))
+        """Test store_config raises when both add and update fail (MIN-8)."""
+        mock_storage.add_record = AsyncMock(side_effect=StorageDuplicateError())
         mock_storage.update_record = AsyncMock(side_effect=StorageError("update failed"))
 
         with patch.object(config, "get_storage", return_value=mock_storage):

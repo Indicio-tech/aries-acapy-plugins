@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from acapy_agent.storage.base import StorageRecord
-from acapy_agent.storage.error import StorageError, StorageNotFoundError
+from acapy_agent.storage.error import StorageDuplicateError, StorageNotFoundError
 
 from ..storage import (
     MDOC_CERT_RECORD_TYPE,
@@ -176,7 +176,7 @@ async def test_store_signing_key_requires_jwk(
 
 @pytest.mark.asyncio
 async def test_store_config_updates_when_record_exists(storage_manager, session, storage):
-    storage.add_record = AsyncMock(side_effect=StorageError("duplicate"))
+    storage.add_record = AsyncMock(side_effect=StorageDuplicateError())
     storage.update_record = AsyncMock()
 
     await storage_manager.store_config(

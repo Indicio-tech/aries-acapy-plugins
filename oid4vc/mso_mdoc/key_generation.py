@@ -183,7 +183,7 @@ def generate_self_signed_certificate(
 
         Prefers ``x509.Name.from_rfc4514_string()`` (cryptography >= 38.0),
         which correctly handles RFC 4514 escaping (commas inside values,
-        multi-valued RDNs such as ``O=Doe\\, Inc``).
+        multi-valued RDNs such as ``O=Doe\, Inc``).
 
         Falls back to the minimal comma-split implementation for older
         cryptography versions, which is sufficient for the straightforward
