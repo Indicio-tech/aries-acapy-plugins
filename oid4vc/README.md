@@ -2,6 +2,21 @@
 
 This plugin implements [OpenID4VCI (Draft 11)][oid4vci]. The OpenID4VCI specification is in active development, as is this plugin. Consider this plugin experimental; endpoints and records may change to reflect upstream changes in the specification.
 
+## Developer Documentation
+
+| Document | Description |
+|---|---|
+| [Getting Started](docs/getting-started.md) | Prerequisites, installation, configuration, Docker quick-start |
+| [Architecture](docs/architecture.md) | Two-server design, plugin lifecycle, credential format registry |
+| [Admin API Reference](docs/admin-api-reference.md) | All `/oid4vci/*`, `/oid4vp/*`, `/mso_mdoc/*`, `/did/*` endpoints |
+| [Public API Reference](docs/public-api-reference.md) | OID4VCI/OID4VP wallet-facing endpoints |
+| [Issuance Cookbook](docs/cookbook-issuance.md) | Step-by-step curl examples for `jwt_vc_json`, `sd_jwt_vc`, `mso_mdoc` |
+| [Verification Cookbook](docs/cookbook-verification.md) | PEX and DCQL-based VP flows with curl examples |
+| [Credential Formats](docs/credential-formats.md) | Format-specific schema details, selective disclosure, mDOC namespaces |
+| [Troubleshooting](docs/troubleshooting.md) | Error codes, common failures, debugging tips |
+
+The plugin's admin endpoints appear automatically in the ACA-Py Swagger UI at `http://<admin-host>:<admin-port>/api/doc` under the `oid4vci`, `oid4vp`, `mso_mdoc`, and `did` tag groups.
+
 ## OpenID4VCI Plugin Demo with Sphereon Wallet
 
 ### Demo Overview
@@ -378,9 +393,7 @@ The `mso_mdoc` module requires the `isomdl-uniffi` library, which needs Rust to 
 
 **⚠️ Note**: Automated installation through Poetry/pip doesn't currently work due to build system limitations.
 
-For manual installation instructions, see [MSO_MDOC_TESTING.md](MSO_MDOC_TESTING.md).
-
-> TODO: Pre-commit should move to the repo root
+For manual installation instructions, see [mso_mdoc/README.md](mso_mdoc/README.md).
 
 ### Unit Tests
 

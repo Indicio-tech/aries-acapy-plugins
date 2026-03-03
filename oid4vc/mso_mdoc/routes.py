@@ -23,7 +23,7 @@ from aiohttp_apispec import docs, request_schema, response_schema
 from marshmallow import fields
 
 from .cred_processor import MsoMdocCredProcessor
-from .key_generation import generate_self_signed_certificate
+from .key_generation import generate_self_signed_certificate, pem_from_jwk
 from .key_routes import register_key_management_routes
 from .mdoc import isomdl_mdoc_sign
 from .mdoc import mdoc_verify as mso_mdoc_verify
@@ -177,6 +177,13 @@ async def mdoc_sign(request: web.BaseRequest):
             private_key_pem = key_data.get("metadata", {}).get("private_key_pem")
 
             if not private_key_pem:
+                # C-1: reconstruct PEM from the JWK 'd' parameter instead of
+                # relying on a redundant PEM blob stored in metadata.
+                signing_jwk = key_data.get("jwk", {})
+                if signing_jwk.get("d"):
+                    private_key_pem = pem_from_jwk(signing_jwk)
+
+            if not private_key_pem:
                 raise ValueError("Private key PEM not found for signing key")
 
             # Fetch or generate certificate
@@ -209,6 +216,14 @@ async def mdoc_sign(request: web.BaseRequest):
         )
     except ValueError as err:
         raise web.HTTPBadRequest(reason=str(err)) from err
+    except Exception as err:
+        # M-6: catch all errors from signing (StorageError, CredProcessorError,
+        # isomdl_uniffi exceptions, etc.) so callers always get a structured
+        # HTTP error instead of a 500 with an unformatted traceback.
+        LOGGER.exception("mdoc_sign failed: %s", err)
+        raise web.HTTPInternalServerError(
+            reason=f"mDoc signing failed: {err}"
+        ) from err
 
     return web.json_response(mso_mdoc)
 
@@ -256,7 +271,7 @@ async def mdoc_verify(request: web.BaseRequest):
         async with context.profile.session() as session:
             trust_anchor_pems = await storage_manager.get_all_trust_anchor_pems(session)
 
-        result = mso_mdoc_verify(mso_mdoc, trust_anchors=trust_anchor_pems or None)
+        result = mso_mdoc_verify(mso_mdoc, trust_anchors=trust_anchor_pems)
     except ValueError as err:
         raise web.HTTPBadRequest(reason=str(err)) from err
     except Exception as err:

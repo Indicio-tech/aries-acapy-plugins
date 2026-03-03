@@ -137,7 +137,12 @@ async def get_certificate_for_key(session: ProfileSession, key_id: str) -> Optio
         if not records:
             return None
 
-        # Assuming one certificate per key for now, or take the most recent
+        # M-2: take the most recently created certificate to get deterministic,
+        # reproducible results when multiple certs share the same key_id.
+        records.sort(
+            key=lambda r: json.loads(r.value).get("created_at", ""),
+            reverse=True,
+        )
         record = records[0]
         data = json.loads(record.value)
         return data["certificate_pem"]

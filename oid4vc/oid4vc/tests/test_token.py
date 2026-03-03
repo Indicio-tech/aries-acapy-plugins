@@ -1,14 +1,18 @@
 """Tests for token endpoint."""
 
+import base64
+import json
+import time
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiohttp import web
+from aries_askar import Key, KeyAlg
 from multidict import MultiDict
 
 from oid4vc.models.exchange import OID4VCIExchangeRecord
-from oid4vc.public_routes.token import token
+from oid4vc.public_routes.token import check_token, handle_proof_of_posession, token
 
 
 @pytest.fixture
@@ -287,3 +291,192 @@ async def test_token_with_correct_pin_but_code_reused(
     body = json.loads(response.body)
     assert body["error"] == "invalid_grant"
     assert "already been used" in body["error_description"]
+
+
+# ===========================================================================
+# C-3 fix — check_token rejects DPoP scheme
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_check_token_rejects_dpop_scheme(context):
+    """C-3: check_token must reject DPoP tokens with HTTPUnauthorized.
+
+    Previously the code accepted DPoP without validating the proof,
+    silently stripping the sender-constraint.
+    """
+    with pytest.raises(web.HTTPUnauthorized) as exc_info:
+        await check_token(context, "DPoP some_dpop_bound_token")
+
+    resp_text = exc_info.value.text or ""
+    assert "DPoP" in resp_text or exc_info.value.status == 401
+
+
+@pytest.mark.asyncio
+async def test_check_token_still_accepts_bearer(context):
+    """Bearer tokens must still be accepted after the DPoP rejection fix."""
+    import sys
+    import importlib
+
+    # public_routes.__init__ re-exports the `token` function, shadowing the
+    # module via attribute access; use sys.modules to reach the actual module.
+    importlib.import_module("oid4vc.public_routes.token")
+    token_mod = sys.modules["oid4vc.public_routes.token"]
+    from oid4vc.public_routes.token import JWTVerifyResult
+
+    fake_result = JWTVerifyResult(
+        headers={},
+        payload={"exp": int(time.time()) + 600, "sub": "wallet"},
+        verified=True,
+    )
+
+    with patch.object(token_mod, "jwt_verify", AsyncMock(return_value=fake_result)):
+        with patch("oid4vc.config.Config.from_settings") as mock_cfg:
+            mock_cfg.return_value.auth_server_url = None
+            result = await check_token(context, "Bearer valid_jwt")
+
+    assert result.verified is True
+
+
+# ===========================================================================
+# C-6 fix — PIN comparison uses hmac.compare_digest
+# ===========================================================================
+
+
+def _make_b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def _build_proof_jwt(
+    nonce: str,
+    aud: str = "http://localhost:8020",
+    extra_payload: dict | None = None,
+) -> str:
+    """Build a self-signed openid4vci-proof+jwt using a fresh P-256 key."""
+    key = Key.generate(KeyAlg.P256)
+    public_jwk = json.loads(key.get_jwk_public())
+    header = {"typ": "openid4vci-proof+jwt", "alg": "ES256", "jwk": public_jwk}
+    payload = {
+        "iat": int(time.time()),
+        "exp": int(time.time()) + 600,
+        "aud": aud,
+        "nonce": nonce,
+        **(extra_payload or {}),
+    }
+    h_enc = _make_b64url(json.dumps(header).encode())
+    p_enc = _make_b64url(json.dumps(payload).encode())
+    sig = key.sign_message(f"{h_enc}.{p_enc}".encode(), sig_type="ES256")
+    return f"{h_enc}.{p_enc}.{_make_b64url(sig)}"
+
+
+@pytest.mark.asyncio
+async def test_pin_comparison_uses_hmac(context, monkeypatch, token_request):
+    """C-6: Verify hmac.compare_digest is invoked instead of plain == for PIN checks."""
+    import hmac as hmac_mod
+
+    compare_calls = []
+    original = hmac_mod.compare_digest
+
+    def spy_compare_digest(a, b):
+        compare_calls.append((a, b))
+        return original(a, b)
+
+    mock_record = MagicMock(spec=OID4VCIExchangeRecord)
+    mock_record.pin = "9999"
+    mock_record.token = None
+    mock_record.refresh_id = "r1"
+
+    monkeypatch.setattr(
+        "oid4vc.models.exchange.OID4VCIExchangeRecord.retrieve_by_code",
+        AsyncMock(return_value=mock_record),
+    )
+    monkeypatch.setattr(
+        "oid4vc.config.Config.from_settings",
+        MagicMock(return_value=MagicMock(auth_server_url=None)),
+    )
+    # Patch the hmac module object directly so token.py's `hmac.compare_digest` call
+    # hits the spy regardless of where it imported hmac from.
+    monkeypatch.setattr(hmac_mod, "compare_digest", spy_compare_digest)
+
+    request = token_request(
+        form_data=MultiDict(
+            {
+                "grant_type": "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+                "pre-authorized_code": "code123",
+                "user_pin": "1234",
+            }
+        )
+    )
+    response = await token(cast(web.Request, request))
+
+    assert response.status == 400
+    body = json.loads(response.body)
+    assert body["error"] == "invalid_grant"
+    # Confirm hmac.compare_digest was called, not plain ==
+    assert len(compare_calls) == 1
+    assert compare_calls[0] == ("1234", "9999")
+
+
+# ===========================================================================
+# C-4 fix — handle_proof_of_posession validates aud claim
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_proof_with_wrong_aud_rejected(profile):
+    """C-4: A proof JWT with a mismatched aud must be rejected with invalid_proof."""
+    nonce = "nonce-abc"
+    jwt_str = _build_proof_jwt(nonce, aud="https://attacker.example.com")
+    proof = {"proof_type": "jwt", "jwt": jwt_str}
+
+    with patch(
+        "oid4vc.public_routes.token.Config.from_settings",
+        return_value=MagicMock(endpoint="http://localhost:8020"),
+    ):
+        with pytest.raises(web.HTTPBadRequest) as exc_info:
+            await handle_proof_of_posession(profile, proof, nonce)
+
+    body = json.loads(exc_info.value.text)
+    assert body["error"] == "invalid_proof"
+    assert "aud" in body["error_description"]
+
+
+@pytest.mark.asyncio
+async def test_proof_with_correct_aud_accepted(profile):
+    """C-4: A proof JWT with matching aud must pass the aud check."""
+    nonce = "nonce-xyz"
+    jwt_str = _build_proof_jwt(nonce, aud="http://localhost:8020")
+    proof = {"proof_type": "jwt", "jwt": jwt_str}
+
+    with patch(
+        "oid4vc.public_routes.token.Config.from_settings",
+        return_value=MagicMock(endpoint="http://localhost:8020"),
+    ):
+        result = await handle_proof_of_posession(profile, proof, nonce)
+
+    assert result.verified is True
+
+
+@pytest.mark.asyncio
+async def test_proof_without_aud_not_rejected_when_endpoint_unconfigured(profile):
+    """C-4: When endpoint is not configured, a proof without aud is still accepted."""
+    nonce = "nonce-noaud"
+    # Build a JWT with no aud claim at all
+    key = Key.generate(KeyAlg.P256)
+    public_jwk = json.loads(key.get_jwk_public())
+    header = {"typ": "openid4vci-proof+jwt", "alg": "ES256", "jwk": public_jwk}
+    payload = {"iat": int(time.time()), "exp": int(time.time()) + 600, "nonce": nonce}
+    h_enc = _make_b64url(json.dumps(header).encode())
+    p_enc = _make_b64url(json.dumps(payload).encode())
+    sig = key.sign_message(f"{h_enc}.{p_enc}".encode(), sig_type="ES256")
+    jwt_str = f"{h_enc}.{p_enc}.{_make_b64url(sig)}"
+
+    proof = {"proof_type": "jwt", "jwt": jwt_str}
+
+    with patch(
+        "oid4vc.public_routes.token.Config.from_settings",
+        return_value=MagicMock(endpoint=None),
+    ):
+        result = await handle_proof_of_posession(profile, proof, nonce)
+
+    assert result.verified is True

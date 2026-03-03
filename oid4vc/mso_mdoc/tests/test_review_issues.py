@@ -542,3 +542,284 @@ class TestCrit3NoUnreachableReturn:
             mdoc, err = _parse_string_credential("deadbeef1234")
         assert mdoc is mock_mdoc
         assert err is None
+
+
+# ===========================================================================
+# C-5 fix — PreverifiedMdocClaims typed sentinel
+# ===========================================================================
+
+
+class TestC5PreverifiedClaimsSentinel:
+    """C-5: _is_preverified_claims_dict must only match the typed sentinel."""
+
+    def test_plain_dict_with_iso_key_not_matched(self):
+        """A plain dict with an org.iso.* key must NOT be treated as pre-verified."""
+        from ..mdoc.verifier import _is_preverified_claims_dict
+
+        # Previously this would have returned True — now it must return False.
+        spoofed = {"org.iso.18013.5.1": {"given_name": "Attacker"}}
+        assert _is_preverified_claims_dict(spoofed) is False
+
+    def test_status_key_dict_not_matched(self):
+        """A plain dict with a 'status' key must NOT be treated as pre-verified."""
+        from ..mdoc.verifier import _is_preverified_claims_dict
+
+        spoofed = {"status": "verified", "org.iso.18013.5.1": {}}
+        assert _is_preverified_claims_dict(spoofed) is False
+
+    def test_sentinel_instance_is_matched(self):
+        """Only a PreverifiedMdocClaims instance must return True."""
+        from ..mdoc.verifier import PreverifiedMdocClaims, _is_preverified_claims_dict
+
+        sentinel = PreverifiedMdocClaims(claims={"org.iso.18013.5.1": {"given_name": "Alice"}})
+        assert _is_preverified_claims_dict(sentinel) is True
+
+    def test_verify_credential_returns_sentinel_claims_as_payload(self):
+        """verify_credential with a PreverifiedMdocClaims returns sentinel.claims."""
+        from ..mdoc.verifier import MsoMdocCredVerifier, PreverifiedMdocClaims
+
+        verifier = MsoMdocCredVerifier(trust_store=None)
+        profile, _ = make_mock_profile()
+        claims = {"org.iso.18013.5.1": {"given_name": "Alice"}}
+        sentinel = PreverifiedMdocClaims(claims=claims)
+
+        import asyncio
+
+        result = asyncio.get_event_loop().run_until_complete(
+            verifier.verify_credential(profile, sentinel)
+        )
+        assert result.verified is True
+        assert result.payload == claims
+
+
+# ===========================================================================
+# C-2 fix — _normalize_mdoc_result no longer calls codecs.decode(unicode_escape)
+# ===========================================================================
+
+
+class TestC2NormalizeNoUnicodeEscape:
+    """C-2: _normalize_mdoc_result must not interpret escape sequences."""
+
+    def test_backslash_n_not_decoded(self):
+        """A b'...' string containing \\n must return it literally, not as a newline."""
+        proc = MsoMdocCredProcessor()
+        # If codecs.decode(unicode_escape) were still applied, "\\n" → "\n"
+        result = proc._normalize_mdoc_result("b'hello\\nworld'")
+        assert result == "hello\\nworld"
+        assert "\n" not in result
+
+    def test_evil_escape_sequence_not_executed(self):
+        """Malformed escape sequences that would crash codecs.decode must return safely."""
+        proc = MsoMdocCredProcessor()
+        # "\\x80" is invalid in unicode_escape — previously this would raise;
+        # now it must just pass through as a plain string.
+        result = proc._normalize_mdoc_result("b'valid_hex_data\\xfe'")
+        assert result == "valid_hex_data\\xfe"
+
+    def test_plain_string_unchanged(self):
+        """A normal base64 string is returned as-is."""
+        proc = MsoMdocCredProcessor()
+        b64_mdoc = "a2FnZmhqYXNoZGY="
+        assert proc._normalize_mdoc_result(b64_mdoc) == b64_mdoc
+
+
+# ===========================================================================
+# M-4 fix — _extract_device_key strips private key material ('d') from holder JWK
+# ===========================================================================
+
+
+class TestM4StripPrivateKeyFromDeviceJWK:
+    """M-4: _extract_device_key must remove 'd' before serialising to mDoc."""
+
+    def test_d_parameter_stripped_from_jwk(self):
+        """If the holder presents a JWK containing 'd', it must be stripped."""
+        proc = MsoMdocCredProcessor()
+        pop = MagicMock()
+        pop.holder_jwk = {
+            "kty": "EC", "crv": "P-256",
+            "x": "AAAA", "y": "BBBB",
+            "d": "SECRET",  # private scalar — must not reach the mDoc
+        }
+        pop.holder_kid = None
+
+        ex_record = MagicMock()
+        ex_record.verification_method = None
+
+        serialised = proc._extract_device_key(pop, ex_record)
+        import json
+        parsed = json.loads(serialised)
+        assert "d" not in parsed
+        assert parsed["kty"] == "EC"
+        assert parsed["x"] == "AAAA"
+
+    def test_public_only_jwk_unchanged(self):
+        """A JWK without 'd' is passed through intact."""
+        proc = MsoMdocCredProcessor()
+        pop = MagicMock()
+        pop.holder_jwk = {"kty": "EC", "crv": "P-256", "x": "AAAA", "y": "BBBB"}
+        pop.holder_kid = None
+
+        ex_record = MagicMock()
+        ex_record.verification_method = None
+
+        import json
+        serialised = proc._extract_device_key(pop, ex_record)
+        parsed = json.loads(serialised)
+        assert parsed == pop.holder_jwk
+
+
+# ===========================================================================
+# M-1 fix — pem_to_jwk detects actual EC curve, plus pem_from_jwk round-trip
+# ===========================================================================
+
+
+class TestM1PemToJwkCurveDetection:
+    """M-1: pem_to_jwk must use the actual curve, not hard-code P-256."""
+
+    def test_p256_curve_detected(self):
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives import serialization
+        from ..key_generation import pem_to_jwk
+
+        key = ec.generate_private_key(ec.SECP256R1())
+        pem = key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ).decode()
+        jwk = pem_to_jwk(pem)
+        assert jwk["crv"] == "P-256"
+        assert jwk["kty"] == "EC"
+        assert "d" in jwk
+
+    def test_p384_curve_detected(self):
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives import serialization
+        from ..key_generation import pem_to_jwk
+
+        key = ec.generate_private_key(ec.SECP384R1())
+        pem = key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ).decode()
+        jwk = pem_to_jwk(pem)
+        assert jwk["crv"] == "P-384"
+
+    def test_pem_from_jwk_round_trip(self):
+        """pem_from_jwk must reconstruct the same public key as the original PEM."""
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives import serialization
+        from ..key_generation import pem_to_jwk, pem_from_jwk
+
+        # Start from a PEM key
+        key = ec.generate_private_key(ec.SECP256R1())
+        pem = key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        ).decode()
+        jwk = pem_to_jwk(pem)
+
+        # Strip 'd' to simulate the stored-without-PEM scenario (C-1 fix)
+        public_jwk = {k: v for k, v in jwk.items() if k != "d"}
+        jwk_with_d = {**public_jwk, "d": jwk["d"]}
+
+        # Reconstruct PEM and check public key matches
+        reconstructed_pem = pem_from_jwk(jwk_with_d)
+        reconstructed_key = serialization.load_pem_private_key(
+            reconstructed_pem.encode(), password=None
+        )
+        original_pub = key.public_key().public_bytes(
+            serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        reconstructed_pub = reconstructed_key.public_key().public_bytes(
+            serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        assert original_pub == reconstructed_pub
+
+
+# ===========================================================================
+# M-2 fix — get_certificate_for_key returns most recently created cert
+# ===========================================================================
+
+
+class TestM2CertOrdering:
+    """M-2: get_certificate_for_key must return the most recently created cert."""
+
+    @pytest.mark.asyncio
+    async def test_returns_most_recent_cert(self):
+        """When multiple certs exist for a key, return the newest one."""
+        import json
+        from ..storage.certificates import get_certificate_for_key
+        from acapy_agent.storage.base import StorageRecord
+
+        older_pem = "-----BEGIN CERTIFICATE-----\nOLDER\n-----END CERTIFICATE-----"
+        newer_pem = "-----BEGIN CERTIFICATE-----\nNEWER\n-----END CERTIFICATE-----"
+
+        from datetime import datetime, UTC, timedelta
+
+        older_time = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+        newer_time = datetime.now(UTC).isoformat()
+
+        older_record = StorageRecord(
+            type="mso_mdoc::certificate",
+            id="cert-old",
+            value=json.dumps({
+                "certificate_pem": older_pem, "key_id": "key-1",
+                "created_at": older_time, "metadata": {},
+            }),
+            tags={"key_id": "key-1"},
+        )
+        newer_record = StorageRecord(
+            type="mso_mdoc::certificate",
+            id="cert-new",
+            value=json.dumps({
+                "certificate_pem": newer_pem, "key_id": "key-1",
+                "created_at": newer_time, "metadata": {},
+            }),
+            tags={"key_id": "key-1"},
+        )
+
+        mock_session = MagicMock()
+        with patch("mso_mdoc.storage.certificates.get_storage") as mock_get_storage:
+            mock_storage = MagicMock()
+            # Return older first to ensure sort is required
+            mock_storage.find_all_records = AsyncMock(
+                return_value=[older_record, newer_record]
+            )
+            mock_get_storage.return_value = mock_storage
+
+            result = await get_certificate_for_key(mock_session, "key-1")
+
+        assert result == newer_pem
+
+
+# ===========================================================================
+# M-3 (storage) fix — get_default_signing_key does NOT write to store
+# ===========================================================================
+
+
+class TestM3GetDefaultSigningKeyReadOnly:
+    """M-3: get_default_signing_key must not call store_config as a side-effect."""
+
+    @pytest.mark.asyncio
+    async def test_no_store_config_called_on_auto_select(self):
+        """When no default is configured, the first key is returned without persisting."""
+        from ..storage import MdocStorageManager
+
+        profile, session = make_mock_profile()
+        manager = MdocStorageManager(profile)
+
+        fake_key = {"key_id": "key-abc", "jwk": {"kty": "EC"}, "created_at": "2024-01-01"}
+
+        with (
+            patch("mso_mdoc.storage.config.get_config", AsyncMock(return_value=None)),
+            patch("mso_mdoc.storage.keys.list_keys", AsyncMock(return_value=[fake_key])),
+            patch("mso_mdoc.storage.config.store_config", AsyncMock()) as mock_store,
+        ):
+            result = await manager.get_default_signing_key(session)
+
+        assert result == fake_key
+        # Must not have written anything as a side-effect
+        mock_store.assert_not_called()

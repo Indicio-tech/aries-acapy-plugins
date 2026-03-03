@@ -5,6 +5,7 @@ import json
 import logging
 import os
 from abc import abstractmethod
+from dataclasses import dataclass
 from typing import Any, List, Optional, Protocol
 
 # Import isomdl_uniffi library directly
@@ -168,7 +169,7 @@ class WalletTrustStore:
             List of PEM-encoded trust anchor certificates
         """
         # Import here to avoid circular imports
-        from mso_mdoc.storage import MdocStorageManager
+        from ..storage import MdocStorageManager
 
         storage_manager = MdocStorageManager(self.profile)
         async with self.profile.session() as session:
@@ -181,18 +182,27 @@ class WalletTrustStore:
         self._cached_anchors = None
 
 
-def _is_preverified_claims_dict(credential: Any) -> bool:
-    """Check if credential is a pre-verified claims dict from presentation.
+@dataclass
+class PreverifiedMdocClaims:
+    """Typed sentinel wrapping namespaced claims already verified by verify_presentation.
 
-    Args:
-        credential: The credential to check
-
-    Returns:
-        True if credential is a pre-verified claims dict
+    C-5 fix: replaces a heuristic ``dict`` key-prefix check that could be
+    bypassed by any caller-controlled dict containing an ``org.iso.*`` key.
+    Only ``MsoMdocPresVerifier.verify_presentation`` (trusted code) should
+    construct instances of this class; external callers cannot spoof it.
     """
-    if not isinstance(credential, dict):
-        return False
-    return any(key.startswith("org.iso.") or key == "status" for key in credential.keys())
+
+    claims: dict
+
+
+def _is_preverified_claims_dict(credential: Any) -> bool:
+    """Return True only when *credential* is a typed :class:`PreverifiedMdocClaims`.
+
+    C-5 fix: the previous heuristic — checking for ``org.iso.*`` key prefixes —
+    was bypassable by any external caller whose dict happened to contain such a
+    key.  Using a typed sentinel makes the check unforgeable.
+    """
+    return isinstance(credential, PreverifiedMdocClaims)
 
 
 def _parse_string_credential(credential: str) -> tuple[Optional[Any], Optional[str]]:
@@ -307,10 +317,10 @@ class MsoMdocCredVerifier(CredVerifier):
             VerifyResult: The verification result
         """
         try:
-            # Check if credential is pre-verified claims dict
+            # Check if credential is pre-verified claims sentinel
             if _is_preverified_claims_dict(credential):
                 LOGGER.debug("Credential is pre-verified claims dict from presentation")
-                return VerifyResult(verified=True, payload=credential)
+                return VerifyResult(verified=True, payload=credential.claims)
 
             # Parse credential to Mdoc object
             mdoc = None

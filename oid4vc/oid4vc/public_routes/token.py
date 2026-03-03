@@ -1,8 +1,10 @@
 """Token endpoint for OID4VCI."""
 
 import datetime
+import hmac
 import json
 import time
+from datetime import UTC
 from typing import Any, Dict
 
 from acapy_agent.admin.request_context import AdminRequestContext
@@ -135,7 +137,7 @@ async def token(request: web.Request):
                 },
                 status=400,
             )
-        if user_pin != record.pin:
+        if not hmac.compare_digest(user_pin, record.pin):
             return web.json_response(
                 {"error": "invalid_grant", "error_description": "pin is invalid"},
                 status=400,
@@ -218,7 +220,16 @@ async def check_token(
         scheme, cred = bearer.split(" ", 1)
     except ValueError:
         raise web.HTTPUnauthorized() from None
-    if scheme.lower() not in ("bearer", "dpop"):
+    if scheme.lower() == "dpop":
+        # DPoP proof binding (RFC 9449) is not yet implemented.
+        # Accepting a DPoP-bound access-token without verifying the DPoP proof
+        # would silently strip the sender-constraint, so we reject it explicitly.
+        raise web.HTTPUnauthorized(
+            text='{"error": "use_dpop_nonce", "error_description": '
+            '"DPoP proof validation is not supported; use Bearer tokens"}',
+            headers={"Content-Type": "application/json"},
+        )
+    if scheme.lower() != "bearer":
         raise web.HTTPUnauthorized()
 
     config = Config.from_settings(context.settings)
@@ -252,7 +263,7 @@ async def check_token(
             headers={"Content-Type": "application/json"},
         )
 
-    if result.payload["exp"] < datetime.datetime.utcnow().timestamp():
+    if result.payload["exp"] < datetime.datetime.now(UTC).timestamp():
         raise web.HTTPUnauthorized(
             text='{"error": "invalid_token", "error_description": "Token expired"}',
             headers={"Content-Type": "application/json"},
@@ -334,6 +345,29 @@ async def handle_proof_of_posession(
         )
 
     payload = b64_to_dict(encoded_payload)
+
+    # OID4VCI 1.0 § 7.2.2: the proof JWT MUST contain an `aud` claim equal to
+    # the Credential Issuer Identifier (the issuer's base URL).  Omitting this
+    # check allows proof replay across issuers.
+    aud = payload.get("aud")
+    if aud is not None:
+        issuer_endpoint = Config.from_settings(profile.settings).endpoint
+        # aud may be a string or a list of strings (per RFC 7519 § 4.1.3)
+        aud_values = [aud] if isinstance(aud, str) else list(aud)
+        if issuer_endpoint and issuer_endpoint not in aud_values:
+            raise web.HTTPBadRequest(
+                text=json.dumps(
+                    {
+                        "error": "invalid_proof",
+                        "error_description": (
+                            f"proof JWT aud '{aud}' does not match "
+                            f"issuer endpoint '{issuer_endpoint}'"
+                        ),
+                    }
+                ),
+                content_type="application/json",
+            )
+
     # OID4VCI 1.0 final spec uses "nonce"; older draft wallets may use "c_nonce".
     nonce = payload.get("nonce") or payload.get("c_nonce")
     if c_nonce:

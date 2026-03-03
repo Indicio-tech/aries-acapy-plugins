@@ -293,7 +293,8 @@ async def _issue_cred_inner(context, token_result, refresh_id, req_body):
     # waltid that still parse only the top-level `credential` field and NPE when absent.
     cred_response: dict = {
         "credential": credential,
-        "credentials": [{"credential": credential}],
+        # OID4VCI 1.0 §7.3.1: each entry in `credentials` MUST include `format`.
+        "credentials": [{"format": supported.format, "credential": credential}],
     }
     if ex_record.notification_id:
         cred_response["notification_id"] = ex_record.notification_id

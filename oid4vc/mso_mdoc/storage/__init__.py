@@ -163,22 +163,26 @@ class MdocStorageManager:
         if not key_list:
             return []
 
-        result = []
         cert_list = await certificates.list_certificates(session)
 
+        # m-9: Build an O(n) mapping from key_id → cert_id so the inner loop
+        # below is O(1) per key instead of O(n×m).
+        key_to_cert_id: dict = {}
+        for cert in cert_list:
+            kid = cert["key_id"]
+            if kid not in key_to_cert_id:  # keep the first (will sort below if needed)
+                key_to_cert_id[kid] = cert["cert_id"]
+
+        result = []
         for key_data in key_list:
             key_id = key_data["key_id"]
 
-            # Try to find associated certificate
             cert_pem = None
-            for cert in cert_list:
-                if cert["key_id"] == key_id:
-                    cert_result = await certificates.get_certificate(
-                        session, cert["cert_id"]
-                    )
-                    if cert_result:
-                        cert_pem = cert_result[0]
-                        break
+            cert_id = key_to_cert_id.get(key_id)
+            if cert_id:
+                cert_result = await certificates.get_certificate(session, cert_id)
+                if cert_result:
+                    cert_pem = cert_result[0]
 
             result.append(
                 {
@@ -195,19 +199,22 @@ class MdocStorageManager:
     async def get_default_signing_key(
         self, session: ProfileSession
     ) -> Optional[Dict[str, Any]]:
-        """Get the default signing key."""
+        """Get the default signing key.
+
+        M-3 fix: this method is now read-only.  The previous implementation
+        silently persisted a config record as a side-effect of the first read,
+        which made it impossible to call the getter safely inside a read-only
+        transaction.  Auto-promotion of the first available key is now done
+        without touching the config store — callers that want to persist the
+        default must call ``store_config`` explicitly.
+        """
         cfg = await config.get_config(session, "default_signing_key")
         if not cfg:
-            # Try to auto-select first available signing key
+            # No default configured — return the first available signing key
+            # without persisting it as the new default.
             key_list = await keys.list_keys(session, purpose="signing")
             if key_list:
-                default_key = key_list[0]
-                await config.store_config(
-                    session,
-                    "default_signing_key",
-                    {"key_id": default_key["key_id"]},
-                )
-                return default_key
+                return key_list[0]
             return None
 
         key_id = cfg.get("key_id")

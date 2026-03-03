@@ -100,6 +100,8 @@ def generate_ec_key_pair() -> Tuple[str, str, Dict[str, Any]]:
 def pem_to_jwk(private_key_pem: str) -> Dict[str, Any]:
     """Derive JWK from a PEM-encoded EC private key.
 
+    M-1 fix: detect the actual curve instead of hard-coding "P-256".
+
     Args:
         private_key_pem: PEM-encoded private key string
 
@@ -113,16 +115,84 @@ def pem_to_jwk(private_key_pem: str) -> Dict[str, Any]:
     if not isinstance(private_key, ec.EllipticCurvePrivateKey):
         raise ValueError("PEM must be an EC private key")
 
+    # Map cryptography curve instances to JWK crv names and their byte sizes.
+    _CURVE_MAP = {
+        ec.SECP256R1: ("P-256", 32),
+        ec.SECP384R1: ("P-384", 48),
+        ec.SECP521R1: ("P-521", 66),
+    }
+    curve_type = type(private_key.curve)
+    crv_info = _CURVE_MAP.get(curve_type)
+    if crv_info is None:
+        raise ValueError(f"Unsupported EC curve: {curve_type.__name__}")
+    crv_name, byte_len = crv_info
+
     private_numbers = private_key.private_numbers()
     public_numbers = private_numbers.public_numbers
 
     return {
         "kty": "EC",
-        "crv": "P-256",
-        "x": int_to_base64url_uint(public_numbers.x),
-        "y": int_to_base64url_uint(public_numbers.y),
-        "d": int_to_base64url_uint(private_numbers.private_value),
+        "crv": crv_name,
+        "x": int_to_base64url_uint(public_numbers.x, byte_len),
+        "y": int_to_base64url_uint(public_numbers.y, byte_len),
+        "d": int_to_base64url_uint(private_numbers.private_value, byte_len),
     }
+
+
+def pem_from_jwk(jwk: Dict[str, Any]) -> str:
+    """Reconstruct a PEM-encoded EC private key from a JWK containing a 'd' parameter.
+
+    C-1 fix: allows callers to avoid persisting raw PEM blobs — the JWK ``d``
+    parameter is the single source of truth for the private scalar.
+
+    Args:
+        jwk: JSON Web Key dictionary containing at least kty, crv, x, y, d.
+
+    Returns:
+        PEM-encoded PKCS#8 private key string.
+
+    Raises:
+        ValueError: If the JWK is missing required fields or uses an unsupported curve.
+    """
+    kty = jwk.get("kty")
+    if kty != "EC":
+        raise ValueError(f"pem_from_jwk: expected EC key, got {kty!r}")
+
+    crv = jwk.get("crv", "P-256")
+    _CURVE_MAP_INV = {
+        "P-256": (ec.SECP256R1(), 32),
+        "P-384": (ec.SECP384R1(), 48),
+        "P-521": (ec.SECP521R1(), 66),
+    }
+    crv_info = _CURVE_MAP_INV.get(crv)
+    if crv_info is None:
+        raise ValueError(f"pem_from_jwk: unsupported curve {crv!r}")
+    curve, _byte_len = crv_info
+
+    def _b64url_to_int(s: str) -> int:
+        padded = s + "=" * (-len(s) % 4)
+        return int.from_bytes(base64.urlsafe_b64decode(padded), "big")
+
+    missing = [f for f in ("x", "y", "d") if f not in jwk]
+    if missing:
+        raise ValueError(f"pem_from_jwk: JWK is missing required field(s): {missing}")
+
+    public_numbers = ec.EllipticCurvePublicNumbers(
+        x=_b64url_to_int(jwk["x"]),
+        y=_b64url_to_int(jwk["y"]),
+        curve=curve,
+    )
+    private_numbers = ec.EllipticCurvePrivateNumbers(
+        private_value=_b64url_to_int(jwk["d"]),
+        public_numbers=public_numbers,
+    )
+    private_key = private_numbers.private_key()
+
+    return private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("utf-8")
 
 
 def generate_self_signed_certificate(
@@ -276,12 +346,13 @@ def generate_self_signed_certificate(
     )
 
     # 4. CRLDistributionPoints - HTTP URI (required per Annex B)
-    # For test purposes, we use a placeholder URL
+    # M-7: configurable via OID4VC_MDOC_CRL_URI; default is a placeholder.
+    crl_uri = os.getenv("OID4VC_MDOC_CRL_URI", "http://example.com/crl")
     cert_builder = cert_builder.add_extension(
         x509.CRLDistributionPoints(
             [
                 x509.DistributionPoint(
-                    full_name=[x509.UniformResourceIdentifier("http://example.com/crl")],
+                    full_name=[x509.UniformResourceIdentifier(crl_uri)],
                     relative_name=None,
                     reasons=None,
                     crl_issuer=None,
@@ -295,10 +366,12 @@ def generate_self_signed_certificate(
     #    URI is used here instead of RFC822Name because the x509_cert Rust crate
     #    used by isomdl_uniffi has been observed to reject certs with RFC822Name
     #    in IssuerAlternativeName when parsing via Certificate::from_pem.
+    # M-7: configurable via OID4VC_MDOC_ISSUER_URI; default is a placeholder.
+    issuer_uri = os.getenv("OID4VC_MDOC_ISSUER_URI", "https://example.com")
     cert_builder = cert_builder.add_extension(
         x509.IssuerAlternativeName(
             [
-                x509.UniformResourceIdentifier("https://example.com"),
+                x509.UniformResourceIdentifier(issuer_uri),
             ]
         ),
         critical=False,
@@ -347,13 +420,14 @@ async def generate_default_keys_and_certs(
     key_id = f"mdoc-key-{uuid.uuid4().hex[:8]}"
 
     # Store the key
+    # C-1: do NOT store private_key_pem; the JWK 'd' parameter is the
+    # single source of truth for the private scalar.
     await storage_manager.store_key(
         session,
         key_id=key_id,
         jwk=jwk,
         purpose="signing",
         metadata={
-            "private_key_pem": private_pem,
             "public_key_pem": public_pem,
             "key_type": "EC",
             "curve": "P-256",

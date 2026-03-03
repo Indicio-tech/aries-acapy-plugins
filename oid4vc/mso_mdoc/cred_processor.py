@@ -13,7 +13,6 @@ Key Protocol Compliance:
 """
 
 import base64
-import codecs
 import json
 import logging
 import os
@@ -35,6 +34,7 @@ from oid4vc.pop_result import PopResult
 from .key_generation import (
     generate_ec_key_pair,
     generate_self_signed_certificate,
+    pem_from_jwk,
     pem_to_jwk,
 )
 from .mdoc.issuer import isomdl_mdoc_sign
@@ -91,11 +91,12 @@ async def resolve_signing_key_for_credential(
         # If not found or storage unavailable, generate a transient keypair
         private_key_pem, public_key_pem, jwk = generate_ec_key_pair()
 
-        # Persist the generated key
+        # Persist the generated key.
+        # C-1: do NOT store private_key_pem; the JWK 'd' parameter is the
+        # single source of truth for the private scalar.
         key_metadata = {
             "jwk": jwk,
             "public_key_pem": public_key_pem,
-            "private_key_pem": private_key_pem,
             "verification_method": verification_method,
             "key_id": key_id,
             "key_type": "EC",
@@ -119,10 +120,11 @@ async def resolve_signing_key_for_credential(
     # Generate a default key if none exists
     private_key_pem, public_key_pem, jwk = generate_ec_key_pair()
 
+    # C-1: do NOT store private_key_pem; the JWK 'd' parameter is the
+    # single source of truth for the private scalar.
     key_metadata = {
         "jwk": jwk,
         "public_key_pem": public_key_pem,
-        "private_key_pem": private_key_pem,
         "key_id": "default",
         "key_type": "EC",
         "curve": "P-256",
@@ -229,8 +231,13 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
         )
 
         if isinstance(device_candidate, dict):
-            # JWK provided by holder
-            return json.dumps(device_candidate)
+            # M-4: strip private key material before serialising.
+            # The device key embedded in the mDoc MSO must contain ONLY public
+            # parameters; passing 'd' to the Rust isomdl library would leak
+            # the holder's private key into the issued credential.
+            _PUBLIC_JWK_FIELDS = frozenset(("kty", "crv", "x", "y", "n", "e"))
+            public_only = {k: v for k, v in device_candidate.items() if k in _PUBLIC_JWK_FIELDS}
+            return json.dumps(public_only)
         elif isinstance(device_candidate, str):
             # If a DID with fragment, prefer fragment (key id); otherwise raw string
             m = re.match(r"did:(.+?):(.+?)(?:#(.*))?$", device_candidate)
@@ -315,7 +322,8 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                         key_id=static_key_id,
                         jwk=jwk,
                         purpose="signing",
-                        metadata={"private_key_pem": private_key_pem, "static": True},
+                        # C-1: store only public metadata; private key is in jwk['d']
+                        metadata={"static": True},
                     )
 
                     cert_id = f"mdoc-cert-{static_key_id}"
@@ -420,7 +428,13 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                     context, session, verification_method
                 )
                 key_id = key_data.get("key_id")
+                # C-1: private_key_pem is no longer persisted in metadata.
+                # Reconstruct it on-demand from the JWK 'd' parameter.
                 private_key_pem = key_data.get("metadata", {}).get("private_key_pem")
+                if not private_key_pem:
+                    signing_jwk = key_data.get("jwk", {})
+                    if signing_jwk.get("d"):
+                        private_key_pem = pem_from_jwk(signing_jwk)
 
                 # Fetch certificate
                 storage_manager = MdocStorageManager(context.profile)
@@ -618,17 +632,16 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             # Remove b' prefix and ' suffix if present
             if result.startswith("b'") and result.endswith("'"):
                 cleaned = result[2:-1]
-                try:
-                    return codecs.decode(cleaned, "unicode_escape")
-                except (ValueError, UnicodeDecodeError):
-                    return cleaned
+                # C-2: do NOT call codecs.decode(cleaned, "unicode_escape") —
+                # that interprets arbitrary byte sequences in attacker-controlled
+                # input and can be exploited for code-path attacks.  The hex/base64
+                # string produced by isomdl-uniffi contains only printable ASCII,
+                # so returning it directly is both safe and correct.
+                return cleaned
             # Remove b" prefix and " suffix if present
             elif result.startswith('b"') and result.endswith('"'):
                 cleaned = result[2:-1]
-                try:
-                    return codecs.decode(cleaned, "unicode_escape")
-                except (ValueError, UnicodeDecodeError):
-                    return cleaned
+                return cleaned
             else:
                 return result
 
