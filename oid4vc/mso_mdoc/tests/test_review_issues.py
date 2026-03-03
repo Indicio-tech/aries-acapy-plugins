@@ -1,9 +1,11 @@
 """Tests verifying fixes for issues identified in CODE_REVIEW.md.
 
 Each test class is labelled with the review issue ID it covers.
-Tests in this module are pure-unit tests: heavy dependencies
-(isomdl_uniffi, acapy_agent) are mocked so the file can run in a
-standard development environment without native extensions.
+Tests in this module are pure-unit tests: the only dependency that
+requires mocking is isomdl_uniffi (a native Rust extension). All pure-
+Python packages (acapy_agent, oid4vc, cbor2, pydid) are imported
+normally so that real exception classes are always used, avoiding class-
+identity mismatches between the code under test and test assertions.
 """
 
 import sys
@@ -13,30 +15,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 # ---------------------------------------------------------------------------
-# Patch sys.modules before any plugin import so that native extensions and
-# acapy_agent sub-packages resolve to MagicMock objects.
+# Patch sys.modules ONLY for the Rust native extension that cannot be
+# imported in the unit-test environment without the compiled binary.
 # ---------------------------------------------------------------------------
 _MOCK_MODULES = [
     "isomdl_uniffi",
-    "cbor2",
-    "pydid",
-    "acapy_agent",
-    "acapy_agent.admin",
-    "acapy_agent.admin.request_context",
-    "acapy_agent.core",
-    "acapy_agent.core.profile",
-    "acapy_agent.storage",
-    "acapy_agent.storage.base",
-    "acapy_agent.storage.error",
-    "oid4vc",
-    "oid4vc.config",
-    "oid4vc.cred_processor",
-    "oid4vc.models",
-    "oid4vc.models.exchange",
-    "oid4vc.models.presentation",
-    "oid4vc.models.supported_cred",
-    "oid4vc.pop_result",
-    "oid4vc.did_utils",
 ]
 
 for _mod in _MOCK_MODULES:
@@ -48,6 +31,10 @@ _iso_mock.AuthenticationStatus = MagicMock()
 _iso_mock.AuthenticationStatus.VALID = "VALID"
 _iso_mock.AuthenticationStatus.INVALID = "INVALID"
 _iso_mock.MdocVerificationError = type("MdocVerificationError", (Exception,), {})
+
+# Import real exception classes now that isomdl_uniffi is stubbed out so
+# that downstream imports of acapy_agent.storage.error resolve correctly.
+from acapy_agent.storage.error import StorageDuplicateError, StorageError  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Now import the modules under test.
@@ -435,14 +422,10 @@ class TestMaj5StoreCertificateRaisesOnFailure:
         # Make get_storage succeed but add_record raise
         with patch("mso_mdoc.storage.certificates.get_storage") as mock_get_storage:
             mock_storage = MagicMock()
-            mock_storage.add_record = AsyncMock(
-                side_effect=sys.modules["acapy_agent.storage.error"].StorageError(
-                    "disk full"
-                )
-            )
+            mock_storage.add_record = AsyncMock(side_effect=StorageError("disk full"))
             mock_get_storage.return_value = mock_storage
 
-            with pytest.raises(sys.modules["acapy_agent.storage.error"].StorageError):
+            with pytest.raises(StorageError):
                 await store_certificate(
                     mock_session,
                     cert_id="cert-001",
@@ -464,10 +447,6 @@ class TestMin8ConfigStorageDuplicateError:
         """A StorageDuplicateError from add_record triggers an update."""
         from ..storage.config import store_config
 
-        StorageDuplicateError = sys.modules[
-            "acapy_agent.storage.error"
-        ].StorageDuplicateError
-
         mock_session = MagicMock()
 
         with patch("mso_mdoc.storage.config.get_storage") as mock_get_storage:
@@ -484,11 +463,6 @@ class TestMin8ConfigStorageDuplicateError:
     async def test_store_config_reraises_other_storage_errors(self):
         """A generic StorageError from update_record must propagate."""
         from ..storage.config import store_config
-
-        StorageDuplicateError = sys.modules[
-            "acapy_agent.storage.error"
-        ].StorageDuplicateError
-        StorageError = sys.modules["acapy_agent.storage.error"].StorageError
 
         mock_session = MagicMock()
 
