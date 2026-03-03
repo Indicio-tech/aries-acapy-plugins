@@ -571,7 +571,9 @@ class TestC5PreverifiedClaimsSentinel:
         """Only a PreverifiedMdocClaims instance must return True."""
         from ..mdoc.verifier import PreverifiedMdocClaims, _is_preverified_claims_dict
 
-        sentinel = PreverifiedMdocClaims(claims={"org.iso.18013.5.1": {"given_name": "Alice"}})
+        sentinel = PreverifiedMdocClaims(
+            claims={"org.iso.18013.5.1": {"given_name": "Alice"}}
+        )
         assert _is_preverified_claims_dict(sentinel) is True
 
     def test_verify_credential_returns_sentinel_claims_as_payload(self):
@@ -636,8 +638,10 @@ class TestM4StripPrivateKeyFromDeviceJWK:
         proc = MsoMdocCredProcessor()
         pop = MagicMock()
         pop.holder_jwk = {
-            "kty": "EC", "crv": "P-256",
-            "x": "AAAA", "y": "BBBB",
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "AAAA",
+            "y": "BBBB",
             "d": "SECRET",  # private scalar — must not reach the mDoc
         }
         pop.holder_kid = None
@@ -647,6 +651,7 @@ class TestM4StripPrivateKeyFromDeviceJWK:
 
         serialised = proc._extract_device_key(pop, ex_record)
         import json
+
         parsed = json.loads(serialised)
         assert "d" not in parsed
         assert parsed["kty"] == "EC"
@@ -663,6 +668,7 @@ class TestM4StripPrivateKeyFromDeviceJWK:
         ex_record.verification_method = None
 
         import json
+
         serialised = proc._extract_device_key(pop, ex_record)
         parsed = json.loads(serialised)
         assert parsed == pop.holder_jwk
@@ -765,19 +771,27 @@ class TestM2CertOrdering:
         older_record = StorageRecord(
             type="mso_mdoc::certificate",
             id="cert-old",
-            value=json.dumps({
-                "certificate_pem": older_pem, "key_id": "key-1",
-                "created_at": older_time, "metadata": {},
-            }),
+            value=json.dumps(
+                {
+                    "certificate_pem": older_pem,
+                    "key_id": "key-1",
+                    "created_at": older_time,
+                    "metadata": {},
+                }
+            ),
             tags={"key_id": "key-1"},
         )
         newer_record = StorageRecord(
             type="mso_mdoc::certificate",
             id="cert-new",
-            value=json.dumps({
-                "certificate_pem": newer_pem, "key_id": "key-1",
-                "created_at": newer_time, "metadata": {},
-            }),
+            value=json.dumps(
+                {
+                    "certificate_pem": newer_pem,
+                    "key_id": "key-1",
+                    "created_at": newer_time,
+                    "metadata": {},
+                }
+            ),
             tags={"key_id": "key-1"},
         )
 

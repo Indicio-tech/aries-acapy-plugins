@@ -221,9 +221,7 @@ async def mdoc_sign(request: web.BaseRequest):
         # isomdl_uniffi exceptions, etc.) so callers always get a structured
         # HTTP error instead of a 500 with an unformatted traceback.
         LOGGER.exception("mdoc_sign failed: %s", err)
-        raise web.HTTPInternalServerError(
-            reason=f"mDoc signing failed: {err}"
-        ) from err
+        raise web.HTTPInternalServerError(reason=f"mDoc signing failed: {err}") from err
 
     return web.json_response(mso_mdoc)
 

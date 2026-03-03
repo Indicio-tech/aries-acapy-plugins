@@ -236,7 +236,9 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             # parameters; passing 'd' to the Rust isomdl library would leak
             # the holder's private key into the issued credential.
             _PUBLIC_JWK_FIELDS = frozenset(("kty", "crv", "x", "y", "n", "e"))
-            public_only = {k: v for k, v in device_candidate.items() if k in _PUBLIC_JWK_FIELDS}
+            public_only = {
+                k: v for k, v in device_candidate.items() if k in _PUBLIC_JWK_FIELDS
+            }
             return json.dumps(public_only)
         elif isinstance(device_candidate, str):
             # If a DID with fragment, prefer fragment (key id); otherwise raw string
