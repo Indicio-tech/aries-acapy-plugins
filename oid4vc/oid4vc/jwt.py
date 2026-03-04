@@ -1,5 +1,6 @@
 """JWT Methods."""
 
+import base64 as _b64
 import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional
@@ -18,6 +19,10 @@ from acapy_agent.wallet.jwt import b64_to_bytes, b64_to_dict
 from acapy_agent.wallet.key_type import ED25519, P256
 from acapy_agent.wallet.util import b58_to_bytes, bytes_to_b64
 from aries_askar import Key, KeyAlg
+from cryptography import x509 as cx509
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 
 @dataclass
@@ -76,12 +81,6 @@ def key_from_x5c(x5c: List[str]) -> Key:
     x5c entries are standard (padded) base64-encoded DER certificates per
     RFC 7517 §4.7.  Returns an aries_askar Key for signature verification.
     """
-    import base64 as _b64
-
-    from cryptography import x509 as cx509
-    from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-
     raw_b64 = x5c[0]
     padding = (4 - len(raw_b64) % 4) % 4
     cert_der = _b64.b64decode(raw_b64 + "=" * padding)
@@ -104,8 +103,6 @@ def key_from_x5c(x5c: List[str]) -> Key:
         y_b64 = _b64.urlsafe_b64encode(y_bytes).rstrip(b"=").decode()
         return Key.from_jwk(json.dumps({"kty": "EC", "crv": crv, "x": x_b64, "y": y_b64}))
     elif isinstance(pub_key, Ed25519PublicKey):
-        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-
         raw = pub_key.public_bytes(Encoding.Raw, PublicFormat.Raw)
         return Key.from_public_bytes(KeyAlg.ED25519, raw)
     else:

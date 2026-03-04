@@ -38,6 +38,7 @@ from .key_generation import (
     pem_to_jwk,
 )
 from .mdoc.issuer import isomdl_mdoc_sign
+from .mdoc.verifier import MsoMdocCredVerifier, MsoMdocPresVerifier, WalletTrustStore
 from .storage import MdocStorageManager
 
 LOGGER = logging.getLogger(__name__)
@@ -681,10 +682,6 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
         credential: Any,
     ):
         """Verify an mso_mdoc credential."""
-        import os
-
-        from .mdoc.verifier import MsoMdocCredVerifier, WalletTrustStore
-
         # In wallet trust-store mode, self.trust_store was built at startup
         # with the root profile.  Sub-wallet credential verification must use
         # the calling profile so per-tenant Askar partitions are queried.
@@ -704,10 +701,6 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
         presentation_record: "OID4VPPresentation",
     ):
         """Verify an mso_mdoc presentation."""
-        import os
-
-        from .mdoc.verifier import MsoMdocPresVerifier, WalletTrustStore
-
         # In wallet trust-store mode, self.trust_store was built at startup
         # with the root profile.  Sub-wallet VP verification must use the
         # calling profile so per-tenant Askar partitions are queried and

@@ -15,6 +15,7 @@ from aiohttp_apispec import (
 from marshmallow import fields
 
 from .helpers import _parse_cred_offer
+from ..config import Config
 
 
 class CredOfferQuerySchema(OpenAPISchema):
@@ -121,8 +122,6 @@ async def get_cred_offer_by_ref(request: web.BaseRequest):
     )
 
     offer = await _parse_cred_offer(context, exchange_id)
-
-    from ..config import Config
 
     config = Config.from_settings(context.settings)
     subpath = f"/tenant/{wallet_id}" if wallet_id else ""

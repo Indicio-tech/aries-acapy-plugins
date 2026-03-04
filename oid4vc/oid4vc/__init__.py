@@ -39,7 +39,7 @@ async def setup(context: InjectionContext):
     key_types = context.inject(KeyTypes)
     key_types.register(P256)
 
-    from jwt_vc_json.cred_processor import JwtVcJsonCredProcessor
+    from jwt_vc_json.cred_processor import JwtVcJsonCredProcessor  # noqa: PLC0415
 
     # Include jwt_vc_json by default
     processors = CredProcessors()

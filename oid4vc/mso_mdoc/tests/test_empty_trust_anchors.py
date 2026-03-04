@@ -352,7 +352,7 @@ class TestWalletTrustStoreEmptyCache:
         profile, mock_session = _make_profile()
 
         # Patch MdocStorageManager to return zero trust anchors
-        with patch("mso_mdoc.storage.MdocStorageManager") as MockStorage:
+        with patch("mso_mdoc.mdoc.verifier.MdocStorageManager") as MockStorage:
             MockStorage.return_value.get_all_trust_anchor_pems = AsyncMock(
                 return_value=[]
             )
@@ -392,7 +392,7 @@ class TestEmptyTrustAnchorsPresVerifier:
         with (
             patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso,
             patch("mso_mdoc.mdoc.verifier.Config") as mock_config,
-            patch("oid4vc.did_utils.retrieve_or_create_did_jwk") as mock_jwk_fn,
+            patch("mso_mdoc.mdoc.verifier.retrieve_or_create_did_jwk") as mock_jwk_fn,
         ):
             mock_config.from_settings.return_value.endpoint = "https://issuer.example"
             mock_jwk = MagicMock()

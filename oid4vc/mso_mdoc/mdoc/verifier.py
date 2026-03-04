@@ -19,8 +19,10 @@ from oid4vc.cred_processor import (
     PresVerifierError,
     VerifyResult,
 )
+from oid4vc.did_utils import retrieve_or_create_did_jwk
 from oid4vc.models.presentation import OID4VPPresentation
 
+from ..storage import MdocStorageManager
 from .utils import flatten_trust_anchors
 
 LOGGER = logging.getLogger(__name__)
@@ -168,9 +170,6 @@ class WalletTrustStore:
         Returns:
             List of PEM-encoded trust anchor certificates
         """
-        # Import here to avoid circular imports
-        from ..storage import MdocStorageManager
-
         storage_manager = MdocStorageManager(self.profile)
         async with self.profile.session() as session:
             anchors = await storage_manager.get_all_trust_anchor_pems(session)
@@ -464,8 +463,6 @@ async def _get_oid4vp_verification_params(
     nonce = presentation_record.nonce
     config = Config.from_settings(profile.settings)
 
-    from oid4vc.did_utils import retrieve_or_create_did_jwk
-
     async with profile.session() as session:
         jwk = await retrieve_or_create_did_jwk(session)
 
@@ -612,7 +609,7 @@ class MsoMdocPresVerifier(PresVerifier):
                 # Validate that the PEM is parseable by Python before
                 # passing to Rust
                 try:
-                    from cryptography import x509 as _x509
+                    from cryptography import x509 as _x509  # noqa: PLC0415
 
                     _x509.load_pem_x509_certificate(pem_stripped.encode())
                 except Exception as pem_err:

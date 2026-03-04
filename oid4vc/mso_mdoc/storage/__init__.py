@@ -275,7 +275,7 @@ class MdocStorageManager:
             cert_pem = cert.get("certificate_pem")
             if cert_pem:
                 try:
-                    from cryptography import x509 as _cx509
+                    from cryptography import x509 as _cx509  # noqa: PLC0415
 
                     parsed = _cx509.load_pem_x509_certificate(cert_pem.encode())
                     return (

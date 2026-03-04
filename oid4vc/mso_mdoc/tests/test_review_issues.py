@@ -96,7 +96,7 @@ class TestCrit1TrustAnchorRegistryNotNone:
         with (
             patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso,
             patch("mso_mdoc.mdoc.verifier.Config") as mock_config,
-            patch("oid4vc.did_utils.retrieve_or_create_did_jwk") as mock_jwk_fn,
+            patch("mso_mdoc.mdoc.verifier.retrieve_or_create_did_jwk") as mock_jwk_fn,
         ):
             mock_config.from_settings.return_value.endpoint = "http://localhost"
             mock_jwk = MagicMock()
@@ -138,7 +138,7 @@ class TestCrit1TrustAnchorRegistryNotNone:
         with (
             patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso,
             patch("mso_mdoc.mdoc.verifier.Config") as mock_config,
-            patch("oid4vc.did_utils.retrieve_or_create_did_jwk") as mock_jwk_fn,
+            patch("mso_mdoc.mdoc.verifier.retrieve_or_create_did_jwk") as mock_jwk_fn,
         ):
             mock_config.from_settings.return_value.endpoint = "http://localhost"
             mock_jwk = MagicMock()

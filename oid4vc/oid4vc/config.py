@@ -1,5 +1,6 @@
 """Retrieve configuration values."""
 
+import re
 from dataclasses import dataclass
 from os import getenv
 
@@ -35,8 +36,6 @@ class Config:
     @classmethod
     def from_settings(cls, settings: BaseSettings) -> "Config":
         """Retrieve configuration from context."""
-        import re
-
         assert isinstance(settings, Settings)
         plugin_settings = settings.for_plugin("oid4vci")
         host = plugin_settings.get("host") or getenv("OID4VCI_HOST")

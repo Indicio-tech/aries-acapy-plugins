@@ -94,11 +94,11 @@ class TestVerifyPresentationWalletTrustStorePerRequest:
             patch(
                 "mso_mdoc.cred_processor.MsoMdocCredProcessor.verify_presentation.__wrapped__"
                 if False
-                else "mso_mdoc.mdoc.verifier.WalletTrustStore",
+                else "mso_mdoc.cred_processor.WalletTrustStore",
                 FakeWalletTrustStore,
             ),
             patch(
-                "mso_mdoc.mdoc.verifier.MsoMdocPresVerifier",
+                "mso_mdoc.cred_processor.MsoMdocPresVerifier",
                 return_value=mock_verifier_instance,
             ),
         ):
@@ -135,11 +135,11 @@ class TestVerifyPresentationWalletTrustStorePerRequest:
 
         with (
             patch(
-                "mso_mdoc.mdoc.verifier.WalletTrustStore",
+                "mso_mdoc.cred_processor.WalletTrustStore",
                 lambda profile: f"ws({profile})",
             ),
             patch(
-                "mso_mdoc.mdoc.verifier.MsoMdocPresVerifier",
+                "mso_mdoc.cred_processor.MsoMdocPresVerifier",
                 CapturingPresVerifier,
             ),
         ):
@@ -173,7 +173,7 @@ class TestVerifyPresentationWalletTrustStorePerRequest:
         monkeypatch.setenv("OID4VC_MDOC_TRUST_STORE_TYPE", "file")
 
         with patch(
-            "mso_mdoc.mdoc.verifier.MsoMdocPresVerifier",
+            "mso_mdoc.cred_processor.MsoMdocPresVerifier",
             CapturingPresVerifier,
         ):
             await processor.verify_presentation(sub_profile, {}, pres_record)
@@ -204,7 +204,7 @@ class TestVerifyPresentationWalletTrustStorePerRequest:
         monkeypatch.delenv("OID4VC_MDOC_TRUST_STORE_TYPE", raising=False)
 
         with patch(
-            "mso_mdoc.mdoc.verifier.MsoMdocPresVerifier",
+            "mso_mdoc.cred_processor.MsoMdocPresVerifier",
             CapturingPresVerifier,
         ):
             await processor.verify_presentation(sub_profile, {}, pres_record)
@@ -249,9 +249,9 @@ class TestVerifyCredentialWalletTrustStorePerRequest:
         monkeypatch.setenv("OID4VC_MDOC_TRUST_STORE_TYPE", "wallet")
 
         with (
-            patch("mso_mdoc.mdoc.verifier.WalletTrustStore", fake_wts),
+            patch("mso_mdoc.cred_processor.WalletTrustStore", fake_wts),
             patch(
-                "mso_mdoc.mdoc.verifier.MsoMdocCredVerifier",
+                "mso_mdoc.cred_processor.MsoMdocCredVerifier",
                 CapturingCredVerifier,
             ),
         ):
@@ -285,7 +285,7 @@ class TestVerifyCredentialWalletTrustStorePerRequest:
         monkeypatch.setenv("OID4VC_MDOC_TRUST_STORE_TYPE", "file")
 
         with patch(
-            "mso_mdoc.mdoc.verifier.MsoMdocCredVerifier",
+            "mso_mdoc.cred_processor.MsoMdocCredVerifier",
             CapturingCredVerifier,
         ):
             await processor.verify_credential(sub_profile, "raw-credential")
@@ -327,8 +327,8 @@ class TestConcurrentSubWalletIsolation:
         monkeypatch.setenv("OID4VC_MDOC_TRUST_STORE_TYPE", "wallet")
 
         with (
-            patch("mso_mdoc.mdoc.verifier.WalletTrustStore", fake_wts),
-            patch("mso_mdoc.mdoc.verifier.MsoMdocPresVerifier") as mock_verifier_cls,
+            patch("mso_mdoc.cred_processor.WalletTrustStore", fake_wts),
+            patch("mso_mdoc.cred_processor.MsoMdocPresVerifier") as mock_verifier_cls,
         ):
             mock_verifier_cls.return_value.verify_presentation = AsyncMock(
                 return_value=MagicMock(verified=True)
