@@ -12,6 +12,7 @@ from ..mdoc.verifier import (
     FileTrustStore,
     MsoMdocCredVerifier,
     MsoMdocPresVerifier,
+    PreverifiedMdocClaims,
     VerifyResult,
 )
 
@@ -273,8 +274,9 @@ class TestMsoMdocPresVerifier:
 
             assert isinstance(result, VerifyResult)
             assert result.verified is True
-            assert result.payload["status"] == "verified"
-            assert result.payload["docType"] == "org.iso.18013.5.1.mDL"
+            assert isinstance(result.payload, PreverifiedMdocClaims)
+            assert result.payload.claims["status"] == "verified"
+            assert result.payload.claims["docType"] == "org.iso.18013.5.1.mDL"
 
             mock_isomdl.verify_oid4vp_response.assert_called_once()
 
