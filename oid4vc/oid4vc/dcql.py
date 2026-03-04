@@ -189,34 +189,14 @@ class DCQLQueryEvaluator:
                 None,
             )
 
-        # Doctype validation for mDOC credentials
-        if cred.meta:
-            expected_doctypes = []
-            if cred.meta.doctype_value:
-                expected_doctypes = [cred.meta.doctype_value]
-            elif cred.meta.doctype_values:
-                expected_doctypes = cred.meta.doctype_values
-
-            if expected_doctypes:
-                presented_doctype = vc_result.payload.get("docType")
-                if presented_doctype is None:
-                    return (
-                        False,
-                        f"Credential for {cred.credential_query_id} is missing doctype",
-                        None,
-                    )
-                if presented_doctype not in expected_doctypes:
-                    return (
-                        False,
-                        f"Presented doctype '{presented_doctype}' does not "
-                        f"match requested doctype(s): {expected_doctypes}",
-                        None,
-                    )
-
-        if cred.meta and cred.meta.vct_values:
-            presented_vct = vc_result.payload.get("vct")
-            if presented_vct not in cred.meta.vct_values:
-                return (False, "Presented vct does not match requested vct(s).", None)
+        # Credential type validation (doctype for mDOC, vct for SD-JWT, etc.)
+        # Uses processor extension point if available, otherwise falls back to
+        # hardcoded checks for backward compatibility.
+        type_validation_result = self._validate_credential_type(
+            cred_verifier, cred, vc_result.payload
+        )
+        if not type_validation_result[0]:
+            return (type_validation_result[0], type_validation_result[1], None)
 
         # Handle ClaimSets - if defined, at least one claim set must be satisfied
         claims_result = await self._verify_claims(cred, vc_result.payload)
@@ -332,6 +312,61 @@ class DCQLQueryEvaluator:
                 return (
                     False,
                     "Credential presented did not match the values required by the query",
+                )
+
+        return (True, None)
+
+    def _validate_credential_type(
+        self,
+        cred_verifier,
+        cred: CredentialQuery,
+        payload: dict,
+    ) -> Tuple[bool, Optional[str]]:
+        """Validate credential type identifier (doctype, vct, etc.).
+
+        Uses processor extension point if available:
+        - validate_type_identifier(payload, expected_types) -> Tuple[bool, Optional[str]]
+
+        Falls back to built-in checks for doctype (mDOC) and vct (SD-JWT) if the
+        processor doesn't implement the extension.
+
+        Returns:
+            Tuple of (success, error_message)
+        """
+        if not cred.meta:
+            return (True, None)
+
+        # Collect expected type identifiers from meta
+        expected_types = []
+        type_field = None
+
+        if cred.meta.doctype_value:
+            expected_types = [cred.meta.doctype_value]
+            type_field = "docType"
+        elif cred.meta.doctype_values:
+            expected_types = cred.meta.doctype_values
+            type_field = "docType"
+        elif cred.meta.vct_values:
+            expected_types = cred.meta.vct_values
+            type_field = "vct"
+
+        if not expected_types:
+            return (True, None)
+
+        # Use processor extension point if available
+        if hasattr(cred_verifier, "validate_type_identifier"):
+            return cred_verifier.validate_type_identifier(payload, expected_types)
+
+        # Fallback: built-in validation for known type fields
+        if type_field:
+            presented_type = payload.get(type_field)
+            if presented_type is None:
+                return (False, f"Credential is missing {type_field}")
+            if presented_type not in expected_types:
+                return (
+                    False,
+                    f"Presented {type_field} '{presented_type}' does not "
+                    f"match requested type(s): {expected_types}",
                 )
 
         return (True, None)
