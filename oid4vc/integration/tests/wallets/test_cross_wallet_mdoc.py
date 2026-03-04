@@ -24,6 +24,7 @@ async def test_mdoc_issue_to_credo_verify_with_sphereon_patterns(
     sphereon_client,  # noqa: ARG001
     setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
     mdoc_credential_config,
+    issuer_p256_did,
 ):
     """Issue mDOC to Credo and verify using Sphereon-compatible verification patterns.
 
@@ -51,22 +52,17 @@ async def test_mdoc_issue_to_credo_verify_with_sphereon_patterns(
     )
     config_id = config_response["supported_cred_id"]
 
-    did_response = await acapy_issuer_admin.post(
-        "/wallet/did/create", json={"method": "key", "options": {"key_type": "p256"}}
-    )
-    issuer_did = did_response["result"]["did"]
-
     exchange_response = await acapy_issuer_admin.post(
         "/oid4vci/exchange/create",
         json={
             "supported_cred_id": config_id,
+            "did": issuer_p256_did,
             "credential_subject": {
                 "org.iso.18013.5.1": {
                     "given_name": "Cross",
                     "family_name": "Wallet",
                 }
             },
-            "did": issuer_did,
         },
     )
 

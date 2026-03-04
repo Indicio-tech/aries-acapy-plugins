@@ -61,10 +61,10 @@ async def test_issuer_metadata(context: AdminRequestContext, req: web.Request):
                 "authorization_servers": ["http://localhost:9001"],
                 "credential_endpoint": f"http://localhost:8020/tenant/{wallet_id}/credential",
                 "notification_endpoint": f"http://localhost:8020/tenant/{wallet_id}/notification",
+                "nonce_endpoint": f"http://localhost:8020/tenant/{wallet_id}/nonce",
                 "credential_configurations_supported": {
                     "MyCredential": {
                         "format": "jwt_vc_json",
-                        "id": "MyCredential",
                         "credential_definition": {"credentialSubject": {"name": "alice"}},
                     }
                 },
@@ -79,14 +79,48 @@ async def test_get_token(context: AdminRequestContext, req: web.Request):
 
 @pytest.mark.asyncio
 async def test_handle_proof_of_posession(profile: Profile):
-    """Test handling of proof of posession."""
-    proof = {
-        "proof_type": "jwt",
-        "jwt": "eyJ0eXAiOiJvcGVuaWQ0dmNpLXByb29mK2p3dCIsImFsZyI6IkVTMjU2SyIsImtpZCI6ImRpZDpqd2s6ZXlKaGJHY2lPaUpGVXpJMU5rc2lMQ0oxYzJVaU9pSnphV2NpTENKcmRIa2lPaUpGUXlJc0ltTnlkaUk2SW5ObFkzQXlOVFpyTVNJc0luZ2lPaUpzTWtKbU1GVXlabHA1TFdaMVl6WkJOM3BxYmxwTVJXbFNiM2xzV0VsNWJrMUdOM1JHYUVOd2RqUm5JaXdpZVNJNklrYzBSRlJaUVhGZlEwZHdjVEJ2UkdKQmNVWkxWMWxLTFZoRmRDMUZiVFl6TXpGV2QwcHRjaTFpUkdNaWZRIzAifQ.eyJpYXQiOjE3MDExMjczMTUuMjQ3LCJleHAiOjE3MDExMjc5NzUuMjQ3LCJhdWQiOiJodHRwczovLzEzNTQtMTk4LTkxLTYyLTU4Lm5ncm9rLmlvIiwibm9uY2UiOiIySTF3LUVfNkUtczA3dkFJbzNxOThnIiwiaXNzIjoic3BoZXJlb246c3NpLXdhbGxldCIsImp0aSI6IjdjNzJmODg3LTI4YjQtNDg5Mi04MTUxLWNhZWMxNDRjMzBmMSJ9.XUfMcLMddw1DEqfQvQkk41FTwTmOk-dR3M51PsC76VWn3Ln3KlmPBUEwmFjEEqoEpVIm6kV7K_9svYNc2_ZX4w",
+    """Test handling of proof of possession with a self-contained synthetic JWT.
+
+    Generates a fresh EC keypair inline, builds and signs a proper
+    openid4vci-proof+jwt, and verifies it through handle_proof_of_posession.
+    No captured tokens or external URLs are used.
+    """
+    import base64
+    import json
+    import time
+
+    from aries_askar import Key, KeyAlg
+
+    def _b64url(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+    nonce = "test-nonce-synthetic-1234"
+    # Must match `endpoint` in conftest.py settings so the aud check passes.
+    issuer_endpoint = "http://localhost:8020"
+
+    # Generate a fresh P-256 key pair for the holder.
+    key = Key.generate(KeyAlg.P256)
+    public_jwk = json.loads(key.get_jwk_public())
+
+    # Build a valid openid4vci-proof+jwt embedding the public JWK in the header
+    # so handle_proof_of_posession can resolve it without DID lookup.
+    header = {"typ": "openid4vci-proof+jwt", "alg": "ES256", "jwk": public_jwk}
+    payload = {
+        "iat": int(time.time()),
+        "exp": int(time.time()) + 600,
+        "aud": issuer_endpoint,
+        "nonce": nonce,
     }
-    nonce = "2I1w-E_6E-s07vAIo3q98g"
+    h_enc = _b64url(json.dumps(header).encode())
+    p_enc = _b64url(json.dumps(payload).encode())
+    sig = key.sign_message(f"{h_enc}.{p_enc}".encode(), sig_type="ES256")
+    s_enc = _b64url(sig)
+
+    proof = {"proof_type": "jwt", "jwt": f"{h_enc}.{p_enc}.{s_enc}"}
+
     result = await handle_proof_of_posession(profile, proof, nonce)
-    assert isinstance(result.verified, bool)
+    assert result.verified is True
+    assert result.holder_jwk == public_jwk
 
 
 @pytest.mark.asyncio
@@ -260,6 +294,12 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
         AsyncMock(return_value=mock_supported),
     )
 
+    # Patch signing to avoid depending on wallet implementation details
+    monkeypatch.setattr(
+        "jwt_vc_json.cred_processor.jwt_sign",
+        AsyncMock(return_value="header.payload.signature"),
+    )
+
     # Patch handle_proof_of_posession to return a verified PopResult
     mock_pop = MagicMock()
     mock_pop.verified = True
@@ -297,5 +337,7 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
 
     # Parse the JSON response body
     data = json.loads(resp.text)
-    assert data["format"] == "jwt_vc_json"
-    assert "credential" in data
+    # OID4VCI 1.0: response uses `credentials` array, not deprecated `format`/`credential`
+    assert "credentials" in data
+    assert len(data["credentials"]) == 1
+    assert "credential" in data["credentials"][0]

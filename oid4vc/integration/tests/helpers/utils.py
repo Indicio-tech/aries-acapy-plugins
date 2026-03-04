@@ -178,9 +178,14 @@ async def wait_for_presentation_state(
         AssertionError: If expected state not reached within max_retries
     """
     for attempt in range(max_retries):
-        response = await client.get(f"/oid4vp/presentation/{presentation_id}")
-        response.raise_for_status()
-        record = response.json()
+        result = await client.get(f"/oid4vp/presentation/{presentation_id}")
+        # Support both Controller (returns dict directly) and httpx.AsyncClient
+        # (returns an httpx.Response that needs .json() and .raise_for_status())
+        if isinstance(result, dict):
+            record = result
+        else:
+            result.raise_for_status()
+            record = result.json()
 
         current_state = record.get("state")
         if current_state == expected_state:

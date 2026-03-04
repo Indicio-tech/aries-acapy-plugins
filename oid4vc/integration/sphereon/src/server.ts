@@ -5,6 +5,86 @@ import { Jwt, ProofOfPossessionCallbacks, Alg } from '@sphereon/oid4vci-common';
 import * as jose from 'jose';
 import { DIDDocument } from 'did-resolver';
 import { v4 as uuidv4 } from 'uuid';
+import { decode as cborDecode } from 'cbor-x';
+
+/**
+ * Encode a text string as a CBOR text item (major type 3).
+ */
+function cborText(s: string): Buffer {
+    const bytes = Buffer.from(s, 'utf8');
+    const len = bytes.length;
+    if (len <= 23)    return Buffer.concat([Buffer.from([0x60 | len]), bytes]);
+    if (len <= 0xff)  return Buffer.concat([Buffer.from([0x78, len]), bytes]);
+    if (len <= 0xffff) {
+        const h = Buffer.alloc(3);
+        h[0] = 0x79;
+        h.writeUInt16BE(len, 1);
+        return Buffer.concat([h, bytes]);
+    }
+    throw new Error('cborText: string too long');
+}
+
+/** Encode a small unsigned integer as a CBOR uint item (major type 0). */
+function cborUint(n: number): Buffer {
+    if (n <= 23)    return Buffer.from([n]);
+    if (n <= 0xff)  return Buffer.from([0x18, n]);
+    if (n <= 0xffff) {
+        const h = Buffer.alloc(3);
+        h[0] = 0x19;
+        h.writeUInt16BE(n, 1);
+        return h;
+    }
+    throw new Error('cborUint: value too large');
+}
+
+/** Return a CBOR map header for n items (major type 5). */
+function cborMapHeader(n: number): Buffer {
+    if (n <= 23)   return Buffer.from([0xa0 | n]);
+    if (n <= 0xff) return Buffer.from([0xb8, n]);
+    throw new Error('cborMapHeader: too many items');
+}
+
+/** Return a CBOR array header for n items (major type 4). */
+function cborArrayHeader(n: number): Buffer {
+    if (n <= 23)   return Buffer.from([0x80 | n]);
+    if (n <= 0xff) return Buffer.from([0x98, n]);
+    throw new Error('cborArrayHeader: too many items');
+}
+
+/**
+ * Build an ISO 18013-5 §8.3.2.1 DeviceResponse CBOR directly from the raw
+ * IssuerSigned bytes, WITHOUT re-encoding through a JavaScript object.
+ *
+ * cbor-x and similar libraries convert integer CBOR map keys (e.g. the COSE
+ * unprotected header key 33 for x5chain) into JavaScript string properties
+ * when round-tripping through a JS object.  This produces CBOR text("33")
+ * instead of the required CBOR uint(33), making the isomdl verifier unable to
+ * find the x5chain certificate.
+ *
+ * By embedding `issuerSignedRawCbor` as-is in the canonical CBOR byte
+ * sequence we guarantee that the COSE header integer keys are preserved.
+ */
+function buildDeviceResponseCbor(
+    docType: string,
+    issuerSignedRawCbor: Buffer,
+    version: string = '1.0',
+    status: number = 0,
+): Buffer {
+    // Document map: { "docType": docType, "issuerSigned": <raw cbor> }
+    const docMap = Buffer.concat([
+        cborMapHeader(2),
+        cborText('docType'),     cborText(docType),
+        cborText('issuerSigned'), issuerSignedRawCbor,   // ← raw bytes, no re-encode
+    ]);
+
+    // DeviceResponse map: { "version": v, "documents": [docMap], "status": s }
+    return Buffer.concat([
+        cborMapHeader(3),
+        cborText('version'),   cborText(version),
+        cborText('documents'), cborArrayHeader(1), docMap,
+        cborText('status'),    cborUint(status),
+    ]);
+}
 
 const app = express();
 const port = process.env.PORT || 3010;
@@ -67,9 +147,11 @@ app.post('/oid4vci/accept-offer', async (req: Request, res: Response) => {
       retrieveServerMetadata: true,
     });
 
-    // Acquire access token
+    // Acquire access token and capture the response (includes c_nonce for proof)
+    let tokenBody: any = null;
     try {
-        const accessToken = await client.acquireAccessToken();
+        const tokenResult = await client.acquireAccessToken();
+        tokenBody = (tokenResult as any)?.successBody ?? tokenResult;
         console.log('Access token acquired');
     } catch (e) {
         console.log('Note: Failed to acquire access token (might not be needed for this flow):', e);
@@ -119,17 +201,112 @@ app.post('/oid4vci/accept-offer', async (req: Request, res: Response) => {
     // We use the first configuration ID found
     const credentialIdentifier = credentialConfigurationIds[0];
 
+    // -----------------------------------------------------------------------
+    // Custom mso_mdoc path: the Sphereon OID4VCI library (v0.13) does not
+    // support parsing CBOR-encoded mso_mdoc credential responses.  We bypass
+    // it and send the credential request manually using raw fetch so we can
+    // return the base64url-encoded IssuerSigned bytes as-is.
+    // -----------------------------------------------------------------------
+    if (format === 'mso_mdoc') {
+        // Extract endpoint metadata from the initialised client.
+        // Different versions of the Sphereon library surface these under
+        // different property paths, so we try all common locations.
+        const endpointMeta: any = (client as any).endpointMetadata ?? {};
+        const openIdMeta: any =
+            endpointMeta.openIDResponse ??
+            endpointMeta.credential_issuer_metadata ??
+            {};
+        const credentialEndpoint: string =
+            // Direct property (some v0.13 builds expose it here)
+            endpointMeta.credential_endpoint ??
+            openIdMeta.credential_endpoint ??
+            `${endpointMeta.issuer ?? openIdMeta.credential_issuer ?? ''}/credential`;
+        const issuerValue: string | undefined =
+            openIdMeta.credential_issuer ?? openIdMeta.issuer ?? endpointMeta.issuer;
+
+        const accessTokenValue: string | undefined =
+            tokenBody?.access_token ??
+            (client as any)?.accessToken?.access_token;
+        if (!accessTokenValue) {
+            throw new Error('No access token available for mso_mdoc credential request');
+        }
+        if (!credentialEndpoint) {
+            throw new Error('No credential_endpoint found in server metadata for mso_mdoc');
+        }
+
+        // Build OID4VCI proof JWT — include c_nonce when provided by the token endpoint
+        const cNonce: string | undefined = tokenBody?.c_nonce ?? tokenBody?.c_nonce_value;
+        const proofClaims: any = { iat: Math.floor(Date.now() / 1000) };
+        if (issuerValue) proofClaims.aud = issuerValue;
+        if (cNonce) proofClaims.nonce = cNonce;
+
+        const proofJwt = await new jose.SignJWT(proofClaims)
+            .setProtectedHeader({
+                alg: 'ES256',
+                typ: 'openid4vci-proof+jwt',
+                jwk: publicJwk,
+            })
+            .setIssuedAt()
+            .sign(privateKey);
+
+        // POST credential request directly to the issuer endpoint
+        const mdocCredReqBody = {
+            credential_identifier: credentialIdentifier,
+            proof: { proof_type: 'jwt', jwt: proofJwt },
+        };
+
+        // @ts-ignore – fetch is available in Node 18+
+        const mdocFetchResponse = await fetch(credentialEndpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${accessTokenValue}`,
+            },
+            body: JSON.stringify(mdocCredReqBody),
+        });
+
+        if (!mdocFetchResponse.ok) {
+            const errText = await mdocFetchResponse.text();
+            throw new Error(
+                `mso_mdoc credential request failed: ${mdocFetchResponse.status} ${errText}`,
+            );
+        }
+
+        const mdocCredJson = await mdocFetchResponse.json();
+        const mdocCredential =
+            (mdocCredJson as any).credential ??
+            ((mdocCredJson as any).credentials as any[])?.[0]?.credential;
+
+        console.log('mso_mdoc credential acquired via direct fetch');
+        return res.json({ credential: mdocCredential });
+    }
+    // -----------------------------------------------------------------------
+    // Default path: use the Sphereon library for JWT / SD-JWT formats
+    // -----------------------------------------------------------------------
+
     const credentialResponse = await client.acquireCredentials({
       credentialIdentifier: credentialIdentifier,
       proofCallbacks: callbacks,
-      format: format || 'jwt_vc_json',
+      // Pass format as an internal hint so the library can determine the signing
+      // algorithm. The Sphereon library does NOT include 'format' in the HTTP
+      // request body when credentialIdentifier is set (OID4VCI 1.0 §7.2 is satisfied).
+      format: (format || 'jwt_vc_json') as any,
       alg: Alg.ES256,
       kid: kid,
     });
 
     console.log('Credential acquired successfully');
-    
-    res.json({ credential: credentialResponse.credential });
+    console.log('Credential response keys:', Object.keys(credentialResponse));
+
+    // Handle both OID4VCI 1.0 (credentials array) and legacy draft (credential field).
+    // OID4VCI 1.0 final spec returns: {"credentials": [{"credential": "eyJ..."}]}
+    // Older draft spec returned: {"credential": "eyJ...", "format": "..."}
+    const responseAny = credentialResponse as any;
+    const credential =
+      responseAny.credential ??
+      (responseAny.credentials as any[])?.[0]?.credential;
+
+    res.json({ credential });
 
   } catch (error: any) {
     console.error('Error accepting offer:', error);
@@ -181,50 +358,136 @@ app.post('/oid4vp/present-credential', async (req: Request, res: Response) => {
         throw new Error('No response_uri in authorization request');
     }
 
-    // Create VP
-    const { privateKey, publicKey } = await jose.generateKeyPair('ES256');
-    const publicJwk = await jose.exportJWK(publicKey);
-    const didJwk = `did:jwk:${Buffer.from(JSON.stringify(publicJwk)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')}`;
-    const kid = `${didJwk}#0`;
-    
-    const vpPayload = {
-        iss: didJwk,
-        sub: didJwk,
-        vp: {
-            '@context': ['https://www.w3.org/2018/credentials/v1'],
-            type: ['VerifiablePresentation'],
-            verifiableCredential: verifiable_credentials
-        },
-        nonce: nonce,
-        aud: client_id
-    };
-    
-    const vpToken = await new jose.SignJWT(vpPayload as any)
-        .setProtectedHeader({ alg: 'ES256', typ: 'JWT', kid: kid })
-        .setIssuedAt()
-        .setIssuer(didJwk)
-        .setAudience(client_id as string)
-        .sign(privateKey);
-        
-    // Create Presentation Submission
+    // Detect whether this is an mso_mdoc presentation request.
+    // OID4VP for mso_mdoc: vp_token = raw credential bytes (hex/base64url),
+    // descriptor_map format = "mso_mdoc", no path_nested.
     const presentationDefinition = (requestPayload as any).presentation_definition;
-    let submission = null;
-    
-    if (presentationDefinition) {
-        const descriptorId = presentationDefinition.input_descriptors[0].id;
-        submission = {
-            id: uuidv4(),
-            definition_id: presentationDefinition.id,
-            descriptor_map: [
-                {
-                    id: descriptorId,
-                    format: 'jwt_vp',
-                    path: '$'
-                }
-            ]
+    const vpFormats = (requestPayload as any).vp_formats ?? {};
+    const isMsoMdoc = !!vpFormats['mso_mdoc'] ||
+        !!(presentationDefinition?.input_descriptors?.[0]?.format?.['mso_mdoc']);
+
+    let vpToken: string;
+    let submission: any = null;
+
+    if (isMsoMdoc) {
+        // mso_mdoc path: build a spec-compliant DeviceResponse (ISO 18013-5 §8.3.2.1)
+        // per OID4VP spec the vp_token for mso_mdoc MUST be a CBOR-encoded DeviceResponse:
+        //   DeviceResponse = { version: "1.0", documents: [Document], status: 0 }
+        //   Document       = { docType, issuerSigned: <IssuerSigned> }
+        const cred = verifiable_credentials[0] as string;
+        let rawCredBytes: Buffer;
+        if (/^[0-9a-fA-F]+$/.test(cred)) {
+            rawCredBytes = Buffer.from(cred, 'hex');
+        } else {
+            // base64url → Buffer
+            rawCredBytes = Buffer.from(cred.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+        }
+
+        // Decode the IssuerSigned CBOR
+        const issuerSignedObj = cborDecode(rawCredBytes) as any;
+
+        // Extract docType from the MSO inside the COSE_Sign1 payload
+        // COSE_Sign1 = [protected_bstr, unprotected_map, payload, signature_bstr]
+        // payload = Tag(24, mso_bstr) where Tag 24 = embedded CBOR data item
+        let docType = 'org.iso.18013.5.1.mDL';
+        try {
+            const issuerAuth = (issuerSignedObj instanceof Map)
+                ? issuerSignedObj.get('issuerAuth')
+                : issuerSignedObj['issuerAuth'];
+            const cosePayload = issuerAuth[2];
+            let msoBytes: Uint8Array | undefined;
+            if (
+                cosePayload !== null &&
+                typeof cosePayload === 'object' &&
+                'tag' in cosePayload &&
+                Number(cosePayload.tag) === 24
+            ) {
+                // cbor-x represents tagged values as { tag, value } objects
+                const tagValue = (cosePayload as any).value;
+                msoBytes = tagValue instanceof Uint8Array ? tagValue : Uint8Array.from(tagValue);
+            } else if (cosePayload instanceof Uint8Array) {
+                msoBytes = cosePayload;
+            } else if (Buffer.isBuffer(cosePayload)) {
+                msoBytes = Uint8Array.from(cosePayload as Buffer);
+            }
+            if (msoBytes) {
+                const mso = cborDecode(msoBytes) as any;
+                const dt = (mso instanceof Map) ? mso.get('docType') : mso['docType'];
+                if (typeof dt === 'string' && dt) docType = dt;
+            }
+        } catch (_e) {
+            console.warn('Could not extract docType from MSO, using fallback:', _e);
+        }
+
+        // Wrap IssuerSigned in a ISO 18013-5 DeviceResponse.
+        // Use buildDeviceResponseCbor to embed rawCredBytes directly—
+        // bypassing the cbor-x decode→re-encode cycle that would corrupt
+        // COSE integer header keys (e.g. key 33 for x5chain becomes "33").
+        const deviceResponseBytes = buildDeviceResponseCbor(docType, rawCredBytes);
+        vpToken = Buffer.from(deviceResponseBytes).toString('base64url');
+        console.log(`mso_mdoc presentation: built DeviceResponse for docType=${docType}`);
+
+        if (presentationDefinition) {
+            const descriptorId = presentationDefinition.input_descriptors[0].id;
+            submission = {
+                id: uuidv4(),
+                definition_id: presentationDefinition.id,
+                descriptor_map: [
+                    {
+                        id: descriptorId,
+                        format: 'mso_mdoc',
+                        path: '$',
+                    }
+                ]
+            };
+        }
+    } else {
+        // JWT VP path: wrap credentials in a signed JWT VP
+        const { privateKey, publicKey } = await jose.generateKeyPair('ES256');
+        const publicJwk = await jose.exportJWK(publicKey);
+        const didJwk = `did:jwk:${Buffer.from(JSON.stringify(publicJwk)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')}`;
+        const kid = `${didJwk}#0`;
+
+        const vpPayload = {
+            iss: didJwk,
+            sub: didJwk,
+            vp: {
+                '@context': ['https://www.w3.org/2018/credentials/v1'],
+                type: ['VerifiablePresentation'],
+                verifiableCredential: verifiable_credentials
+            },
+            nonce: nonce,
+            aud: client_id
         };
+
+        vpToken = await new jose.SignJWT(vpPayload as any)
+            .setProtectedHeader({ alg: 'ES256', typ: 'JWT', kid: kid })
+            .setIssuedAt()
+            .setIssuer(didJwk)
+            .setAudience(client_id as string)
+            .sign(privateKey);
+
+        if (presentationDefinition) {
+            const descriptorId = presentationDefinition.input_descriptors[0].id;
+            submission = {
+                id: uuidv4(),
+                definition_id: presentationDefinition.id,
+                descriptor_map: [
+                    {
+                        id: descriptorId,
+                        format: 'jwt_vp',
+                        path: '$',
+                        path_nested: {
+                            id: descriptorId,
+                            format: 'jwt_vc',
+                            path: '$.vp.verifiableCredential[0]'
+                        }
+                    }
+                ]
+            };
+        }
     }
-    
+
     // Send Response
     const formData = new URLSearchParams();
     formData.append('vp_token', vpToken);
@@ -248,8 +511,18 @@ app.post('/oid4vp/present-credential', async (req: Request, res: Response) => {
         const text = await postResponse.text();
         throw new Error(`VP submission failed: ${postResponse.status} ${text}`);
     }
-    
-    const jsonResponse = await postResponse.json();
+
+    // ACA-Py returns 200 with an empty body from its post_response handler.
+    // Safely attempt JSON parse; treat empty/non-JSON body as a success response.
+    let jsonResponse: any = { success: true };
+    try {
+        const responseText = await postResponse.text();
+        if (responseText.trim()) {
+            jsonResponse = JSON.parse(responseText);
+        }
+    } catch (_e) {
+        // Non-JSON body is acceptable; ACA-Py uses empty 200 responses
+    }
     res.json(jsonResponse);
 
   } catch (error: any) {

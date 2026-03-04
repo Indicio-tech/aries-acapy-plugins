@@ -14,7 +14,7 @@ from acapy_controller import Controller
 # Configuration
 ACAPY_ISSUER_ADMIN_URL = "http://acapy-issuer:8021"
 ACAPY_VERIFIER_ADMIN_URL = "http://acapy-verifier:8031"
-CREDO_AGENT_URL = "http://credo-agent:3020"
+CREDO_AGENT_URL = "http://credo-agent:3021"
 
 
 @pytest.mark.asyncio

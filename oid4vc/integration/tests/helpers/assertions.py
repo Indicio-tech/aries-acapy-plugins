@@ -223,17 +223,20 @@ def assert_presentation_successful(presentation_result: dict) -> None:
     """Assert that presentation was successful.
 
     Args:
-        presentation_result: The presentation result from holder
+        presentation_result: The presentation result from the OID4VP verifier.
+            This is an OID4VPPresentation record with 'verified' (bool) and
+            'state' ('presentation-valid' | 'presentation-invalid') fields.
 
     Raises:
         AssertionError: If presentation failed
     """
     assert presentation_result is not None, "Presentation result is None"
-    assert "success" in presentation_result, (
-        "Missing 'success' field in presentation result"
-    )
-    assert presentation_result["success"] is True, (
-        f"Presentation failed: {presentation_result.get('error', 'Unknown error')}"
+    # OID4VP records use 'verified' (bool) and 'state' rather than 'success'
+    verified = presentation_result.get("verified")
+    state = presentation_result.get("state")
+    assert verified is True or state == "presentation-valid", (
+        f"Presentation failed: state={state!r}, verified={verified!r}, "
+        f"errors={presentation_result.get('errors', 'Unknown error')}"
     )
 
 

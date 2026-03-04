@@ -10,7 +10,7 @@ async def test_docker_network_connectivity():
 
     # Test Credo agent service
     async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.get("http://credo-agent:3020/health")
+        response = await client.get("http://credo-agent:3021/health")
         assert response.status_code == 200
         print(f"✅ Credo agent health: {response.json()}")
 

@@ -5,6 +5,12 @@
 
 set -e
 
+# Default port values (matching docker-compose.yml)
+CREDO_PORT=${CREDO_PORT:-13021}
+SPHEREON_PORT=${SPHEREON_PORT:-13010}
+ACAPY_ISSUER_ADMIN_PORT=${ACAPY_ISSUER_ADMIN_PORT:-18084}
+ACAPY_VERIFIER_ADMIN_PORT=${ACAPY_VERIFIER_ADMIN_PORT:-18034}
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -106,7 +112,7 @@ run_full() {
     
     cleanup
     # Note: Certificates are generated dynamically in tests via API
-    docker compose -f docker-compose.full.yml up --build --abort-on-container-exit
+    docker compose up --build --abort-on-container-exit
     
     if [ $? -eq 0 ]; then
         print_success "Full test suite completed successfully!"
@@ -129,9 +135,10 @@ run_dev() {
     if [ $? -eq 0 ]; then
         print_success "Development environment started!"
         print_info "Services running:"
-        print_info "  - Credo Agent: http://localhost:3020"
-        print_info "  - ACA-Py Issuer Admin: http://localhost:8021"
-        print_info "  - ACA-Py Verifier Admin: http://localhost:8031"
+        print_info "  - Credo Agent: http://localhost:$CREDO_PORT"
+        print_info "  - Sphereon Wrapper: http://localhost:$SPHEREON_PORT"
+        print_info "  - ACA-Py Issuer Admin: http://localhost:$ACAPY_ISSUER_ADMIN_PORT"
+        print_info "  - ACA-Py Verifier Admin: http://localhost:$ACAPY_VERIFIER_ADMIN_PORT"
         print_info ""
         print_info "To run tests manually:"
         print_info "  docker compose exec test-river uv run pytest tests/ -v"
@@ -175,13 +182,8 @@ show_logs() {
     
     print_info "Showing logs for $service..."
     
-    # Try different compose files
     if docker compose ps | grep -q "$service"; then
         docker compose logs -f "$service"
-    elif docker compose -f docker-compose.full.yml ps | grep -q "$service"; then
-        docker compose -f docker-compose.full.yml logs -f "$service"
-    elif docker compose -f docker-compose.dev.yml ps | grep -q "$service"; then
-        docker compose -f docker-compose.dev.yml logs -f "$service"
     else
         print_error "Service $service not found or not running"
         exit 1
@@ -193,21 +195,16 @@ show_status() {
     print_info "Service Status:"
     echo ""
     
-    echo "Default environment:"
+    echo "Environment:"
     docker compose ps 2>/dev/null || echo "  Not running"
-    echo ""
-    
-    echo "Full test environment:"
-    docker compose -f docker-compose.full.yml ps 2>/dev/null || echo "  Not running"
-    echo ""
-    
-    echo "Development environment:"
-    docker compose -f docker-compose.dev.yml ps 2>/dev/null || echo "  Not running"
 }
 
 # Main script logic
 main() {
     check_docker
+    
+    # Set a unique project name for Docker Compose
+    export COMPOSE_PROJECT_NAME="oid4vc-integration"
     
     case "${1:-}" in
         "default"|"")

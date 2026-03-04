@@ -158,7 +158,7 @@ async def test_acapy_services_health():
 
         # Test Credo agent
         print("🧪 Testing Credo agent health...")
-        credo_response = await client.get("http://credo-agent:3020/health")
+        credo_response = await client.get("http://credo-agent:3021/health")
         assert credo_response.status_code == 200, "Credo agent not healthy"
         credo_status = credo_response.json()
         assert credo_status.get("status") == "healthy", "Credo agent not healthy"

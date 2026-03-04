@@ -2581,9 +2581,8 @@ class TestOID4VCIntegrationFlows:
                 "scope": "identity_credential",
                 "cryptographic_binding_methods_supported": ["did:jwk"],
                 "cryptographic_suites_supported": ["ES256"],
-                "credential_definition": {
-                    "vct": "https://example.com/identity_credential"
-                },
+                # Per OID4VCI spec, vc+sd-jwt uses top-level vct, not credential_definition
+                "vct": "https://example.com/identity_credential",
             },
         }
 
@@ -2593,12 +2592,14 @@ class TestOID4VCIntegrationFlows:
             assert "scope" in config
             assert "cryptographic_binding_methods_supported" in config
             assert "cryptographic_suites_supported" in config
-            assert "credential_definition" in config
 
             # Format-specific validations
             if config["format"] == "jwt_vc_json":
+                assert "credential_definition" in config
                 assert "type" in config["credential_definition"]
             elif config["format"] == "ldp_vc":
+                assert "credential_definition" in config
                 assert "@context" in config["credential_definition"]
             elif config["format"] == "vc+sd-jwt":
-                assert "vct" in config["credential_definition"]
+                # SD-JWT uses top-level vct per OID4VCI spec
+                assert "vct" in config

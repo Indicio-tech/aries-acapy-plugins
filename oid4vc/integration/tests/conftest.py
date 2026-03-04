@@ -29,7 +29,7 @@ from credo_wrapper import CredoWrapper
 from sphereon_wrapper import SphereaonWrapper
 
 # Environment configuration
-CREDO_AGENT_URL = os.getenv("CREDO_AGENT_URL", "http://localhost:3020")
+CREDO_AGENT_URL = os.getenv("CREDO_AGENT_URL", "http://localhost:3021")
 SPHEREON_WRAPPER_URL = os.getenv("SPHEREON_WRAPPER_URL", "http://localhost:3010")
 ACAPY_ISSUER_ADMIN_URL = os.getenv("ACAPY_ISSUER_ADMIN_URL", "http://localhost:8021")
 ACAPY_ISSUER_OID4VCI_URL = os.getenv(
@@ -616,7 +616,7 @@ def safely_get_first_credential(response, wallet_name: str) -> str:
 async def wait_for_presentation_valid(
     verifier_admin: Controller,
     presentation_id: str,
-    max_retries: int = 15,
+    max_retries: int = 30,
     interval: float = 1.0,
 ) -> dict:
     """Poll for presentation to be validated.
@@ -763,7 +763,7 @@ def sd_jwt_credential_config():
             },
             "format_data": {
                 "cryptographic_binding_methods_supported": binding_methods
-                or ["did:key"],
+                or ["did:key", "jwk"],
                 "cryptographic_suites_supported": crypto_suites or ["EdDSA"],
                 "vct": vct,
                 "claims": claims,

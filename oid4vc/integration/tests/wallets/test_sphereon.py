@@ -195,7 +195,10 @@ async def test_sphereon_accept_mdoc_credential_offer(
 @pytest.mark.skipif(not MDOC_AVAILABLE, reason="isomdl_uniffi not available")
 @pytest.mark.asyncio
 async def test_sphereon_present_mdoc_credential(
-    acapy_verifier_admin, acapy_issuer_admin, sphereon_client
+    acapy_verifier_admin,
+    acapy_issuer_admin,
+    sphereon_client,
+    setup_verifier_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
 ):
     """Test Sphereon presenting an mdoc credential to ACA-Py."""
 

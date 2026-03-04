@@ -48,7 +48,7 @@ class TestDCQLSdJwtFlow:
                 "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
             },
             "format_data": {
-                "cryptographic_binding_methods_supported": ["did:key"],
+                "cryptographic_binding_methods_supported": ["did:key", "jwk"],
                 "cryptographic_suites_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/identity_credential",
                 "claims": {
@@ -229,7 +229,7 @@ class TestDCQLSdJwtFlow:
                 "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
             },
             "format_data": {
-                "cryptographic_binding_methods_supported": ["did:key"],
+                "cryptographic_binding_methods_supported": ["did:key", "jwk"],
                 "cryptographic_suites_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/address_credential",
                 "claims": {
@@ -654,7 +654,7 @@ class TestDCQLSelectiveDisclosure:
                 "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
             },
             "format_data": {
-                "cryptographic_binding_methods_supported": ["did:key"],
+                "cryptographic_binding_methods_supported": ["did:key", "jwk"],
                 "cryptographic_suites_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/employee_credential",
                 "claims": {
@@ -944,7 +944,7 @@ class TestDCQLCredentialSets:
                 "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
             },
             "format_data": {
-                "cryptographic_binding_methods_supported": ["did:key"],
+                "cryptographic_binding_methods_supported": ["did:key", "jwk"],
                 "cryptographic_suites_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/identity",
                 "claims": {
@@ -964,7 +964,7 @@ class TestDCQLCredentialSets:
                 "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
             },
             "format_data": {
-                "cryptographic_binding_methods_supported": ["did:key"],
+                "cryptographic_binding_methods_supported": ["did:key", "jwk"],
                 "cryptographic_suites_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/age_verification",
                 "claims": {
@@ -1147,7 +1147,7 @@ class TestDCQLSpecCompliance:
                 "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
             },
             "format_data": {
-                "cryptographic_binding_methods_supported": ["did:key"],
+                "cryptographic_binding_methods_supported": ["did:key", "jwk"],
                 "cryptographic_suites_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/test",
                 "claims": {"test_claim": {"mandatory": True}},
