@@ -146,11 +146,10 @@ async def create_oid4vp_request(request: web.Request):
             )
 
     config = Config.from_settings(context.settings)
-    wallet_id = (
-        context.profile.settings.get("wallet.id")
-        if context.profile.settings.get("multitenant.enabled")
-        else None
-    )
+    # wallet.id is present on sub-wallet profiles in all multitenant modes;
+    # do not gate on multitenant.enabled (absent from sub-wallet settings in
+    # single-wallet-askar mode), just read it directly.
+    wallet_id = context.profile.settings.get("wallet.id")
     subpath = f"/tenant/{wallet_id}" if wallet_id else ""
     # Use OID4VP_ENDPOINT when available (may differ from OID4VCI endpoint,
     # e.g.served via a separate TLS-terminating proxy for conformance tests).

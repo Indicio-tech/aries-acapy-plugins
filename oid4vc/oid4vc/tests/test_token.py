@@ -475,6 +475,52 @@ async def test_proof_with_correct_aud_accepted(profile):
 
 
 @pytest.mark.asyncio
+async def test_proof_with_tenant_scoped_aud_accepted(profile):
+    """Diff-3: proof JWT aud set to a tenant-scoped URL must be accepted.
+
+    In multitenant / single-wallet-askar mode the wallet client sets aud to
+    {issuer_base}/tenant/{wallet_id}.  The updated check allows any value that
+    starts with ``issuer_endpoint + '/tenant/'``.
+    """
+    nonce = "nonce-tenant"
+    jwt_str = _build_proof_jwt(nonce, aud="http://localhost:8020/tenant/my-wallet-id")
+    proof = {"proof_type": "jwt", "jwt": jwt_str}
+
+    with patch(
+        "oid4vc.public_routes.token.Config.from_settings",
+        return_value=MagicMock(endpoint="http://localhost:8020"),
+    ):
+        result = await handle_proof_of_posession(profile, proof, nonce)
+
+    assert result.verified is True
+
+
+@pytest.mark.asyncio
+async def test_proof_with_cross_issuer_tenant_path_rejected(profile):
+    """Diff-3: a cross-issuer aud with a tenant path must still be rejected.
+
+    ``https://attacker.example.com/tenant/x`` starts with a DIFFERENT base so
+    the updated check must not accept it.
+    """
+    nonce = "nonce-cross"
+    jwt_str = _build_proof_jwt(
+        nonce, aud="https://attacker.example.com/tenant/my-wallet-id"
+    )
+    proof = {"proof_type": "jwt", "jwt": jwt_str}
+
+    with patch(
+        "oid4vc.public_routes.token.Config.from_settings",
+        return_value=MagicMock(endpoint="http://localhost:8020"),
+    ):
+        with pytest.raises(web.HTTPBadRequest) as exc_info:
+            await handle_proof_of_posession(profile, proof, nonce)
+
+    body = json.loads(exc_info.value.text)
+    assert body["error"] == "invalid_proof"
+    assert "aud" in body["error_description"]
+
+
+@pytest.mark.asyncio
 async def test_proof_without_aud_not_rejected_when_endpoint_unconfigured(profile):
     """C-4: When endpoint is not configured, a proof without aud is still accepted."""
     nonce = "nonce-noaud"

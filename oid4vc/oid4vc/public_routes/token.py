@@ -347,7 +347,11 @@ async def handle_proof_of_posession(
         issuer_endpoint = Config.from_settings(profile.settings).endpoint
         # aud may be a string or a list of strings (per RFC 7519 § 4.1.3)
         aud_values = [aud] if isinstance(aud, str) else list(aud)
-        if issuer_endpoint and issuer_endpoint not in aud_values:
+        if issuer_endpoint and not any(
+            av == issuer_endpoint
+            or av.startswith(issuer_endpoint + "/tenant/")
+            for av in aud_values
+        ):
             raise web.HTTPBadRequest(
                 text=json.dumps(
                     {
