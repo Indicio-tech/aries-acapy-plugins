@@ -286,9 +286,7 @@ class TestProofsJwtSingleEntrySucceeds:
 
         req_body = {
             "credential_identifier": "mDL",
-            "proofs": {
-                "jwt": ["eyJhbGciOiJFUzI1NiJ9.single_proof.sig"]
-            },
+            "proofs": {"jwt": ["eyJhbGciOiJFUzI1NiJ9.single_proof.sig"]},
         }
 
         single_mock_processor = MagicMock()
@@ -312,7 +310,6 @@ class TestProofsJwtSingleEntrySucceeds:
                 AsyncMock(return_value=mock_pop),
             ),
         ):
-
             # Should reach issuance — may raise for unrelated reasons (e.g.
             # processor wiring), but must NOT raise 400 with invalid_proof.
             try:
@@ -446,19 +443,23 @@ class TestProofsJwtSilentTruncationDocumentation:
             """The corrected normalisation function."""
             if not proofs_list:
                 raise web.HTTPBadRequest(
-                    text=json.dumps({"error": "invalid_proof", "error_description": "empty"}),
+                    text=json.dumps(
+                        {"error": "invalid_proof", "error_description": "empty"}
+                    ),
                     content_type="application/json",
                 )
             if len(proofs_list) > 1:
                 raise web.HTTPBadRequest(
-                    text=json.dumps({
-                        "error": "invalid_proof",
-                        "error_description": (
-                            f"Batch issuance is not supported; received "
-                            f"{len(proofs_list)} proofs in proofs.jwt for "
-                            f"{supported_format}. Send one proof per request."
-                        ),
-                    }),
+                    text=json.dumps(
+                        {
+                            "error": "invalid_proof",
+                            "error_description": (
+                                f"Batch issuance is not supported; received "
+                                f"{len(proofs_list)} proofs in proofs.jwt for "
+                                f"{supported_format}. Send one proof per request."
+                            ),
+                        }
+                    ),
                     content_type="application/json",
                 )
             return {"proof_type": "jwt", "jwt": proofs_list[0]}

@@ -205,9 +205,7 @@ class TestWalletIdWithoutMultitenantEnabled:
 
         # Old behaviour (re-implemented inline to document the bug)
         wallet_id_old = (
-            settings.get("wallet.id")
-            if settings.get("multitenant.enabled")
-            else None
+            settings.get("wallet.id") if settings.get("multitenant.enabled") else None
         )
         assert wallet_id_old is None, (
             "Old guard always returned None in single-wallet-askar mode because "

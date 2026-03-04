@@ -126,7 +126,9 @@ class TestEmptyTrustAnchorsCredVerifier:
         )
         assert result.payload, "Error payload must be populated"
         error_text = result.payload.get("error", "").lower()
-        assert "trust" in error_text or "anchor" in error_text or "configured" in error_text, (
+        assert (
+            "trust" in error_text or "anchor" in error_text or "configured" in error_text
+        ), (
             f"Error message should mention trust anchors, got: {result.payload.get('error')}"
         )
 
@@ -293,8 +295,8 @@ class TestMdocVerifyEmptyTrustAnchors:
         with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso:
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
             mock_iso.Mdoc.from_string.side_effect = Exception("CBOR parse error")
-            mock_iso.Mdoc.new_from_base64url_encoded_issuer_signed.side_effect = Exception(
-                "base64 parse error"
+            mock_iso.Mdoc.new_from_base64url_encoded_issuer_signed.side_effect = (
+                Exception("base64 parse error")
             )
 
             result = mdoc_verify("not-valid-hex!!", trust_anchors=None)
@@ -408,6 +410,7 @@ class TestEmptyTrustAnchorsPresVerifier:
 
             # Presentation bytes (base64url encoded)
             import base64
+
             pres_bytes = base64.urlsafe_b64encode(b"\xa0").rstrip(b"=").decode()
 
             result = await verifier.verify_presentation(profile, pres_bytes, pres_record)

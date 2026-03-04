@@ -112,7 +112,7 @@ def _valid_cert_pem() -> tuple[str, str]:
 def _not_yet_valid_cert_pem() -> tuple[str, str]:
     """Return (key_pem, cert_pem) for a certificate that is not valid yet."""
     return _generate_cert(
-        not_valid_before_offset_days=1,   # starts tomorrow
+        not_valid_before_offset_days=1,  # starts tomorrow
         not_valid_after_offset_days=365,
     )
 
@@ -282,9 +282,12 @@ class TestIssueRejectsExpiredCertificate:
                 )
 
             # The Rust signer must NEVER have been called with an expired cert.
-            mock_sign.assert_not_called(), (
-                "SECURITY BUG: isomdl_mdoc_sign was called with an expired "
-                "certificate. The expiry check must run before the Rust call."
+            (
+                mock_sign.assert_not_called(),
+                (
+                    "SECURITY BUG: isomdl_mdoc_sign was called with an expired "
+                    "certificate. The expiry check must run before the Rust call."
+                ),
             )
 
     @pytest.mark.asyncio
@@ -306,7 +309,9 @@ class TestIssueRejectsExpiredCertificate:
         with (
             patch("mso_mdoc.cred_processor.MdocStorageManager") as MockStorage,
             patch("mso_mdoc.cred_processor.pem_from_jwk", return_value=private_key_pem),
-            patch("mso_mdoc.cred_processor.isomdl_mdoc_sign", return_value="mock-mdoc-b64"),
+            patch(
+                "mso_mdoc.cred_processor.isomdl_mdoc_sign", return_value="mock-mdoc-b64"
+            ),
         ):
             mgr = MockStorage.return_value
             mgr.get_default_signing_key = AsyncMock(
