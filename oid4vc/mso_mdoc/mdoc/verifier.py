@@ -354,6 +354,19 @@ class MsoMdocCredVerifier(CredVerifier):
             if trust_anchors:
                 trust_anchors = flatten_trust_anchors(trust_anchors)
 
+            # Fail-closed guard: refuse to verify without at least one trust
+            # anchor.  An empty list causes the Rust library to accept any
+            # self-signed issuer certificate, effectively disabling chain
+            # validation and allowing an attacker to present forgeries.
+            if not trust_anchors:
+                return VerifyResult(
+                    verified=False,
+                    payload={
+                        "error": "No trust anchors configured; credential "
+                        "verification requires at least one trust anchor."
+                    },
+                )
+
             # Verify issuer signature
             try:
                 verification_result = mdoc.verify_issuer_signature(trust_anchors, True)
@@ -630,6 +643,18 @@ class MsoMdocPresVerifier(PresVerifier):
                     len(trust_anchors),
                 )
 
+            # Fail-closed guard: refuse to verify without at least one trust
+            # anchor.  An empty list causes Rust to accept any self-signed
+            # issuer certificate, bypassing chain validation entirely.
+            if not trust_anchors:
+                return VerifyResult(
+                    verified=False,
+                    payload={
+                        "error": "No trust anchors configured; presentation "
+                        "verification requires at least one trust anchor."
+                    },
+                )
+
             # verify_oid4vp_response expects JSON-serialized PemTrustAnchor per anchor:
             # {"certificate_pem": "...", "purpose": "Iaca"}
             # Rust parses each string via serde_json::from_str::<PemTrustAnchor>().
@@ -799,6 +824,14 @@ def mdoc_verify(
         # entry (isomdl_uniffi only reads the first PEM block in a string).
         if trust_anchors:
             trust_anchors = flatten_trust_anchors(trust_anchors)
+
+        # Fail-closed guard: refuse to verify without at least one trust anchor.
+        if not trust_anchors:
+            return MdocVerifyResult(
+                verified=False,
+                error="No trust anchors configured; mDOC verification requires "
+                "at least one trust anchor.",
+            )
 
         # Verify issuer signature
         try:

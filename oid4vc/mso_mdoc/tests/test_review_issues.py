@@ -83,12 +83,18 @@ def make_mock_presentation_record(nonce="test-nonce"):
 
 
 class TestCrit1TrustAnchorRegistryNotNone:
-    """CRIT-1: verify_presentation passes [] not None to isomdl when no anchors."""
+    """CRIT-1: verify_presentation must fail-closed when no trust anchors exist.
+
+    The original concern was that ``trust_anchor_registry`` must never be
+    ``None`` when passed to Rust.  The fail-closed guard introduced subsequently
+    goes further: when no trust anchors are configured, Rust is *not called at
+    all* and ``verify_presentation`` returns ``verified=False`` immediately.
+    """
 
     @pytest.mark.asyncio
     async def test_no_trust_store_passes_empty_registry(self):
-        """verify_presentation with no trust_store must call verify_oid4vp_response
-        with an empty list, not None, for trust_anchor_registry."""
+        """verify_presentation with no trust_store must return verified=False
+        without calling verify_oid4vp_response (fail-closed guard)."""
         verifier = MsoMdocPresVerifier(trust_store=None)
         profile, _ = make_mock_profile()
         pres_record = make_mock_presentation_record()
@@ -104,31 +110,27 @@ class TestCrit1TrustAnchorRegistryNotNone:
             mock_jwk_fn.return_value = mock_jwk
 
             mock_iso.AuthenticationStatus.VALID = "VALID"
-            resp = MagicMock()
-            resp.issuer_authentication = "VALID"
-            resp.device_authentication = "VALID"
-            resp.doc_type = "org.iso.18013.5.1.mDL"
-            resp.verified_response = {}
-            resp.errors = []
-            mock_iso.verify_oid4vp_response.return_value = resp
 
             # present a minimal base64url payload so decoding doesn't explode
             import base64
 
             dummy_bytes = base64.urlsafe_b64encode(b"\x00" * 8)
-            await verifier.verify_presentation(profile, dummy_bytes, pres_record)
+            result = await verifier.verify_presentation(profile, dummy_bytes, pres_record)
 
-            # The 5th positional arg to verify_oid4vp_response is the registry.
-            call_args = mock_iso.verify_oid4vp_response.call_args
-            registry_arg = call_args[0][4]  # positional arg index 4
-            assert registry_arg == [], (
-                f"Expected empty list [], got {registry_arg!r}. "
-                "CRIT-1 regression: trust_anchor_registry must never be None."
+            # Fail-closed guard: Rust must NOT be called; result must be rejected.
+            mock_iso.verify_oid4vp_response.assert_not_called()
+            assert result.verified is False, (
+                "CRIT-1 / SECURITY: verify_presentation should not proceed to Rust "
+                "when no trust anchors are configured. Fail-closed guard is missing."
+            )
+            error_text = str(result.payload.get("error", "")).lower()
+            assert "trust" in error_text or "anchor" in error_text, (
+                f"Expected trust-anchor error, got: {result.payload}"
             )
 
     @pytest.mark.asyncio
     async def test_empty_trust_store_passes_empty_registry(self):
-        """verify_presentation with a trust_store returning [] also passes []."""
+        """verify_presentation with a trust_store returning [] must also fail-closed."""
         mock_store = MagicMock(spec=FileTrustStore)
         mock_store.get_trust_anchors.return_value = []
         verifier = MsoMdocPresVerifier(trust_store=mock_store)
@@ -146,43 +148,37 @@ class TestCrit1TrustAnchorRegistryNotNone:
             mock_jwk_fn.return_value = mock_jwk
 
             mock_iso.AuthenticationStatus.VALID = "VALID"
-            resp = MagicMock()
-            resp.issuer_authentication = "VALID"
-            resp.device_authentication = "VALID"
-            resp.doc_type = "org.iso.18013.5.1.mDL"
-            resp.verified_response = {}
-            resp.errors = []
-            mock_iso.verify_oid4vp_response.return_value = resp
 
             import base64
 
             dummy_bytes = base64.urlsafe_b64encode(b"\x00" * 8)
-            await verifier.verify_presentation(profile, dummy_bytes, pres_record)
+            result = await verifier.verify_presentation(profile, dummy_bytes, pres_record)
 
-            call_args = mock_iso.verify_oid4vp_response.call_args
-            registry_arg = call_args[0][4]
-            assert registry_arg == [], f"Expected empty list [], got {registry_arg!r}."
+            # Fail-closed guard: empty list → same as no trust anchors → reject.
+            mock_iso.verify_oid4vp_response.assert_not_called()
+            assert result.verified is False, (
+                "CRIT-1 / SECURITY: empty trust store must also fail-closed."
+            )
 
 
 class TestCrit4TrustAnchorsNotNoneCredVerifier:
-    """CRIT-4: verify_credential passes [] not None to verify_issuer_signature."""
+    """CRIT-4: verify_credential must fail-closed when no trust anchors exist.
+
+    The original concern was that ``trust_anchors`` must never be ``None``
+    when passed to ``verify_issuer_signature``.  The fail-closed guard now
+    goes further: Rust is not called at all when trust anchors are absent.
+    """
 
     @pytest.mark.asyncio
     async def test_no_trust_store_verify_issuer_signature_gets_empty_list(self):
-        """MsoMdocCredVerifier without a trust_store must pass [] to
-        verify_issuer_signature, not None."""
+        """MsoMdocCredVerifier without a trust_store must NOT call
+        verify_issuer_signature and must return verified=False (fail-closed
+        guard prevents reaching Rust when no trust anchors are configured)."""
         verifier = MsoMdocCredVerifier(trust_store=None)
         profile = MagicMock()
 
         with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso:
             mock_iso.MdocVerificationError = type("MockMVE", (Exception,), {})
-
-            captured_trust_anchors = []
-
-            class MockVerificationResult:
-                verified = True
-                common_name = "Test Issuer"
-                error = None
 
             class MockMdoc:
                 def doctype(self):
@@ -195,17 +191,19 @@ class TestCrit4TrustAnchorsNotNoneCredVerifier:
                     return {}
 
                 def verify_issuer_signature(self, trust_anchors, chaining):
-                    captured_trust_anchors.append(trust_anchors)
-                    return MockVerificationResult()
+                    raise AssertionError(
+                        "verify_issuer_signature must not be called when there "
+                        "are no trust anchors (fail-closed guard missing)."
+                    )
 
             mock_iso.Mdoc.from_string.return_value = MockMdoc()
 
-            await verifier.verify_credential(profile, "deadbeef")
+            result = await verifier.verify_credential(profile, "deadbeef")
 
-            assert len(captured_trust_anchors) == 1
-            assert captured_trust_anchors[0] == [], (
-                f"Expected [], got {captured_trust_anchors[0]!r}. "
-                "CRIT-4 regression: trust_anchors must never be None."
+            # Fail-closed: Rust signature check must not have been invoked.
+            assert result.verified is False, (
+                "CRIT-4 / SECURITY: verify_credential must return verified=False "
+                "when no trust anchors are configured."
             )
 
 

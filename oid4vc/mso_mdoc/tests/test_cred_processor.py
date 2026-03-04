@@ -145,7 +145,12 @@ class TestMsoMdocCredProcessor:
             mock_storage.get_certificate_for_key = AsyncMock(return_value="test-cert")
 
             # Mock signer
-            with patch("mso_mdoc.cred_processor.isomdl_mdoc_sign") as mock_sign:
+            with (
+                patch("mso_mdoc.cred_processor.isomdl_mdoc_sign") as mock_sign,
+                patch(
+                    "mso_mdoc.cred_processor.check_certificate_not_expired"
+                ),  # bypass cert validation for fake PEM
+            ):
                 mock_sign.return_value = "mock_credential_string"
 
                 # Setup input

@@ -45,8 +45,19 @@ class TestMsoMdocVerifierSignature:
 
         This verifies that cryptographic verification of the issuer signature
         IS performed using the verify_issuer_signature method.
+        A trust store with at least one anchor must be provided; without one
+        the fail-closed guard returns verified=False before calling Rust.
         """
-        verifier = MsoMdocCredVerifier()
+        # Provide a minimal trust store so the fail-closed guard is satisfied.
+        pem_cert = (
+            "-----BEGIN CERTIFICATE-----\nZmFrZWNlcnQ=\n-----END CERTIFICATE-----\n"
+        )
+
+        class _TrustStore:
+            def get_trust_anchors(self):
+                return [pem_cert]
+
+        verifier = MsoMdocCredVerifier(trust_store=_TrustStore())
         profile = MagicMock()
 
         # Mock isomdl_uniffi to simulate successful parsing and verification
@@ -80,8 +91,20 @@ class TestMsoMdocVerifierSignature:
             mock_isomdl.Mdoc.from_string.assert_called_once_with(hex_credential)
 
     async def test_verify_credential_fails_on_invalid_signature(self):
-        """Test that verification fails if signature verification fails."""
-        verifier = MsoMdocCredVerifier()
+        """Test that verification fails if signature verification fails.
+
+        A trust store with at least one anchor must be configured so that the
+        fail-closed guard does not intercept before the Rust (mocked) response.
+        """
+        pem_cert = (
+            "-----BEGIN CERTIFICATE-----\nZmFrZWNlcnQ=\n-----END CERTIFICATE-----\n"
+        )
+
+        class _TrustStore:
+            def get_trust_anchors(self):
+                return [pem_cert]
+
+        verifier = MsoMdocCredVerifier(trust_store=_TrustStore())
         profile = MagicMock()
 
         with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl:
@@ -110,8 +133,20 @@ class TestMsoMdocVerifierSignature:
             assert "Signature verification failed" in result.payload["error"]
 
     async def test_verify_credential_fails_on_verification_error(self):
-        """Test that verification fails if verify_issuer_signature raises an error."""
-        verifier = MsoMdocCredVerifier()
+        """Test that verification fails if verify_issuer_signature raises an error.
+
+        A trust store with at least one anchor must be configured so that the
+        fail-closed guard does not intercept before the Rust (mocked) exception.
+        """
+        pem_cert = (
+            "-----BEGIN CERTIFICATE-----\nZmFrZWNlcnQ=\n-----END CERTIFICATE-----\n"
+        )
+
+        class _TrustStore:
+            def get_trust_anchors(self):
+                return [pem_cert]
+
+        verifier = MsoMdocCredVerifier(trust_store=_TrustStore())
         profile = MagicMock()
 
         with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl:

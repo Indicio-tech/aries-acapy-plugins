@@ -169,8 +169,20 @@ class TestMsoMdocCredVerifier:
 
     @pytest.mark.asyncio
     async def test_verify_credential_stub(self):
-        """Test the stub implementation of verify_credential."""
-        verifier = MsoMdocCredVerifier()
+        """Test the stub implementation of verify_credential.
+
+        A trust store with at least one anchor is required; without one the
+        fail-closed guard returns verified=False before calling isomdl.
+        """
+        pem_cert = (
+            "-----BEGIN CERTIFICATE-----\nZmFrZWNlcnQ=\n-----END CERTIFICATE-----\n"
+        )
+
+        class _TrustStore:
+            def get_trust_anchors(self):
+                return [pem_cert]
+
+        verifier = MsoMdocCredVerifier(trust_store=_TrustStore())
         profile = MagicMock()
 
         # Patch isomdl_uniffi in the verifier module
@@ -220,8 +232,21 @@ class TestMsoMdocPresVerifier:
 
     @pytest.fixture
     def verifier(self):
-        """Create verifier instance."""
-        return MsoMdocPresVerifier()
+        """Create verifier instance with a minimal trust store.
+
+        A non-empty trust store is required because verify_presentation is
+        fail-closed: it returns verified=False immediately when no trust
+        anchors are configured, before reaching any Rust verification call.
+        """
+        pem_cert = (
+            "-----BEGIN CERTIFICATE-----\nZmFrZWNlcnQ=\n-----END CERTIFICATE-----\n"
+        )
+
+        class _FakeTrustStore:
+            def get_trust_anchors(self):
+                return [pem_cert]
+
+        return MsoMdocPresVerifier(trust_store=_FakeTrustStore())
 
     @pytest.fixture
     def mock_presentation(self):

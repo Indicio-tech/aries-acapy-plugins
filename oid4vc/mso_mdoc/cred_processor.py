@@ -44,6 +44,40 @@ from .storage import MdocStorageManager
 LOGGER = logging.getLogger(__name__)
 
 
+def check_certificate_not_expired(cert_pem: str) -> None:
+    """Validate that a PEM-encoded X.509 certificate is currently valid.
+
+    Raises ``CredProcessorError`` when the certificate is expired, not yet
+    valid, or cannot be parsed.  Returns ``None`` silently on success.
+
+    Args:
+        cert_pem: PEM-encoded X.509 certificate string.
+
+    Raises:
+        CredProcessorError: If the certificate is expired, not yet valid, or
+            cannot be parsed from PEM.
+    """
+    from cryptography import x509 as _x509  # noqa: PLC0415
+
+    if not cert_pem or not cert_pem.strip():
+        raise CredProcessorError("Empty certificate PEM string")
+
+    try:
+        cert = _x509.load_pem_x509_certificate(cert_pem.strip().encode())
+    except Exception as exc:
+        raise CredProcessorError(
+            f"Invalid certificate PEM — could not parse: {exc}"
+        ) from exc
+
+    now = datetime.now(UTC)
+    if cert.not_valid_before_utc > now:
+        nb = cert.not_valid_before_utc.isoformat()
+        raise CredProcessorError(f"Certificate is not yet valid (NotBefore={nb})")
+    if cert.not_valid_after_utc < now:
+        na = cert.not_valid_after_utc.isoformat()
+        raise CredProcessorError(f"Certificate has expired (NotAfter={na})")
+
+
 async def resolve_signing_key_for_credential(
     profile: Profile,
     session: ProfileSession,
@@ -474,6 +508,10 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
 
             if not certificate_pem:
                 raise CredProcessorError("Certificate PEM not found for signing key")
+
+            # Validity-period guard: reject expired or not-yet-valid certificates
+            # before passing them to the Rust signing library.
+            check_certificate_not_expired(certificate_pem)
 
             if not device_key_str and not pop.holder_jwk:
                 raise CredProcessorError(
