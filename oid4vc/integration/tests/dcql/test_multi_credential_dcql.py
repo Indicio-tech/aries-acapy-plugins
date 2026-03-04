@@ -53,7 +53,7 @@ class TestMultiCredentialDCQL:
                 "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
             },
             "format_data": {
-                "cryptographic_binding_methods_supported": ["did:key"],
+                "cryptographic_binding_methods_supported": ["did:key", "jwk"],
                 "cryptographic_suites_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/identity",
                 "claims": {
@@ -81,7 +81,7 @@ class TestMultiCredentialDCQL:
                 "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
             },
             "format_data": {
-                "cryptographic_binding_methods_supported": ["did:key"],
+                "cryptographic_binding_methods_supported": ["did:key", "jwk"],
                 "cryptographic_suites_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/address",
                 "claims": {
@@ -296,7 +296,7 @@ class TestMultiCredentialDCQL:
                     "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
                 },
                 "format_data": {
-                    "cryptographic_binding_methods_supported": ["did:key"],
+                    "cryptographic_binding_methods_supported": ["did:key", "jwk"],
                     "cryptographic_suites_supported": ["EdDSA"],
                     "vct": cfg["vct"],
                     "claims": cfg["claims"],
@@ -428,7 +428,7 @@ class TestMultiCredentialCredentialSets:
                 "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
             },
             "format_data": {
-                "cryptographic_binding_methods_supported": ["did:key"],
+                "cryptographic_binding_methods_supported": ["did:key", "jwk"],
                 "cryptographic_suites_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/passport",
                 "claims": {
@@ -455,7 +455,7 @@ class TestMultiCredentialCredentialSets:
                 "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
             },
             "format_data": {
-                "cryptographic_binding_methods_supported": ["did:key"],
+                "cryptographic_binding_methods_supported": ["did:key", "jwk"],
                 "cryptographic_suites_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/drivers_license",
                 "claims": {

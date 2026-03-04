@@ -63,7 +63,8 @@ class TestSDJWTFlow(BaseSdJwtTest):
         )
 
         # Assert presentation was successful
-        assert verification["presentation"].get("verified") == "true"
+        # verified is a boolean True in the OID4VP response record
+        assert verification["presentation"].get("verified") is True
 
         # Get the matched credentials from presentation
         matched_creds = verification["matched_credentials"]

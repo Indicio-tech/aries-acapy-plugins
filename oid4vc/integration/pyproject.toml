@@ -27,9 +27,8 @@ dependencies = [
     "pycose>=1.0.0",
     # sd_jwt dependencies
     "jsonpointer>=3.0.0,<4.0.0",
-    # isomdl-uniffi from GitHub (will be updated to releases once available)
-    # Temporarily commented for Docker builds - not needed for integration tests
-    # "isomdl-uniffi @ git+https://github.com/Indicio-tech/isomdl-uniffi.git@feat/x509#subdirectory=python",
+    # isomdl-uniffi from GitHub releases (pre-built wheels)
+    "isomdl-uniffi @ https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test9/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl ; sys_platform == 'linux'",
     "acapy-agent>=1.4.0",
     "Appium-Python-Client>=4.0.0",
     "bitarray>=2.9.2",
@@ -74,6 +73,7 @@ markers = [
     "requires_acapy: Tests that require ACA-Py agents",
     "negative: Negative and error handling tests",
     "trust: Trust anchor and certificate chain validation tests",
+    "conformance: OpenID Foundation conformance suite tests",
 ]
 testpaths = ["tests"]
 asyncio_mode = "auto"
