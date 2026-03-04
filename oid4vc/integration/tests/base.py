@@ -55,7 +55,7 @@ class BaseSdJwtTest(BaseOID4VCTest):
         """Class-scoped SD-JWT configuration template."""
         return {
             "format": CredentialFormat.SD_JWT.value,
-            "cryptographic_binding_methods_supported": ["did:key"],
+            "cryptographic_binding_methods_supported": ["did:key", "jwk"],
             "cryptographic_suites_supported": ALGORITHMS.SD_JWT_ALGS,
             "proof_types_supported": {
                 "jwt": {"proof_signing_alg_values_supported": ALGORITHMS.SD_JWT_ALGS}

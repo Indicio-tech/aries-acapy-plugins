@@ -1,0 +1,11 @@
+# Local environment — contains secrets / personal zrok URLs
+.env
+
+# Playwright artifacts
+test-results/
+playwright-report/
+
+# Node
+playwright/node_modules/
+playwright/dist/
+playwright/.playwright/

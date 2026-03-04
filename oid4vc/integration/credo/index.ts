@@ -15,6 +15,7 @@ import '@openwallet-foundation/askar-nodejs';
 import express from 'express';
 import issuanceRouter from './issuance.js';
 import verificationRouter from './verification.js';
+import debugRouter from './debug.js';
 import { initializeAgent, addTrustedCertificate, setTrustedCertificates, getTrustedCertificates } from './agent.js';
 import { logger } from './logger.js';
 
@@ -142,6 +143,7 @@ app.get('/x509/trust-anchors', (req: any, res: any) => {
 // Mount routers
 app.use('/oid4vci', issuanceRouter);
 app.use('/oid4vp', verificationRouter);
+app.use('/debug', debugRouter);
 
 // Start server
 const startServer = async () => {

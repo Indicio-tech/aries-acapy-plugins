@@ -17,6 +17,40 @@ pytestmark = [pytest.mark.trust, pytest.mark.asyncio]
 
 
 # =============================================================================
+# Cleanup fixture — prevents trust-anchor state from leaking into other tests
+# =============================================================================
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def clean_trust_anchors_after_test(acapy_verifier: httpx.AsyncClient):
+    """Delete all trust anchors after each test in this module.
+
+    Tests in this file create trust anchors with garbage/static PEM data for CRUD
+    testing purposes.  Those records must be removed after each test so they do not
+    pollute the verifier's wallet and cause isomdl_uniffi to choke on unparseable
+    certs during later mDOC cross-wallet verification tests.
+    """
+    yield
+    # Teardown: remove every trust anchor stored during this test.
+    try:
+        resp = await acapy_verifier.get("/mso_mdoc/trust-anchors")
+        if resp.status_code == 200:
+            result = resp.json()
+            anchors = result.get("trust_anchors", [])
+            for anchor in anchors:
+                anchor_id = anchor.get("anchor_id")
+                if anchor_id:
+                    try:
+                        await acapy_verifier.delete(
+                            f"/mso_mdoc/trust-anchors/{anchor_id}"
+                        )
+                    except Exception:
+                        pass  # Best-effort cleanup
+    except Exception:
+        pass  # Don't fail tests due to cleanup issues
+
+
+# =============================================================================
 # Sample Certificates for Testing
 # =============================================================================
 

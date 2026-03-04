@@ -49,13 +49,20 @@ class TestCredoRevocationFlow:
         # === Step 1: Setup credential with status list ===
 
         # Create credential configuration
+        # NOTE: type and @context MUST be inside format_data so that ACA-Py puts
+        # them in credential_definition in the issuer metadata.  If placed at the
+        # top level, they move to vc_additional_data and credential_definition becomes
+        # empty, causing Credo's @openid4vc/openid4vci to exclude the config from
+        # knownCredentialConfigurations → offeredCredentialConfigurations={} → 0 creds.
         cred_config = {
             "id": f"RevocableJwtVc_{random_suffix}",
             "format": "jwt_vc_json",
-            "type": ["VerifiableCredential", "IdentityCredential"],
-            "@context": [
-                "https://www.w3.org/2018/credentials/v1",
-            ],
+            "format_data": {
+                "type": ["VerifiableCredential", "IdentityCredential"],
+                "@context": [
+                    "https://www.w3.org/2018/credentials/v1",
+                ],
+            },
             "proof_types_supported": {
                 "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
             },
@@ -186,7 +193,7 @@ class TestCredoRevocationFlow:
                 "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
             },
             "format_data": {
-                "cryptographic_binding_methods_supported": ["did:key"],
+                "cryptographic_binding_methods_supported": ["did:key", "jwk"],
                 "cryptographic_suites_supported": ["EdDSA"],
                 "vct": f"https://credentials.example.com/revocable_{random_suffix}",
                 "claims": {
@@ -318,7 +325,7 @@ class TestCredoRevocationFlow:
                 "jwt": {"proof_signing_alg_values_supported": ["EdDSA"]}
             },
             "format_data": {
-                "cryptographic_binding_methods_supported": ["did:key"],
+                "cryptographic_binding_methods_supported": ["did:key", "jwk"],
                 "cryptographic_suites_supported": ["EdDSA"],
                 "vct": f"https://credentials.example.com/presentable_{random_suffix}",
                 "claims": {"name": {"mandatory": True}},
@@ -547,8 +554,9 @@ class TestCredoRevocationFlow:
             compressed = base64.urlsafe_b64decode(encoded_list)
             decompressed = zlib.decompress(compressed)
 
-            # Each status is 1 bit
-            ba = bitarray()
+            # Each status is 1 bit; IETF status list uses little-endian bit order
+            # (status_handler.py encodes with bitarray(endian="little"))
+            ba = bitarray(endian="little")
             ba.frombytes(decompressed)
 
             return ba[index] == 1
@@ -621,14 +629,17 @@ class TestRevocationEdgeCases:
 
         random_suffix = str(uuid.uuid4())[:8]
 
-        # Setup - use complete credential config like the passing tests
+        # Setup - use complete credential config with format_data (see test_issue_revoke_verify_jwt_vc
+        # for the rationale: type/context must be in format_data, not at the top level).
         cred_config = {
             "id": f"Unrevokable_{random_suffix}",
             "format": "jwt_vc_json",
-            "type": ["VerifiableCredential", "UnrevokeTestCredential"],
-            "@context": [
-                "https://www.w3.org/2018/credentials/v1",
-            ],
+            "format_data": {
+                "type": ["VerifiableCredential", "UnrevokeTestCredential"],
+                "@context": [
+                    "https://www.w3.org/2018/credentials/v1",
+                ],
+            },
             "proof_types_supported": {
                 "jwt": {"proof_signing_alg_values_supported": ["EdDSA", "ES256"]}
             },

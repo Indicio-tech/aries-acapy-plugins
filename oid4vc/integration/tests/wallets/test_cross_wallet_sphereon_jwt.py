@@ -138,9 +138,6 @@ async def test_issue_to_sphereon_verify_with_credo_jwt_vc(
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(
-    reason="Known bug: Sphereon VP with format+constraints pattern rejected by ACA-Py"
-)
 async def test_sphereon_jwt_vp_with_constraints_pattern(
     acapy_issuer_admin,
     acapy_verifier_admin,
@@ -149,10 +146,10 @@ async def test_sphereon_jwt_vp_with_constraints_pattern(
 ):
     """Test Sphereon JWT VP with format+constraints presentation definition.
 
-    KNOWN BUG: When using 'format' and 'constraints' in input_descriptors
-    instead of 'schema', Sphereon's VP is rejected by ACA-Py verifier.
-
-    This test documents the interoperability issue for future fixes.
+    Uses 'format' and 'constraints' in input_descriptors (instead of 'schema'),
+    which requires the verifier to evaluate constraint field paths against the
+    decoded JWT VC payload.  The type field in a JWT VC lives at $.vc.type so
+    the constraint path must include that alongside the legacy $.type fallback.
     """
     import uuid
 
@@ -204,7 +201,11 @@ async def test_sphereon_jwt_vp_with_constraints_pattern(
                 "constraints": {
                     "fields": [
                         {
-                            "path": ["$.type"],
+                            # JWT VCs embed 'type' inside the 'vc' claim of the
+                            # JWT payload.  Include both paths so the constraint
+                            # works whether the verifier returns the raw JWT
+                            # payload ($.vc.type) or a flattened form ($.type).
+                            "path": ["$.vc.type", "$.type"],
                             "filter": {
                                 "type": "array",
                                 "contains": {"const": "TestCredential"},
@@ -237,7 +238,7 @@ async def test_sphereon_jwt_vp_with_constraints_pattern(
     )
     assert present_response.status_code == 200
 
-    # This should fail - documenting the bug
+    # Verify ACA-Py received and validated the presentation
     presentation_id = request_response["presentation"]["presentation_id"]
     for _ in range(10):
         record = await acapy_verifier_admin.get(
@@ -248,7 +249,8 @@ async def test_sphereon_jwt_vp_with_constraints_pattern(
         await asyncio.sleep(1)
     else:
         pytest.fail(
-            f"Expected failure: format+constraints pattern rejected. State: {record['state']}"
+            f"Presentation not validated. State: {record['state']}, "
+            f"errors: {record.get('errors')}"
         )
 
 
