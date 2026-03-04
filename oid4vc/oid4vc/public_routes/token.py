@@ -220,17 +220,13 @@ async def check_token(
         scheme, cred = bearer.split(" ", 1)
     except ValueError:
         raise web.HTTPUnauthorized() from None
-    if scheme.lower() == "dpop":
-        # DPoP proof binding (RFC 9449) is not yet implemented.
-        # Accepting a DPoP-bound access-token without verifying the DPoP proof
-        # would silently strip the sender-constraint, so we reject it explicitly.
-        raise web.HTTPUnauthorized(
-            text='{"error": "use_dpop_nonce", "error_description": '
-            '"DPoP proof validation is not supported; use Bearer tokens"}',
-            headers={"Content-Type": "application/json"},
-        )
-    if scheme.lower() != "bearer":
+    if scheme.lower() not in ("bearer", "dpop"):
         raise web.HTTPUnauthorized()
+    # NOTE: When scheme is "dpop", the DPoP proof in the DPoP HTTP header is NOT
+    # verified (RFC 9449 §4.3).  We advertise dpop_signing_alg_values_supported
+    # in AS metadata (required by HAIP DPOP-5.1), so wallets such as Credo may
+    # present DPoP-bound tokens.  Accepting without proof verification is a
+    # temporary compatibility measure; full DPoP support is tracked separately.
 
     config = Config.from_settings(context.settings)
     profile = context.profile
