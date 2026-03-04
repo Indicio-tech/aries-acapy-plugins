@@ -1,4 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+
+// Load ../demo/.env so env vars (ports, URLs) match the docker-compose stack.
+const __filename = fileURLToPath(import.meta.url);
+const __dirnamePW = dirname(__filename);
+dotenv.config({ path: resolve(__dirnamePW, '../.env') });
 
 /**
  * Playwright configuration for the OID4VC mDOC demo.
