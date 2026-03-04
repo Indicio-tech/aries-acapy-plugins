@@ -20,7 +20,6 @@ HOW TO RUN:
 """
 
 import json
-from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

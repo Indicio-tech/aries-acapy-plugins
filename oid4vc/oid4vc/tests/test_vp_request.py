@@ -2,13 +2,13 @@
 
 import json
 from typing import cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from acapy_agent.storage.error import StorageNotFoundError
 from aiohttp import web
 
-from oid4vc.routes.vp_request import X509_IDENTITY_RECORD_TYPE, create_oid4vp_request
+from oid4vc.routes.vp_request import create_oid4vp_request
 
 
 # ---------------------------------------------------------------------------
