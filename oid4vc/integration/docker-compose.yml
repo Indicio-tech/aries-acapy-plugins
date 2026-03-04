@@ -138,7 +138,7 @@ services:
       - CREDO_AGENT_URL=http://credo-agent:3021
       - SPHEREON_WRAPPER_URL=http://sphereon-wrapper:3010
       - ACAPY_ISSUER_ADMIN_URL=http://acapy-issuer:8021
-      - ACAPY_ISSUER_OID4VCI_URL=http://acapy-issuer:8022
+      - ACAPY_ISSUER_OID4VCI_URL=http://acapy-issuer.local:8022
       - ACAPY_VERIFIER_ADMIN_URL=http://acapy-verifier:8031
       - ACAPY_VERIFIER_OID4VP_URL=http://acapy-verifier:8032
       - PYTHONPATH=/usr/src/app

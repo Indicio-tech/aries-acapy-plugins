@@ -714,7 +714,7 @@ class MsoMdocPresVerifier(PresVerifier):
                         "device_auth": str(verified_data.device_authentication),
                     }
                     payload.update(claims)
-                    verified_payloads.append(payload)
+                    verified_payloads.append(PreverifiedMdocClaims(claims=payload))
                 else:
                     LOGGER.error(
                         "Verification failed: Issuer=%s, Device=%s, Errors=%s",

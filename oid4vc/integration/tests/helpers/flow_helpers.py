@@ -578,9 +578,16 @@ class PresentationFlowHelper:
             ):
                 return presentation
 
-            if presentation.get("state") == "abandoned":
+            state = presentation.get("state")
+            if state == "abandoned":
                 raise RuntimeError(
                     f"Presentation abandoned: {presentation.get('error', 'Unknown error')}"
+                )
+            if state == "presentation-invalid":
+                errors = presentation.get("errors", [])
+                raise AssertionError(
+                    f"Presentation verification failed (presentation-invalid). "
+                    f"Errors: {errors}"
                 )
 
             await asyncio.sleep(poll_interval)
