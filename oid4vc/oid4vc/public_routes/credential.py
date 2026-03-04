@@ -265,6 +265,13 @@ async def _issue_cred_inner(context, token_result, refresh_id, req_body):
             raise _vc_error(
                 400, "invalid_proof", f"proofs.jwt is empty for {supported.format}"
             )
+        if len(jwt_proofs) > 1:
+            raise _vc_error(
+                400,
+                "invalid_proof",
+                f"proofs.jwt contains {len(jwt_proofs)} entries but batch "
+                "issuance is not supported; send exactly one proof.",
+            )
         # Normalize to the expected structure
         proof_value = {"proof_type": "jwt", "jwt": jwt_proofs[0]}
     else:
