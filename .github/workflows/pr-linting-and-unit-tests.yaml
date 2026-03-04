@@ -100,7 +100,6 @@ jobs:
       #----------------------------------------------
       - name: Unit test plugins
         id: unit-tests
-        continue-on-error: true
         run: |
           for dir in ${{ steps.changed-plugins.outputs.changed-plugins }}; do
             cd $dir
