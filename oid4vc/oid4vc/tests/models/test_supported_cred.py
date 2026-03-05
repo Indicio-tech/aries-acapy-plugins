@@ -40,6 +40,7 @@ async def test_save(profile: Profile, record: SupportedCredential):
 def test_to_issuer_metadata(record: SupportedCredential):
     assert record.to_issuer_metadata() == {
         "format": "jwt_vc_json",
+        "id": "MyCredential",
         "credential_signing_alg_values_supported": ["EdDSA"],
         "proof_types_supported": {
             "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
