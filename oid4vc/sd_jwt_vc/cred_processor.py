@@ -63,6 +63,15 @@ class ClaimMetadata:
 class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
     """Credential processor class for sd_jwt_vc format."""
 
+    def format_data_is_top_level(self) -> bool:
+        """SD-JWT VC format_data (vct, claims, etc.) belongs at top level.
+
+        Per OID4VCI spec, SD-JWT VC credential configurations must have
+        ``vct`` and other format fields at the top level of the credential
+        configuration object, NOT inside ``credential_definition``.
+        """
+        return True
+
     async def issue(
         self,
         body: Any,

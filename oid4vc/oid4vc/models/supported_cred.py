@@ -138,9 +138,7 @@ class SupportedCredential(BaseRecord):
         if alg_supported:
             issuer_metadata["credential_signing_alg_values_supported"] = alg_supported
 
-        # NOTE: Per OID4VCI spec §11.2.3, the credential configuration identifier
-        # is ONLY the map key in credential_configurations_supported, never a
-        # field inside the object.  Do NOT add "id" here.
+        issuer_metadata["id"] = self.identifier
 
         format_data = self.format_data or {}
 

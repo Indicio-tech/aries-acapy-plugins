@@ -180,6 +180,15 @@ async def resolve_signing_key_for_credential(
 class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
     """Credential processor class for mso_mdoc credential format."""
 
+    def format_data_is_top_level(self) -> bool:
+        """mso_mdoc format_data (doctype, claims, etc.) belongs at top level.
+
+        Per OID4VCI spec Appendix E, mso_mdoc credential configurations must
+        have ``doctype`` and other format fields at the top level of the
+        credential configuration object, NOT inside ``credential_definition``.
+        """
+        return True
+
     def __init__(self, trust_store: Optional[Any] = None):
         """Initialize the processor."""
         self.trust_store = trust_store
