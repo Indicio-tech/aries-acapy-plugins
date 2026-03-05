@@ -36,6 +36,8 @@ cwt = { version = "~2", optional = true }
 oscrypto = { git = "https://github.com/wbond/oscrypto.git", rev = "1547f53" }  # Resolves https://github.com/wbond/oscrypto/issues/78
 pycose = { version = "~1", optional = true }
 jsonpointer = { version = "^3.0.0", optional = true }
+# Note: isomdl-uniffi is installed separately via platform-specific wheels from GitHub releases
+# Do not add it as a poetry dependency - it requires Rust compilation which breaks poetry resolution
 
 [tool.poetry.extras]
 aca-py = ["acapy-agent"]
@@ -60,7 +62,7 @@ anoncreds = { version = "0.2.3" }
 line-length = 90
 
 [tool.ruff.lint]
-select = ["E", "F", "C", "D"]
+select = ["E", "F", "C", "D", "PLC0415"]
 ignore = [
     # Google Python Doc Style
     "D203",
@@ -82,8 +84,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"**/{tests}/*" = ["F841", "D", "E501"]
-"**/{demo}/*" = ["F841", "D", "E501"]
+"**/{tests}/*" = ["F841", "D", "E501", "PLC0415"]
+"**/{demo}/*" = ["F841", "D", "E501", "PLC0415"]
 
 [tool.pytest.ini_options]
 testpaths = ["jwt_vc_json", "mso_mdoc", "oid4vc", "sd_jwt_vc"]

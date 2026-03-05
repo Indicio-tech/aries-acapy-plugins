@@ -7,6 +7,7 @@ from acapy_agent.messaging.valid import (
     ISO8601_DATETIME_VALIDATE,
 )
 from acapy_agent.messaging.util import datetime_now, str_to_datetime
+from acapy_agent.storage.error import StorageNotFoundError
 from marshmallow import fields
 
 
@@ -28,7 +29,7 @@ class Nonce(BaseRecord):
         *,
         id: str | None = None,
         nonce_value: str,
-        used: bool,
+        used: bool | str = False,
         issued_at: str,
         expires_at: str,
         **kwargs,
@@ -36,7 +37,9 @@ class Nonce(BaseRecord):
         """Initialize a new Nonce."""
         super().__init__(id, **kwargs)
         self.nonce_value = nonce_value
-        self.used = used
+        # Askar tag values must be strings or lists of strings, not booleans.
+        # Store 'used' as the string literal "true" or "false".
+        self.used = "true" if (used is True or used == "true") else "false"
         self.issued_at = issued_at
         self.expires_at = expires_at
 
@@ -60,19 +63,29 @@ class Nonce(BaseRecord):
 
     @classmethod
     async def redeem_by_value(cls, session: ProfileSession, nonce_value: str | None):
-        """Retrieve a nonce record by its value."""
+        """Retrieve a nonce record by its value, mark it used, and return it.
+
+        Returns None if the nonce is not found, already used, or expired.
+        """
         if not nonce_value:
             return None
 
-        record = await cls.retrieve_by_tag_filter(
-            session, {"nonce_value": nonce_value, "used": False}, for_update=True
-        )
-        if record:
-            expires_after = datetime_now()
-            expires_at = str_to_datetime(record.expires_at)
-            if not expires_at or expires_at <= expires_after:
-                return None
-        record.used = True
+        try:
+            record = await cls.retrieve_by_tag_filter(
+                session, {"nonce_value": nonce_value, "used": "false"}, for_update=True
+            )
+        except StorageNotFoundError:
+            return None
+
+        if not record:
+            return None
+
+        expires_after = datetime_now()
+        expires_at = str_to_datetime(record.expires_at)
+        if not expires_at or expires_at <= expires_after:
+            return None
+
+        record.used = "true"
         await record.save(session, reason="mark nonce used")
         return record
 
@@ -93,9 +106,9 @@ class NonceSchema(BaseRecordSchema):
         required=True,
         metadata={"description": "Unique nonce value"},
     )
-    used = fields.Bool(
+    used = fields.Str(
         required=True,
-        metadata={"description": "Whether the nonce has been used"},
+        metadata={"description": "Whether the nonce has been used ('true' or 'false')"},
     )
     issued_at = fields.Str(
         required=True,
