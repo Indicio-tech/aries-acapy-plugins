@@ -216,6 +216,33 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
         if bad_pointer:
             raise ValueError(f"Invalid JSON pointer(s): {bad_pointer}")
 
+    def format_data_is_top_level(self) -> bool:
+        """SD-JWT format_data fields belong at the top level of credential config."""
+        return True
+
+    def transform_issuer_metadata(self, metadata: dict) -> None:
+        """Convert SD-JWT claims dict to array format required by OID4VCI spec.
+
+        The OIDF conformance suite requires ``claims`` to be an array of
+        per-claim objects (not a dict) per OID4VCI 1.0 spec §E.2.2.
+        Stored format_data uses the legacy dict form
+        ``{claim_name: {display: [...], mandatory: bool}}``; this method
+        converts it in-place to the spec-compliant array form:
+        ``[{path: [claim_name], display: [...], mandatory: bool}]``.
+        """
+        claims = metadata.get("claims")
+        if isinstance(claims, dict):
+            claims_arr = []
+            for claim_name, claim_meta in claims.items():
+                entry: dict = {"path": [claim_name]}
+                if isinstance(claim_meta, dict):
+                    if "display" in claim_meta:
+                        entry["display"] = claim_meta["display"]
+                    if "mandatory" in claim_meta:
+                        entry["mandatory"] = claim_meta["mandatory"]
+                claims_arr.append(entry)
+            metadata["claims"] = claims_arr
+
     async def verify_presentation(
         self,
         profile: Profile,

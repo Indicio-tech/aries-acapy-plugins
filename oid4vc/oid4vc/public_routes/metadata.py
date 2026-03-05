@@ -78,6 +78,7 @@ async def credential_issuer_metadata(request: web.Request):
             ]
         metadata["credential_endpoint"] = f"{public_url}{subpath}/credential"
         metadata["notification_endpoint"] = f"{public_url}{subpath}/notification"
+        metadata["nonce_endpoint"] = f"{public_url}{subpath}/nonce"
         processors = context.inject(CredProcessors)
         cred_configs = {}
         for supported in credentials_supported:
