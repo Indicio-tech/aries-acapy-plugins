@@ -138,7 +138,10 @@ class SupportedCredential(BaseRecord):
         if alg_supported:
             issuer_metadata["credential_signing_alg_values_supported"] = alg_supported
 
-        issuer_metadata["id"] = self.identifier
+        # NOTE: Do NOT add "id" here — per OID4VCI spec §11.2.3, the credential
+        # configuration identifier is ONLY the map key in
+        # credential_configurations_supported, never a field inside the object.
+        # Adding it here causes "Found invalid entries" in OIDF conformance tests.
 
         format_data = self.format_data or {}
 

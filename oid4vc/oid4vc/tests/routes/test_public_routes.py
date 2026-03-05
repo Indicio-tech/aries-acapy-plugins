@@ -65,7 +65,6 @@ async def test_issuer_metadata(context: AdminRequestContext, req: web.Request):
                 "credential_configurations_supported": {
                     "MyCredential": {
                         "format": "jwt_vc_json",
-                        "id": "MyCredential",
                         "credential_definition": {"credentialSubject": {"name": "alice"}},
                     }
                 },

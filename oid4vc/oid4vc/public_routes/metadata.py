@@ -185,6 +185,17 @@ async def openid_configuration(request: web.Request):
         subpath = f"/tenant/{wallet_id}" if wallet_id else ""
         base_url = f"{public_url}{subpath}"
 
+        processors = context.inject(CredProcessors)
+        cred_configs = {}
+        for supported in credentials_supported:
+            try:
+                issuer = processors.issuer_for_format(supported.format)
+            except Exception:
+                issuer = None
+            cred_configs[supported.identifier] = supported.to_issuer_metadata(
+                issuer=issuer
+            )
+
         # Combined OIDC Discovery + OID4VCI metadata
         metadata: dict[str, Any] = {
             # OIDC Discovery fields (RFC 8414 / OIDC Discovery required fields)
@@ -215,10 +226,7 @@ async def openid_configuration(request: web.Request):
             # Wallets call this before building a credential proof to get a fresh
             # nonce that ACA-Py validates in the JWT proof `nonce` claim.
             "nonce_endpoint": f"{base_url}/nonce",
-            "credential_configurations_supported": {
-                supported.identifier: supported.to_issuer_metadata()
-                for supported in credentials_supported
-            },
+            "credential_configurations_supported": cred_configs,
         }
 
         if config.auth_server_url:
