@@ -131,6 +131,36 @@ async def retrieve_or_create_did_jwk(session: ProfileSession):
     return await _create_default_did(session)
 
 
+# ---------------------------------------------------------------------------
+# X.509 identity – stores a certificate chain + signing key for x509_san_dns
+# client_id_scheme in OID4VP request objects (JAR, RFC 9101).
+# ---------------------------------------------------------------------------
+
+X509_IDENTITY_RECORD_TYPE = "OID4VP.x509_identity"
+X509_IDENTITY_RECORD_ID = "OID4VP.x509_identity"
+
+
+async def _get_x509_identity(session: ProfileSession) -> Optional[Dict[str, Any]]:
+    """Return stored X.509 identity dict, or None if not configured.
+
+    The dict has the shape::
+
+        {
+            "cert_chain": ["<base64DER_leaf>", ...],  # leaf-first
+            "verification_method": "did:jwk:...#0",
+            "client_id": "acapy-verifier.example.com",
+        }
+    """
+    storage = session.inject(BaseStorage)
+    try:
+        record = await storage.get_record(
+            X509_IDENTITY_RECORD_TYPE, X509_IDENTITY_RECORD_ID
+        )
+        return json.loads(record.value)
+    except StorageNotFoundError:
+        return None
+
+
 @docs(tags=["oid4vp"], summary="Retrive OID4VP authorization request token")
 @match_info_schema(OID4VPRequestIDMatchSchema())
 async def get_request(request: web.Request):
@@ -148,15 +178,26 @@ async def get_request(request: web.Request):
             pres = await OID4VPPresentation.retrieve_by_request_id(
                 session=session, request_id=request_id
             )
-            pres.state = OID4VPPresentation.REQUEST_RETRIEVED
-            pres.nonce = token_urlsafe(NONCE_BYTES)
-            await pres.save(session=session, reason="Retrieved presentation request")
 
             if record.pres_def_id:
                 pres_def = await OID4VPPresDef.retrieve_by_id(session, record.pres_def_id)
             elif record.dcql_query_id:
                 dcql_query = await DCQLQuery.retrieve_by_id(session, record.dcql_query_id)
             jwk = await retrieve_or_create_did_jwk(session)
+            x509_id = await _get_x509_identity(session)
+
+            pres.state = OID4VPPresentation.REQUEST_RETRIEVED
+            pres.nonce = token_urlsafe(NONCE_BYTES)
+            # Use x509 client_id when configured (x509_san_dns scheme).
+            # OID4VP Final (ID3+) encodes the scheme as a URI prefix in client_id:
+            #   x509_san_dns:{dns_name}  (e.g. "x509_san_dns:acapy-tls-proxy.local")
+            # This replaces the old separate client_id_scheme parameter.
+            if x509_id:
+                effective_client_id = f"x509_san_dns:{x509_id['client_id']}"
+            else:
+                effective_client_id = jwk.did
+            pres.client_id = effective_client_id
+            await pres.save(session=session, reason="Retrieved presentation request")
 
     except StorageNotFoundError as err:
         raise web.HTTPNotFound(reason=err.roll_up) from err
@@ -171,16 +212,32 @@ async def get_request(request: web.Request):
         else None
     )
     subpath = f"/tenant/{wallet_id}" if wallet_id else ""
+    # Use OID4VP_ENDPOINT when available (may differ from the OID4VCI endpoint;
+    # e.g. behind a dedicated TLS-terminating proxy for conformance tests).
+    oid4vp_base = config.oid4vp_endpoint or config.endpoint
     payload = {
-        "iss": jwk.did,
-        "sub": jwk.did,
+        "iss": effective_client_id,
+        # NOTE: Do NOT include 'sub' equal to client_id in OID4VP JAR.
+        # RFC 7519: sub identifies the principal that is the subject of the JWT,
+        # but the JAR does not have a meaningful 'subject'.  Including sub=client_id
+        # triggers a security warning (potential for use as client auth assertion).
         "iat": now,
         "nbf": now,
         "exp": now + 120,
         "jti": str(uuid.uuid4()),
-        "client_id": config.endpoint,
+        # client_id: when using x509_san_dns the value is a DNS name that
+        # matches the SAN of the leaf certificate.  For did:jwk the value is
+        # the DID itself (scheme inferred from prefix, no explicit
+        # client_id_scheme — see note below).
+        # NOTE: Do NOT include "client_id_scheme" in OID4VP Final (ID3+): the
+        # scheme is encoded as a URI prefix in client_id itself.
+        # For x509_san_dns: client_id = "x509_san_dns:{dns_name}".
+        # For did:jwk: client_id = the DID itself ("did:jwk:...").
+        # The x5c cert chain in the JWT header establishes the x509 binding.
+        # Do NOT add a separate client_id_scheme parameter — it causes failures.
+        "client_id": effective_client_id,
         "response_uri": (
-            f"{config.endpoint}{subpath}/oid4vp/response/{pres.presentation_id}"
+            f"{oid4vp_base}{subpath}/oid4vp/response/{pres.presentation_id}"
         ),
         "state": pres.presentation_id,
         "nonce": pres.nonce,
@@ -190,26 +247,45 @@ async def get_request(request: web.Request):
         "scopes_supported": ["openid", "vp_token"],
         "subject_types_supported": ["pairwise"],
         "subject_syntax_types_supported": ["urn:ietf:params:oauth:jwk-thumbprint"],
+        # OID4VP Final: vp_formats MUST be inside client_metadata when using
+        # x509_san_dns (verifier has no metadata document URL).  Keep top-level
+        # vp_formats as well for broad wallet compatibility.
+        "client_metadata": {
+            "vp_formats": record.vp_formats,
+            "authorization_signed_response_alg": "ES256",
+        },
         "vp_formats": record.vp_formats,
         "response_type": "vp_token",
         "response_mode": "direct_post",
-        "scope": "vp_token",
+        # NOTE: Do NOT include "scope" here. The @openid4vc/openid4vp library
+        # validates that EXACTLY ONE of {scope, presentation_definition,
+        # presentation_definition_uri, dcql_query} is present. Including scope
+        # alongside presentation_definition or dcql_query causes a validation error.
     }
     if pres_def is not None:
         payload["presentation_definition"] = pres_def.pres_def
     if dcql_query is not None:
         payload["dcql_query"] = dcql_query.record_value
 
-    headers = {
-        "kid": f"{jwk.did}#0",
-        "typ": "oauth-authz-req+jwt",
-    }
+    if x509_id:
+        headers = {
+            "x5c": x509_id["cert_chain"],
+            "typ": "oauth-authz-req+jwt",
+            "alg": "ES256",
+        }
+        signing_vm = x509_id["verification_method"]
+    else:
+        headers = {
+            "kid": f"{jwk.did}#0",
+            "typ": "oauth-authz-req+jwt",
+        }
+        signing_vm = f"{jwk.did}#0"
 
     token = await jwt_sign(
         profile=context.profile,
         payload=payload,
         headers=headers,
-        verification_method=f"{jwk.did}#0",
+        verification_method=signing_vm,
     )
 
     LOGGER.debug("TOKEN: %s", token)
@@ -256,12 +332,10 @@ async def verify_dcql_presentation(
     LOGGER.debug("Got: %s", vp_token)
 
     async with profile.session() as session:
-        pres_def_entry = await DCQLQuery.retrieve_by_id(
+        dcql_query = await DCQLQuery.retrieve_by_id(
             session,
             dcql_query_id,
         )
-
-        dcql_query = DCQLQuery.deserialize(pres_def_entry)
 
     evaluator = DCQLQueryEvaluator.compile(dcql_query)
     result = await evaluator.verify(profile, vp_token, presentation)
@@ -298,6 +372,16 @@ async def verify_pres_def_presentation(
         presentation_record=presentation,
     )
 
+    if not vp_result.verified:
+        error_msg = (
+            vp_result.payload.get("error", "Presentation verification failed")
+            if isinstance(vp_result.payload, dict)
+            else "Presentation verification failed"
+        )
+        if isinstance(error_msg, list):
+            error_msg = "; ".join(str(e) for e in error_msg)
+        return PexVerifyResult(details=str(error_msg))
+
     async with profile.session() as session:
         pres_def_entry = await OID4VPPresDef.retrieve_by_id(
             session,
@@ -307,7 +391,23 @@ async def verify_pres_def_presentation(
         pres_def = PresentationDefinition.deserialize(pres_def_entry.pres_def)
 
     evaluator = PresentationExchangeEvaluator.compile(pres_def)
-    result = await evaluator.verify(profile, submission, vp_result.payload)
+
+    # For mso_mdoc presentations, vp_result.payload is an already-decoded claims
+    # dict.  The presentation_submission from wallets (e.g. waltid) typically
+    # references $.documents[N] which is a path into the raw DeviceResponse CBOR,
+    # not the decoded dict.  Wrap the decoded payload so that $.documents[0]
+    # correctly resolves to the pre-verified claims.
+    item = submission.descriptor_maps[0]
+    if (
+        item.path_nested
+        and item.path_nested.path
+        and ".documents[" in item.path_nested.path
+    ):
+        eval_presentation: dict = {"documents": [vp_result.payload]}
+    else:
+        eval_presentation = vp_result.payload
+
+    result = await evaluator.verify(profile, submission, eval_presentation)
     return result
 
 
@@ -321,9 +421,14 @@ async def post_response(request: web.Request):
 
     form = await request.post()
 
+    # presentation_submission is only present for PEX (pres_def) presentations;
+    # DCQL presentations omit it and send vp_token as a JSON object instead.
     raw_submission = form.get("presentation_submission")
-    assert isinstance(raw_submission, str)
-    presentation_submission = PresentationSubmission.from_json(raw_submission)
+    presentation_submission = (
+        PresentationSubmission.from_json(raw_submission)
+        if isinstance(raw_submission, str)
+        else None
+    )
 
     vp_token = form.get("vp_token")
     state = form.get("state")
@@ -335,9 +440,14 @@ async def post_response(request: web.Request):
         record = await OID4VPPresentation.retrieve_by_id(session, presentation_id)
 
     try:
-        assert isinstance(vp_token, str)
+        if not isinstance(vp_token, str):
+            raise web.HTTPBadRequest(reason="vp_token must be a string")
 
         if record.pres_def_id:
+            if presentation_submission is None:
+                raise web.HTTPBadRequest(
+                    reason="presentation_submission is required for PEX presentations"
+                )
             verify_result = await verify_pres_def_presentation(
                 profile=context.profile,
                 submission=presentation_submission,
@@ -360,6 +470,23 @@ async def post_response(request: web.Request):
         raise web.HTTPNotFound(reason=err.roll_up) from err
     except (StorageError, BaseModelError) as err:
         raise web.HTTPBadRequest(reason=err.roll_up) from err
+    except Exception as err:
+        # Catch all other exceptions (e.g. CredProcessorError, unsupported format),
+        # save the record as invalid so the holder gets a response and callers can
+        # observe the failure rather than timing out on request-retrieved.
+        error_msg = str(err)
+        LOGGER.exception(
+            "Unexpected error processing presentation %s: %s",
+            presentation_id,
+            error_msg,
+        )
+        record.state = OID4VPPresentation.PRESENTATION_INVALID
+        record.errors = [f"Processing error: {error_msg}"]
+        record.verified = False
+        record.matched_credentials = {}
+        async with context.session() as session:
+            await record.save(session, reason="Presentation processing failed")
+        return web.json_response({})
 
     if verify_result.verified:
         record.state = OID4VPPresentation.PRESENTATION_VALID
@@ -382,4 +509,6 @@ async def post_response(request: web.Request):
         )
 
     LOGGER.debug("Presentation result: %s", record.verified)
-    return web.Response(status=200)
+    # OID4VP Final §6.2: verifier MUST return a JSON response body.
+    # If no redirect_uri is required, return an empty JSON object.
+    return web.json_response({})

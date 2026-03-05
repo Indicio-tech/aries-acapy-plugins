@@ -1,10 +1,14 @@
 """OID4VP request routes for admin API."""
 
+import json
+import re
+from typing import List
 from urllib.parse import quote
 
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
+from acapy_agent.storage.base import BaseStorage, StorageRecord
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from aiohttp import web
 from aiohttp_apispec import (
@@ -88,8 +92,26 @@ async def create_oid4vp_request(request: web.Request):
     body = await request.json()
 
     async with context.session() as session:
-        # Get the DID:JWK that will be used as client_id first
+        # Get the DID:JWK that will be used as fallback client_id
         jwk = await retrieve_or_create_did_jwk(session)
+
+        # Use x509 identity (x509_san_dns) when registered; otherwise did:jwk.
+        storage = session.inject(BaseStorage)
+        try:
+            x509_record = await storage.get_record(
+                X509_IDENTITY_RECORD_TYPE, X509_IDENTITY_RECORD_ID
+            )
+            x509_id = json.loads(x509_record.value)
+        except StorageNotFoundError:
+            x509_id = None
+
+        # OID4VP Final (ID3+): client_id for x509_san_dns scheme uses
+        # URI prefix format: "x509_san_dns:{dns_name}".
+        # This must match the client_id in the JAR payload.
+        if x509_id:
+            effective_client_id = f"x509_san_dns:{x509_id['client_id']}"
+        else:
+            effective_client_id = jwk.did
 
         if pres_def_id := body.get("pres_def_id"):
             req_record = OID4VPRequest(
@@ -101,7 +123,7 @@ async def create_oid4vp_request(request: web.Request):
                 pres_def_id=pres_def_id,
                 state=OID4VPPresentation.REQUEST_CREATED,
                 request_id=req_record.request_id,
-                client_id=jwk.did,
+                client_id=effective_client_id,
             )
             await pres_record.save(session=session)
 
@@ -115,7 +137,7 @@ async def create_oid4vp_request(request: web.Request):
                 dcql_query_id=dcql_query_id,
                 state=OID4VPPresentation.REQUEST_CREATED,
                 request_id=req_record.request_id,
-                client_id=jwk.did,
+                client_id=effective_client_id,
             )
             await pres_record.save(session=session)
         else:
@@ -124,15 +146,22 @@ async def create_oid4vp_request(request: web.Request):
             )
 
     config = Config.from_settings(context.settings)
-    wallet_id = (
-        context.profile.settings.get("wallet.id")
-        if context.profile.settings.get("multitenant.enabled")
-        else None
-    )
+    # wallet.id is present on sub-wallet profiles in all multitenant modes;
+    # do not gate on multitenant.enabled (absent from sub-wallet settings in
+    # single-wallet-askar mode), just read it directly.
+    wallet_id = context.profile.settings.get("wallet.id")
     subpath = f"/tenant/{wallet_id}" if wallet_id else ""
-    request_uri = quote(f"{config.endpoint}{subpath}/oid4vp/request/{req_record._id}")
-    client_id = quote(jwk.did)
-    full_uri = f"openid://?client_id={client_id}&request_uri={request_uri}"
+    # Use OID4VP_ENDPOINT when available (may differ from OID4VCI endpoint,
+    # e.g.served via a separate TLS-terminating proxy for conformance tests).
+    oid4vp_base = config.oid4vp_endpoint or config.endpoint
+    request_uri = quote(f"{oid4vp_base}{subpath}/oid4vp/request/{req_record._id}")
+    # In OID4VP Final spec, client_id_scheme was removed from authorization
+    # request query parameters (it was removed in ID3 / draft-28).  The scheme
+    # is communicated inside the signed JAR instead.  Do NOT include
+    # client_id_scheme as a query parameter.
+    full_uri = (
+        f"openid://?client_id={quote(effective_client_id)}&request_uri={request_uri}"
+    )
 
     return web.json_response(
         {
@@ -197,3 +226,140 @@ async def list_oid4vp_requests(request: web.Request):
     except (StorageError, BaseModelError, StorageNotFoundError) as err:
         raise web.HTTPBadRequest(reason=err.roll_up) from err
     return web.json_response({"results": results})
+
+
+# ---------------------------------------------------------------------------
+# X.509 identity admin endpoints
+#
+# These endpoints manage a single "X.509 identity" record that lets ACA-Py act
+# as an OID4VP verifier with client_id_scheme=x509_san_dns.  The record stores
+# the DER certificate chain (base64, leaf-first) together with the
+# verification method referencing the matching signing key and the DNS name
+# used as client_id.
+# ---------------------------------------------------------------------------
+
+X509_IDENTITY_RECORD_TYPE = "OID4VP.x509_identity"
+X509_IDENTITY_RECORD_ID = "OID4VP.x509_identity"
+
+
+class RegisterX509IdentitySchema(OpenAPISchema):
+    """Request body for registering an X.509 identity."""
+
+    cert_chain_pem = fields.Str(
+        required=True,
+        metadata={
+            "description": (
+                "PEM-encoded certificate chain (leaf first, concatenated).  "
+                "Each certificate will be stored as a base64-encoded DER value "
+                "in the x5c array."
+            )
+        },
+    )
+    verification_method = fields.Str(
+        required=True,
+        metadata={
+            "description": (
+                'Verification method identifier (e.g. "did:jwk:...#0") that '
+                "references the key matching the leaf certificate."
+            )
+        },
+    )
+    client_id = fields.Str(
+        required=True,
+        metadata={
+            "description": (
+                "DNS name used as client_id in OID4VP requests "
+                "(must match the dNSName SAN in the leaf certificate)."
+            )
+        },
+    )
+
+
+@docs(tags=["oid4vp"], summary="Register X.509 identity for OID4VP requests")
+@request_schema(RegisterX509IdentitySchema())
+async def register_x509_identity(request: web.Request):
+    """Store an X.509 certificate chain for x509_san_dns OID4VP requests."""
+    context: AdminRequestContext = request["context"]
+    body = await request.json()
+
+    pem: str = body["cert_chain_pem"]
+    verification_method: str = body["verification_method"]
+    client_id: str = body["client_id"]
+
+    # Parse PEM → list of base64 DER strings (whitespace stripped)
+    b64_certs: List[str] = [
+        re.sub(r"\s+", "", cert)
+        for cert in re.findall(
+            r"-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----",
+            pem,
+            re.DOTALL,
+        )
+    ]
+    if not b64_certs:
+        raise web.HTTPBadRequest(reason="No certificates found in cert_chain_pem")
+
+    value = json.dumps(
+        {
+            "cert_chain": b64_certs,
+            "verification_method": verification_method,
+            "client_id": client_id,
+        }
+    )
+
+    async with context.session() as session:
+        storage = session.inject(BaseStorage)
+        # replace any existing record
+        try:
+            existing = await storage.get_record(
+                X509_IDENTITY_RECORD_TYPE, X509_IDENTITY_RECORD_ID
+            )
+            await storage.update_record(existing, value, {})
+        except StorageNotFoundError:
+            record = StorageRecord(
+                type=X509_IDENTITY_RECORD_TYPE,
+                value=value,
+                id=X509_IDENTITY_RECORD_ID,
+            )
+            await storage.add_record(record)
+
+    return web.json_response(
+        {
+            "cert_chain": b64_certs,
+            "verification_method": verification_method,
+            "client_id": client_id,
+        }
+    )
+
+
+@docs(tags=["oid4vp"], summary="Retrieve registered X.509 identity")
+async def get_x509_identity(request: web.Request):
+    """Return the stored X.509 identity record."""
+    context: AdminRequestContext = request["context"]
+
+    async with context.session() as session:
+        storage = session.inject(BaseStorage)
+        try:
+            record = await storage.get_record(
+                X509_IDENTITY_RECORD_TYPE, X509_IDENTITY_RECORD_ID
+            )
+            return web.json_response(json.loads(record.value))
+        except StorageNotFoundError:
+            raise web.HTTPNotFound(reason="No X.509 identity registered")
+
+
+@docs(tags=["oid4vp"], summary="Delete registered X.509 identity")
+async def delete_x509_identity(request: web.Request):
+    """Remove the stored X.509 identity record."""
+    context: AdminRequestContext = request["context"]
+
+    async with context.session() as session:
+        storage = session.inject(BaseStorage)
+        try:
+            record = await storage.get_record(
+                X509_IDENTITY_RECORD_TYPE, X509_IDENTITY_RECORD_ID
+            )
+            await storage.delete_record(record)
+        except StorageNotFoundError:
+            raise web.HTTPNotFound(reason="No X.509 identity registered")
+
+    return web.json_response({"deleted": True})
