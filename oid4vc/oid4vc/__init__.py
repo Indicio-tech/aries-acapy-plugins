@@ -2,6 +2,7 @@
 
 import logging
 
+from acapy_agent.admin.base_server import BaseAdminServer
 from acapy_agent.config.injection_context import InjectionContext
 from acapy_agent.core.event_bus import Event, EventBus
 from acapy_agent.core.profile import Profile
@@ -12,12 +13,14 @@ from acapy_agent.wallet.key_type import P256, KeyTypes
 
 from oid4vc.cred_processor import CredProcessors
 
+from . import routes
 from .app_resources import AppResources
 from .config import Config
 from .jwk import DID_JWK
 from .jwk_resolver import JwkResolver
 from .oid4vci_server import Oid4vciServer
 from .status_handler import StatusHandler
+from .migrate import run_migrations
 
 LOGGER = logging.getLogger(__name__)
 
@@ -65,10 +68,20 @@ async def setup(context: InjectionContext):
     status_handler = StatusHandler(context)
     context.injector.bind_instance(StatusHandler, status_handler)
 
+    # Register admin routes
+    admin_server = context.inject_or(BaseAdminServer)
+    if admin_server:
+        await routes.register(admin_server.app)
+
 
 async def startup(profile: Profile, event: Event):
     """Startup event handler; start the OpenID4VCI server."""
     LOGGER.info("OID4VC plugin startup event triggered: %s", event.topic)
+    try:
+        await run_migrations(profile)
+    except Exception:
+        LOGGER.exception("OID4VC schema migration failed; continuing anyway")
+
     try:
         config = Config.from_settings(profile.settings)
         LOGGER.info("OID4VCI server config: host=%s, port=%s", config.host, config.port)
