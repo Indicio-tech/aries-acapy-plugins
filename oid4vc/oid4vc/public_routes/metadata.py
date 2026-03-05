@@ -10,6 +10,7 @@ from aiohttp_apispec import docs, response_schema
 from marshmallow import fields
 
 from ..config import Config
+from ..cred_processor import CredProcessors
 from ..models.supported_cred import SupportedCredential
 from ..utils import get_tenant_subpath
 
@@ -77,10 +78,18 @@ async def credential_issuer_metadata(request: web.Request):
             ]
         metadata["credential_endpoint"] = f"{public_url}{subpath}/credential"
         metadata["notification_endpoint"] = f"{public_url}{subpath}/notification"
-        metadata["credential_configurations_supported"] = {
-            supported.identifier: supported.to_issuer_metadata()
-            for supported in credentials_supported
-        }
+        metadata["nonce_endpoint"] = f"{public_url}{subpath}/nonce"
+        processors = context.inject(CredProcessors)
+        cred_configs = {}
+        for supported in credentials_supported:
+            try:
+                issuer = processors.issuer_for_format(supported.format)
+            except Exception:
+                issuer = None
+            cred_configs[supported.identifier] = supported.to_issuer_metadata(
+                issuer=issuer
+            )
+        metadata["credential_configurations_supported"] = cred_configs
 
     LOGGER.debug("METADATA: %s", metadata)
 
