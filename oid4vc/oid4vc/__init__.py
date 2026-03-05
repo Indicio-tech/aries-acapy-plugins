@@ -36,6 +36,7 @@ async def setup(context: InjectionContext):
     methods = context.inject(DIDMethods)
     methods.register(DID_JWK)
 
+    # Register P256 key type (used by mDOC and other EC-based formats)
     key_types = context.inject(KeyTypes)
     key_types.register(P256)
 
@@ -48,6 +49,8 @@ async def setup(context: InjectionContext):
     processors.register_issuer("jwt_vc", jwt_vc_json)
     processors.register_cred_verifier("jwt_vc_json", jwt_vc_json)
     processors.register_cred_verifier("jwt_vc", jwt_vc_json)
+    # jwt_vp_json/jwt_vp are VP envelope formats; register as both verifier types
+    # so format-specific processors can verify credentials inside VP envelopes
     processors.register_cred_verifier("jwt_vp_json", jwt_vc_json)
     processors.register_cred_verifier("jwt_vp", jwt_vc_json)
     processors.register_pres_verifier("jwt_vp_json", jwt_vc_json)

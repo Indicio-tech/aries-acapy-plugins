@@ -14,6 +14,7 @@ from aiohttp_apispec import docs, response_schema
 from marshmallow import fields
 
 from ..config import Config
+from ..cred_processor import CredProcessors
 from ..did_utils import retrieve_or_create_did_jwk
 from ..jwt import jwt_sign
 from ..models.supported_cred import SupportedCredential
@@ -98,10 +99,17 @@ async def credential_issuer_metadata(request: web.Request):
         metadata["credential_endpoint"] = f"{public_url}{subpath}/credential"
         metadata["notification_endpoint"] = f"{public_url}{subpath}/notification"
         metadata["nonce_endpoint"] = f"{public_url}{subpath}/nonce"
-        metadata["credential_configurations_supported"] = {
-            supported.identifier: supported.to_issuer_metadata()
-            for supported in credentials_supported
-        }
+        processors = context.inject(CredProcessors)
+        cred_configs = {}
+        for supported in credentials_supported:
+            try:
+                issuer = processors.issuer_for_format(supported.format)
+            except Exception:
+                issuer = None
+            cred_configs[supported.identifier] = supported.to_issuer_metadata(
+                issuer=issuer
+            )
+        metadata["credential_configurations_supported"] = cred_configs
 
         # OID4VCI 1.0 §11.2.2: if client requests signed metadata, sign and return
         # the metadata document as a JWT with Content-Type: application/jwt.

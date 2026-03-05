@@ -866,6 +866,71 @@ class TestSupportedCredentials:
         assert "x5c" in supported_cred.cryptographic_binding_methods_supported
         assert "PS256" in supported_cred.cryptographic_suites_supported
 
+    def test_to_issuer_metadata_default_wraps_in_credential_definition(self):
+        """Without a processor, format_data is wrapped in credential_definition."""
+        supported_cred = SupportedCredential(
+            identifier="test_cred",
+            format="jwt_vc_json",
+            format_data={"credentialSubject": {"name": "alice"}},
+        )
+        metadata = supported_cred.to_issuer_metadata()
+        assert "credential_definition" in metadata
+        assert metadata["credential_definition"] == {
+            "credentialSubject": {"name": "alice"}
+        }
+        assert "credentialSubject" not in metadata
+
+    def test_to_issuer_metadata_top_level_when_processor_opts_in(self):
+        """Processors implementing format_data_is_top_level() get top-level layout."""
+
+        class FakeTopLevelIssuer:
+            def format_data_is_top_level(self):
+                return True
+
+        supported_cred = SupportedCredential(
+            identifier="test_cred",
+            format="vc+sd-jwt",
+            format_data={"vct": "https://example.com/PID", "claims": {"name": {}}},
+        )
+        metadata = supported_cred.to_issuer_metadata(issuer=FakeTopLevelIssuer())
+        assert "credential_definition" not in metadata
+        assert metadata["vct"] == "https://example.com/PID"
+        assert metadata["claims"] == {"name": {}}
+
+    def test_to_issuer_metadata_transform_hook_is_called(self):
+        """Processors implementing transform_issuer_metadata() can post-process."""
+        called_with = []
+
+        class FakeTransformIssuer:
+            def format_data_is_top_level(self):
+                return True
+
+            def transform_issuer_metadata(self, metadata):
+                called_with.append(dict(metadata))
+                metadata["injected"] = True
+
+        supported_cred = SupportedCredential(
+            identifier="test_cred",
+            format="dc+sd-jwt",
+            format_data={"vct": "https://example.com/Test"},
+        )
+        metadata = supported_cred.to_issuer_metadata(issuer=FakeTransformIssuer())
+        assert called_with, "transform_issuer_metadata should have been called"
+        assert metadata.get("injected") is True
+
+    def test_to_issuer_metadata_no_processor_no_extension(self):
+        """Existing behavior preserved when issuer=None (backward compat)."""
+        supported_cred = SupportedCredential(
+            identifier="compat_cred",
+            format="ldp_vc",
+            format_data={"context": ["https://www.w3.org/2018/credentials/v1"]},
+        )
+        metadata = supported_cred.to_issuer_metadata()
+        assert "credential_definition" in metadata
+        assert metadata["credential_definition"]["@context"] == [
+            "https://www.w3.org/2018/credentials/v1"
+        ]
+
 
 class TestAdditionalEdgeCases:
     """Test edge cases and error conditions."""
