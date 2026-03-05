@@ -9,6 +9,7 @@ from acapy_agent.core.profile import Profile
 from acapy_agent.core.util import SHUTDOWN_EVENT_PATTERN, STARTUP_EVENT_PATTERN
 from acapy_agent.resolver.did_resolver import DIDResolver
 from acapy_agent.wallet.did_method import DIDMethods
+from acapy_agent.wallet.key_type import P256, KeyTypes
 
 from oid4vc.cred_processor import CredProcessors
 
@@ -41,6 +42,10 @@ async def setup(context: InjectionContext):
     methods = context.inject(DIDMethods)
     methods.register(DID_JWK)
 
+    # Register P256 key type (used by mDOC and other EC-based formats)
+    key_types = context.inject(KeyTypes)
+    key_types.register(P256)
+
     # Include jwt_vc_json by default
     jwt_vc_json = JwtVcJsonCredProcessor()
     processors = CredProcessors()
@@ -48,8 +53,14 @@ async def setup(context: InjectionContext):
     processors.register_issuer("jwt_vc", jwt_vc_json)
     processors.register_cred_verifier("jwt_vc_json", jwt_vc_json)
     processors.register_cred_verifier("jwt_vc", jwt_vc_json)
+    # jwt_vp_json/jwt_vp are VP envelope formats; register as both verifier types
+    # so format-specific processors can verify credentials inside VP envelopes
+    processors.register_cred_verifier("jwt_vp_json", jwt_vc_json)
+    processors.register_cred_verifier("jwt_vp", jwt_vc_json)
     processors.register_pres_verifier("jwt_vp_json", jwt_vc_json)
     processors.register_pres_verifier("jwt_vp", jwt_vc_json)
+    # Note: format-specific plugins (mso_mdoc, sd_jwt_vc) register themselves
+    # in their own setup() functions when loaded as plugins
 
     context.injector.bind_instance(CredProcessors, processors)
 
