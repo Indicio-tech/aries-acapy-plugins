@@ -100,7 +100,6 @@ jobs:
       #----------------------------------------------
       - name: Unit test plugins
         id: unit-tests
-        continue-on-error: true
         run: |
           for dir in ${{ steps.changed-plugins.outputs.changed-plugins }}; do
             cd $dir
@@ -110,7 +109,6 @@ jobs:
   integration-tests:
     name: "Integration tests"
     runs-on: ubuntu-latest
-    continue-on-error: true
     needs: linting-and-unit-tests
     if: needs.linting-and-unit-tests.result == 'success'
     steps:

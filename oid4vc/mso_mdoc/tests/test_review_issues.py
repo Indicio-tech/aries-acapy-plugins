@@ -40,7 +40,6 @@ from acapy_agent.storage.error import StorageDuplicateError, StorageError  # noq
 # Now import the modules under test.
 # ---------------------------------------------------------------------------
 from ..mdoc.verifier import (  # noqa: E402
-    FileTrustStore,
     MsoMdocCredVerifier,
     MsoMdocPresVerifier,
     WalletTrustStore,
@@ -131,7 +130,7 @@ class TestCrit1TrustAnchorRegistryNotNone:
     @pytest.mark.asyncio
     async def test_empty_trust_store_passes_empty_registry(self):
         """verify_presentation with a trust_store returning [] must also fail-closed."""
-        mock_store = MagicMock(spec=FileTrustStore)
+        mock_store = MagicMock()
         mock_store.get_trust_anchors.return_value = []
         verifier = MsoMdocPresVerifier(trust_store=mock_store)
         profile, _ = make_mock_profile()

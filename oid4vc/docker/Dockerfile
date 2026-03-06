@@ -1,44 +1,116 @@
+# =============================================================================
+# Stage 1: Build isomdl-uniffi wheel (requires Rust)
+# =============================================================================
+FROM python:3.12-slim-bookworm AS isomdl-build
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust toolchain (minimal profile to save space)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Clone isomdl-uniffi with shallow clone
+ARG ISOMDL_BRANCH=fix/python-build-system
+RUN git clone --depth 1 --branch ${ISOMDL_BRANCH} \
+    https://github.com/Indicio-tech/isomdl-uniffi.git /build/isomdl-uniffi
+
+WORKDIR /build/isomdl-uniffi/python
+
+# Build wheel — limit Cargo parallelism to avoid Docker VM OOM on resource-constrained hosts
+# (CARGO_BUILD_JOBS=2 cuts peak memory roughly in half vs. the default all-cores build)
+RUN pip install --no-cache-dir build wheel setuptools
+ENV CARGO_BUILD_JOBS=2
+RUN python setup.py bdist_wheel
+
+# =============================================================================
+# Stage 2: Install ACA-Py and plugin dependencies
+# =============================================================================
 FROM python:3.12-slim-bookworm AS base
-WORKDIR /usr/src/app
-
-# Install and configure poetry
-USER root
-
-# Install and configure poetry
-WORKDIR /usr/src/app
-ENV POETRY_VERSION=2.1.2
-ENV POETRY_HOME=/opt/poetry
-RUN apt-get update && apt-get install -y curl jq && apt-get clean
-RUN curl -sSL https://install.python-poetry.org | python -
-
-ENV PATH="/opt/poetry/bin:$PATH"
-RUN poetry config virtualenvs.in-project true
-
-# Setup project
-RUN mkdir oid4vc && touch oid4vc/__init__.py
-RUN mkdir jwt_vc_json && touch jwt_vc_json/__init__.py
-RUN mkdir sd_jwt_vc && touch sd_jwt_vc/__init__.py
-RUN mkdir mso_mdoc && touch mso_mdoc/__init__.py
-COPY oid4vc/pyproject.toml oid4vc/poetry.lock oid4vc/README.md ./
-RUN poetry install --without dev --all-extras
-USER $user
-
-FROM python:3.12-bookworm
 
 WORKDIR /usr/src/app
-COPY --from=base /usr/src/app/.venv /usr/src/app/.venv
-ENV PATH="/usr/src/app/.venv/bin:$PATH"
-RUN apt-get update && apt-get install -y curl jq && apt-get clean
+
+# Install only required build/runtime dependencies (no Rust needed here)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    jq \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Accept build argument for ACA-Py version
+ARG ACAPY_VERSION=1.4.0
+
+# Clone ACA-Py source with shallow clone
+RUN git clone --depth 1 --branch ${ACAPY_VERSION} \
+    https://github.com/openwallet-foundation/acapy.git /usr/src/acapy
+
+WORKDIR /usr/src/acapy
+
+# Install ACA-Py
+RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir configargparse
+
+# Setup plugin project structure
+WORKDIR /usr/src/app
+
+# Copy the entire plugin source tree
+COPY oid4vc/pyproject.toml ./
+COPY oid4vc/README.md ./
+COPY oid4vc/oid4vc/ oid4vc/
 COPY oid4vc/jwt_vc_json/ jwt_vc_json/
 COPY oid4vc/mso_mdoc/ mso_mdoc/
 COPY oid4vc/sd_jwt_vc/ sd_jwt_vc/
-COPY oid4vc/oid4vc/ oid4vc/
 COPY status_list/ status_list/
 RUN pip install -e ./status_list
+
+# Install isomdl-uniffi from builder stage
+COPY --from=isomdl-build /build/isomdl-uniffi/python/dist/*.whl /tmp/
+RUN pip install --no-cache-dir /tmp/*.whl && rm -rf /tmp/*.whl
+
+# Install the plugin with extras for mso_mdoc and sd_jwt_vc
+RUN pip install --no-cache-dir -e ".[mso_mdoc,sd_jwt_vc]"
+
+# =============================================================================
+# Stage 3: Final slim runtime image
+# =============================================================================
+FROM python:3.12-slim-bookworm
+
+WORKDIR /usr/src/app
+
+# Copy the complete environment from base stage
+COPY --from=base /usr/src/acapy /usr/src/acapy
+COPY --from=base /usr/src/app /usr/src/app
+
+# Install only runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    jq \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the entire Python environment from base stage, including site-packages
+COPY --from=base /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=base /usr/local/bin /usr/local/bin
+
+# Copy dev config
 RUN mkdir -p /usr/src/app/docker
 COPY oid4vc/docker/dev.yml /usr/src/app/docker/dev.yml
 COPY oid4vc/docker/dev-verifier.yml /usr/src/app/docker/dev-verifier.yml
-COPY oid4vc/docker/default.yml /usr/src/app/default.yml
+COPY oid4vc/docker/default.yml /usr/src/app/docker/default.yml
 
-ENTRYPOINT ["/bin/bash", "-c", "aca-py \"$@\"", "--"]
-CMD ["start", "--arg-file", "default.yml"]
+# Expose ports
+EXPOSE 8030 8031 8032
+
+# Add health check
+HEALTHCHECK --interval=10s --timeout=5s --retries=12 --start-period=60s \
+  CMD curl -f http://localhost:${ACAPY_ADMIN_PORT:-8021}/status/ready || exit 1
+
+# Set working directory and run ACA-Py
+WORKDIR /usr/src/acapy
+CMD ["python", "-m", "acapy_agent", "start", "--arg-file", "/usr/src/app/docker/dev.yml"]
