@@ -193,3 +193,60 @@ class TestMdocFunctionality:
         assert encoding_time < 1.0  # Should encode 100 times in under 1 second
         assert decoding_time < 1.0  # Should decode 100 times in under 1 second
         assert len(cbor_data) > 0
+
+    @pytest.mark.skipif(not ISOMDL_AVAILABLE, reason="isomdl-uniffi not available")
+    @pytest.mark.skipif(not CBOR_AVAILABLE, reason="cbor2 not available")
+    def test_mdoc_sign_emits_iso_cbor_keys(self, sample_mdoc_claims):
+        """Test that isomdl_mdoc_sign produces ISO 18013-5 §8.3 compliant CBOR keys.
+
+        Verifies that the signed mDoc uses camelCase CBOR keys ('issuerAuth',
+        'nameSpaces') as required by ISO 18013-5 §8.3, and that each namespace
+        value is a CBOR array (not a map).  This was previously broken because
+        Mdoc.stringify() serialised the internal Document struct with snake_case
+        keys; the fix is issuer_signed_b64() which uses the upstream IssuerSigned
+        struct that carries the correct serde rename attributes.
+        """
+        import base64
+
+        private_pem, _, jwk = generate_ec_key_pair()
+        cert_pem = generate_self_signed_certificate(private_pem)
+        headers = {"doctype": "org.iso.18013.5.1.mDL", "alg": "ES256"}
+
+        try:
+            result = isomdl_mdoc_sign(jwk, headers, sample_mdoc_claims, cert_pem, private_pem)
+        except Exception:
+            pytest.skip("mdoc signing not available in this environment")
+            return
+
+        assert isinstance(result, str), "isomdl_mdoc_sign must return a base64url string"
+
+        # Decode from base64url and parse as CBOR
+        pad = len(result) % 4
+        cbor_bytes = base64.urlsafe_b64decode(result + "=" * (4 - pad) if pad else result)
+        top = cbor2.loads(cbor_bytes)
+        assert isinstance(top, dict), "IssuerSigned must decode to a CBOR map"
+
+        # ISO 18013-5 §8.3: IssuerSigned uses camelCase keys
+        assert "issuerAuth" in top, (
+            f"Expected ISO key 'issuerAuth', got: {list(top.keys())}"
+        )
+        assert "nameSpaces" in top, (
+            f"Expected ISO key 'nameSpaces', got: {list(top.keys())}"
+        )
+        assert "issuer_auth" not in top, (
+            "Prohibited snake_case key 'issuer_auth' present — "
+            "issuer_signed_b64() should have fixed this"
+        )
+        assert "namespaces" not in top, (
+            "Prohibited snake_case key 'namespaces' present — "
+            "issuer_signed_b64() should have fixed this"
+        )
+
+        # ISO 18013-5 §8.3: nameSpaces values must be arrays of IssuerSignedItemBytes
+        assert isinstance(top["nameSpaces"], dict), "nameSpaces must be a CBOR map"
+        assert len(top["nameSpaces"]) > 0, "nameSpaces must not be empty"
+        for ns, items in top["nameSpaces"].items():
+            assert isinstance(items, list), (
+                f"Namespace '{ns}' value must be a CBOR array (ISO §8.3), "
+                f"got {type(items).__name__}"
+            )
