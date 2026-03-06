@@ -333,7 +333,7 @@ class DCQLQuery(BaseRecord):
 
     RECORD_ID_NAME = "dcql_query_id"
     RECORD_TOPIC = "oid4vp"
-    RECORD_TYPE = "oid4vp"
+    RECORD_TYPE = "oid4vp-dcql"
 
     def __init__(
         self,

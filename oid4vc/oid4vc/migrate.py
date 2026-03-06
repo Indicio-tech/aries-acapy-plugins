@@ -17,6 +17,7 @@ crash mid-run leaves the database in a known, named state.
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
 from importlib.metadata import version as _pkg_version
@@ -36,9 +37,12 @@ LOGGER = logging.getLogger(__name__)
 _VERSION_RECORD_TYPE = "oid4vc:version"
 _VERSION_RECORD_ID = "schema-version"
 
-# Baseline: data created before version tracking was introduced.
-# Any DB without a version record is implicitly at this version.
+# Baseline sentinel: data created before version tracking was introduced.
+# Any DB that has no version record is implicitly at this version.
 _UNVERSIONED = (0, 0, 0)
+
+_DCQL_OLD_RECORD_TYPE = "oid4vp"
+_DCQL_NEW_RECORD_TYPE = "oid4vp-dcql"
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +54,7 @@ _VersionTuple = tuple[int, ...]
 
 def _parse(version_str: str) -> _VersionTuple:
     """Parse a PEP-440 version string into a comparable tuple of ints."""
+    # Strip pre/post/dev suffixes by taking only the numeric release segment.
     numeric = version_str.split("+")[0].split("a")[0].split("b")[0].split("rc")[0]
     return tuple(int(x) for x in numeric.split("."))
 
@@ -88,6 +93,80 @@ async def _set_db_version(storage: BaseStorage, ver: _VersionTuple) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Transformations — 0.1.0
+# ---------------------------------------------------------------------------
+
+async def _to_0_1_0_dcql_record_type(profile: Profile) -> int:
+    """Forward: DCQLQuery RECORD_TYPE "oid4vp" → "oid4vp-dcql".
+
+    All three OID4VP model types shared ``RECORD_TYPE = "oid4vp"`` before
+    this change.  DCQLQuery records are identified by a top-level
+    ``"credentials"`` key that Presentation and Request bodies never have.
+    """
+    async with profile.session() as session:
+        storage = session.inject(BaseStorage)
+        records = await storage.find_all_records(_DCQL_OLD_RECORD_TYPE)
+
+        migrated = 0
+        for record in records:
+            try:
+                body = json.loads(record.value)
+            except (json.JSONDecodeError, TypeError):
+                LOGGER.warning("Skipping oid4vp record %s: not valid JSON.", record.id)
+                continue
+
+            if "credentials" not in body:
+                continue  # Presentation / Request — leave untouched
+
+            await storage.delete_record(record)
+            await storage.add_record(
+                StorageRecord(
+                    type=_DCQL_NEW_RECORD_TYPE,
+                    value=record.value,
+                    tags=record.tags,
+                    id=record.id,
+                )
+            )
+            migrated += 1
+            LOGGER.info(
+                "DCQLQuery %s: type %r → %r", record.id,
+                _DCQL_OLD_RECORD_TYPE, _DCQL_NEW_RECORD_TYPE,
+            )
+
+        return migrated
+
+
+async def _from_0_1_0_dcql_record_type(profile: Profile) -> int:
+    """Backward: DCQLQuery RECORD_TYPE "oid4vp-dcql" → "oid4vp".
+
+    Reverses ``_to_0_1_0_dcql_record_type`` so an older version of the code
+    that expects all OID4VP records under ``"oid4vp"`` works correctly.
+    """
+    async with profile.session() as session:
+        storage = session.inject(BaseStorage)
+        records = await storage.find_all_records(_DCQL_NEW_RECORD_TYPE)
+
+        migrated = 0
+        for record in records:
+            await storage.delete_record(record)
+            await storage.add_record(
+                StorageRecord(
+                    type=_DCQL_OLD_RECORD_TYPE,
+                    value=record.value,
+                    tags=record.tags,
+                    id=record.id,
+                )
+            )
+            migrated += 1
+            LOGGER.info(
+                "DCQLQuery %s: type %r → %r", record.id,
+                _DCQL_NEW_RECORD_TYPE, _DCQL_OLD_RECORD_TYPE,
+            )
+
+        return migrated
+
+
+# ---------------------------------------------------------------------------
 # Migration registry
 # ---------------------------------------------------------------------------
 
@@ -109,13 +188,22 @@ class _Step:
 
 
 # Keep sorted ascending by version.
-_STEPS: list[_Step] = []
+_STEPS: list[_Step] = [
+    _Step(
+        version=(0, 1, 0),
+        forward=[
+            _to_0_1_0_dcql_record_type,
+        ],
+        backward=[
+            _from_0_1_0_dcql_record_type,
+        ],
+    ),
+]
 
 
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
-
 
 async def run_migrations(profile: Profile) -> None:
     """Transform the database schema to match the installed package version.
@@ -166,11 +254,10 @@ async def run_migrations(profile: Profile) -> None:
             for fn in step.backward:
                 count = await fn(profile)
                 LOGGER.info("  %s: %d record(s) transformed.", fn.__name__, count)
+            # After reversing this step the DB is at the *previous* version.
             idx = _STEPS.index(step)
             prev = _STEPS[idx - 1].version if idx > 0 else _UNVERSIONED
             async with profile.session() as session:
                 storage = session.inject(BaseStorage)
                 await _set_db_version(storage, prev)
-            LOGGER.info(
-                "Step %s reversed; DB now at %s.", _fmt(step.version), _fmt(prev)
-            )
+            LOGGER.info("Step %s reversed; DB now at %s.", _fmt(step.version), _fmt(prev))
