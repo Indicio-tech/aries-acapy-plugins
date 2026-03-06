@@ -1,8 +1,10 @@
 """Token endpoint for OID4VCI."""
 
 import datetime
+import hmac
+import json
 import time
-from secrets import token_urlsafe
+from datetime import UTC
 from typing import Any, Dict
 
 from acapy_agent.admin.request_context import AdminRequestContext
@@ -20,7 +22,13 @@ from aries_askar import Key
 from marshmallow import fields, pre_load
 
 from oid4vc.did_utils import retrieve_or_create_did_jwk
-from oid4vc.jwt import JWTVerifyResult, jwt_sign, jwt_verify, key_material_for_kid
+from oid4vc.jwt import (
+    JWTVerifyResult,
+    jwt_sign,
+    jwt_verify,
+    key_from_x5c,
+    key_material_for_kid,
+)
 
 from ..app_resources import AppResources
 from ..config import Config
@@ -34,6 +42,7 @@ from .constants import (
     NONCE_BYTES,
     PRE_AUTHORIZED_CODE_GRANT_TYPE,
 )
+from .nonce import create_nonce
 
 
 class GetTokenSchema(OpenAPISchema):
@@ -53,7 +62,7 @@ class GetTokenSchema(OpenAPISchema):
     user_pin = fields.Str(required=False)
 
     @pre_load
-    def normalize_fields(self, data, **kwargs):
+    def normalize_fields(self, data, **_kwargs):
         """Normalize legacy field names to OID4VCI v1.0 keys.
 
         Accept 'pre_authorized_code' by mapping it to 'pre-authorized_code'.
@@ -61,7 +70,7 @@ class GetTokenSchema(OpenAPISchema):
         # webargs may pass a MultiDictProxy; make a writable copy first
         try:
             mutable = dict(data)
-        except Exception:
+        except (TypeError, ValueError):
             mutable = data
         # Map legacy underscore field to the hyphenated v1.0 key if needed
         if "pre_authorized_code" in mutable and "pre-authorized_code" not in mutable:
@@ -107,7 +116,8 @@ async def token(request: web.Request):
             status=400,
         )
 
-    user_pin = form.get("user_pin")
+    # Accept both legacy user_pin and OID4VCI 1.0 final tx_code in token requests.
+    user_pin = form.get("tx_code") or form.get("user_pin")
     try:
         async with context.profile.session() as session:
             record = await OID4VCIExchangeRecord.retrieve_by_code(
@@ -127,7 +137,7 @@ async def token(request: web.Request):
                 },
                 status=400,
             )
-        if user_pin != record.pin:
+        if not hmac.compare_digest(user_pin, record.pin):
             return web.json_response(
                 {"error": "invalid_grant", "error_description": "pin is invalid"},
                 status=400,
@@ -170,18 +180,21 @@ async def token(request: web.Request):
             )
 
         record.token = token_jwt
-        record.nonce = token_urlsafe(NONCE_BYTES)
         await record.save(
             session,
             reason="Created new token",
         )
+
+    # Create a nonce for the wallet to use in its credential proof.
+    # The /nonce endpoint also serves nonces (OID4VCI 1.0 §8); both are valid.
+    c_nonce_record = await create_nonce(context.profile, NONCE_BYTES, EXPIRES_IN)
 
     return web.json_response(
         {
             "access_token": record.token,
             "token_type": "Bearer",
             "expires_in": EXPIRES_IN,
-            "c_nonce": record.nonce,
+            "c_nonce": c_nonce_record.nonce_value,
             "c_nonce_expires_in": EXPIRES_IN,
         }
     )
@@ -191,15 +204,29 @@ async def check_token(
     context: AdminRequestContext,
     bearer: str | None = None,
 ) -> JWTVerifyResult:
-    """Validate the OID4VCI token."""
-    if not bearer or not bearer.lower().startswith("bearer "):
+    """Validate the OID4VCI token.
+
+    Accepts both ``Bearer`` and ``DPoP`` Authorization schemes.  When
+    ``dpop_signing_alg_values_supported`` is advertised in the server
+    metadata, DPoP-capable clients (e.g. Credo 0.6.x) will present an
+    ``Authorization: DPoP <token>`` header.  We accept and verify the
+    access-token JWT in both cases; the DPoP proof itself is not
+    cryptographically validated here (full DPoP binding per RFC 9449 is
+    not yet implemented).
+    """
+    if not bearer:
         raise web.HTTPUnauthorized()
     try:
         scheme, cred = bearer.split(" ", 1)
     except ValueError:
         raise web.HTTPUnauthorized() from None
-    if scheme.lower() != "bearer":
+    if scheme.lower() not in ("bearer", "dpop"):
         raise web.HTTPUnauthorized()
+    # NOTE: When scheme is "dpop", the DPoP proof in the DPoP HTTP header is NOT
+    # verified (RFC 9449 §4.3).  We advertise dpop_signing_alg_values_supported
+    # in AS metadata (required by HAIP DPOP-5.1), so wallets such as Credo may
+    # present DPoP-bound tokens.  Accepting without proof verification is a
+    # temporary compatibility measure; full DPoP support is tracked separately.
 
     config = Config.from_settings(context.settings)
     profile = context.profile
@@ -232,7 +259,7 @@ async def check_token(
             headers={"Content-Type": "application/json"},
         )
 
-    if result.payload["exp"] < datetime.datetime.utcnow().timestamp():
+    if result.payload["exp"] < datetime.datetime.now(UTC).timestamp():
         raise web.HTTPUnauthorized(
             text='{"error": "invalid_token", "error_description": "Token expired"}',
             headers={"Content-Type": "application/json"},
@@ -248,30 +275,123 @@ async def handle_proof_of_posession(
     encoded_headers, encoded_payload, encoded_signature = proof["jwt"].split(".", 3)
     headers = b64_to_dict(encoded_headers)
 
-    if headers.get("typ") != "openid4vci-proof+jwt":
-        raise web.HTTPBadRequest(reason="Invalid proof: wrong typ.")
+    # OID4VCI 1.0 requires typ="openid4vci-proof+jwt"
+    # But accept common draft spec values for backward compatibility
+    typ = headers.get("typ")
+    valid_typ_values = ["openid4vci-proof+jwt", "JWT", "jwt", "openid4vci-jwt"]
+    if typ and typ not in valid_typ_values:
+        LOGGER.warning("Proof JWT has unexpected typ header: %s", typ)
+        raise web.HTTPBadRequest(
+            text=json.dumps(
+                {
+                    "error": "invalid_proof",
+                    "error_description": f"unsupported typ: {typ}",
+                }
+            ),
+            content_type="application/json",
+        )
 
-    if "kid" in headers:
+    if "jwk" in headers:
+        # Prefer inline JWK over kid-based DID resolution (OID4VCI spec §7.2.1).
+        # Wallets such as walt.id send both kid and jwk in the proof header;
+        # resolving the kid as a DID URL fails when the key is not registered in
+        # a resolvable DID document, causing a spurious "invalid kid in proof".
+        key = Key.from_jwk(headers["jwk"])
+    elif "kid" in headers:
         try:
             key = await key_material_for_kid(profile, headers["kid"])
         except ValueError as exc:
-            raise web.HTTPBadRequest(reason="Invalid kid") from exc
-    elif "jwk" in headers:
-        key = Key.from_jwk(headers["jwk"])
+            raise web.HTTPBadRequest(
+                text=json.dumps(
+                    {
+                        "error": "invalid_proof",
+                        "error_description": "invalid kid in proof",
+                    }
+                ),
+                content_type="application/json",
+            ) from exc
     elif "x5c" in headers:
-        raise web.HTTPBadRequest(reason="x5c not supported")
+        # OID4VCI 1.0: wallet may use x5c (certificate-based) key binding.
+        # Extract the public key from the leaf cert for signature verification.
+        try:
+            key = key_from_x5c(headers["x5c"])
+        except Exception as exc:
+            LOGGER.debug("Failed to extract key from x5c cert chain: %s", exc)
+            raise web.HTTPBadRequest(
+                text=json.dumps(
+                    {
+                        "error": "invalid_proof",
+                        "error_description": "invalid x5c certificate in proof header",
+                    }
+                ),
+                content_type="application/json",
+            ) from exc
     else:
-        raise web.HTTPBadRequest(reason="No key material in proof")
+        raise web.HTTPBadRequest(
+            text=json.dumps(
+                {
+                    "error": "invalid_proof",
+                    "error_description": "no key material in proof header",
+                }
+            ),
+            content_type="application/json",
+        )
 
     payload = b64_to_dict(encoded_payload)
-    nonce = payload.get("nonce")
+
+    # OID4VCI 1.0 § 7.2.2: the proof JWT MUST contain an `aud` claim equal to
+    # the Credential Issuer Identifier (the issuer's base URL).  Omitting this
+    # check allows proof replay across issuers.
+    aud = payload.get("aud")
+    if aud is not None:
+        issuer_endpoint = Config.from_settings(profile.settings).endpoint
+        # aud may be a string or a list of strings (per RFC 7519 § 4.1.3)
+        aud_values = [aud] if isinstance(aud, str) else list(aud)
+        if issuer_endpoint and not any(
+            av == issuer_endpoint or av.startswith(issuer_endpoint + "/tenant/")
+            for av in aud_values
+        ):
+            raise web.HTTPBadRequest(
+                text=json.dumps(
+                    {
+                        "error": "invalid_proof",
+                        "error_description": (
+                            f"proof JWT aud '{aud}' does not match "
+                            f"issuer endpoint '{issuer_endpoint}'"
+                        ),
+                    }
+                ),
+                content_type="application/json",
+            )
+
+    # OID4VCI 1.0 final spec uses "nonce"; older draft wallets may use "c_nonce".
+    nonce = payload.get("nonce") or payload.get("c_nonce")
     if c_nonce:
         if c_nonce != nonce:
-            raise web.HTTPBadRequest(reason="Invalid proof: wrong nonce.")
+            raise web.HTTPBadRequest(
+                text=json.dumps(
+                    {
+                        "error": "invalid_nonce",
+                        "error_description": "nonce mismatch",
+                    }
+                ),
+                content_type="application/json",
+            )
     else:
-        redeemed = await Nonce.redeem_by_value(profile.session(), nonce)
+        # OID4VCI 1.0: nonce was obtained from the /nonce endpoint.
+        # Open a session to redeem it (marks it used for replay protection).
+        async with profile.session() as session:
+            redeemed = await Nonce.redeem_by_value(session, nonce)
         if not redeemed:
-            raise web.HTTPBadRequest(reason="Invalid proof: wrong or used nonce.")
+            raise web.HTTPBadRequest(
+                text=json.dumps(
+                    {
+                        "error": "invalid_nonce",
+                        "error_description": "invalid or already-used nonce",
+                    }
+                ),
+                content_type="application/json",
+            )
 
     decoded_signature = b64_to_bytes(encoded_signature, urlsafe=True)
     verified = key.verify_signature(
@@ -279,10 +399,22 @@ async def handle_proof_of_posession(
         decoded_signature,
         sig_type=headers.get("alg", ""),
     )
+
+    # If the wallet sent a kid-based proof (no jwk in header), derive the public
+    # JWK from the resolved key so credential processors that need the raw JWK
+    # (e.g. mso_mdoc for holder key binding in DeviceKey) can access it.
+    holder_jwk = headers.get("jwk")
+    if holder_jwk is None and "kid" in headers:
+        try:
+            holder_jwk = json.loads(key.get_jwk_public())
+        except Exception:
+            LOGGER.debug("Could not derive holder JWK from kid-resolved key")
+
     return PopResult(
         headers,
         payload,
         verified,
         holder_kid=headers.get("kid"),
-        holder_jwk=headers.get("jwk"),
+        holder_jwk=holder_jwk,
+        holder_x5c=headers.get("x5c"),
     )

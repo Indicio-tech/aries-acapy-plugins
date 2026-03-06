@@ -11,6 +11,7 @@ from acapy_agent.messaging.valid import GENERIC_DID_EXAMPLE, GENERIC_DID_VALIDAT
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from acapy_agent.wallet.default_verification_key_strategy import (
     BaseVerificationKeyStrategy,
+    VerificationKeyStrategyError,
 )
 from acapy_agent.wallet.jwt import nym_to_did
 from aiohttp import web
@@ -162,16 +163,31 @@ async def create_exchange(request: web.Request, refresh_id: str | None = None):
 
     if verification_method is None:
         if did is None:
-            raise ValueError("did or verificationMethod required.")
+            raise web.HTTPBadRequest(reason="did or verificationMethod required.")
 
         did = nym_to_did(did)
 
-        verkey_strat = context.inject(BaseVerificationKeyStrategy)
-        verification_method = await verkey_strat.get_verification_method_id_for_did(
-            did, context.profile
-        )
-        if not verification_method:
-            raise ValueError("Could not determine verification method from DID")
+        # For did:jwk DIDs the verification method is always {did}#0; skip DID
+        # resolution since the resolver may not be set up or may throw unexpected
+        # errors for did:jwk DIDs.
+        if did.startswith("did:jwk:"):
+            verification_method = f"{did}#0"
+        else:
+            verkey_strat = context.inject(BaseVerificationKeyStrategy)
+            try:
+                verification_method = (
+                    await verkey_strat.get_verification_method_id_for_did(
+                        did, context.profile
+                    )
+                )
+            except VerificationKeyStrategyError as err:
+                raise web.HTTPBadRequest(
+                    reason=f"Could not determine verification method from DID: {err}"
+                ) from err
+            if not verification_method:
+                raise web.HTTPBadRequest(
+                    reason=f"Could not determine verification method from DID: {did}"
+                )
 
     if did:
         issuer_id = did
