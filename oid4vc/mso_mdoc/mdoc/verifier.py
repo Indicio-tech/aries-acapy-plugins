@@ -1,103 +1,839 @@
-"""Operations supporting mso_mdoc creation and verification."""
+"""Mdoc Verifier implementation using isomdl-uniffi."""
 
+import base64
+import json
 import logging
-import re
-from binascii import unhexlify
-from typing import Any, Mapping
+from abc import abstractmethod
+from dataclasses import dataclass
+from typing import Any, List, Optional, Protocol
 
-import cbor2
+# Import isomdl_uniffi library directly
+import isomdl_uniffi
 from acapy_agent.core.profile import Profile
-from acapy_agent.messaging.models.base import BaseModel, BaseModelSchema
-from acapy_agent.wallet.base import BaseWallet
-from acapy_agent.wallet.error import WalletNotFoundError
-from acapy_agent.wallet.util import bytes_to_b58
-from cbor_diag import cbor2diag
-from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from marshmallow import fields
 
-from ..mso import MsoVerifier
+from oid4vc.config import Config
+from oid4vc.cred_processor import (
+    CredVerifier,
+    PresVerifier,
+    PresVerifierError,
+    VerifyResult,
+)
+from oid4vc.did_utils import retrieve_or_create_did_jwk
+from oid4vc.models.presentation import OID4VPPresentation
+
+from ..storage import MdocStorageManager
+from .utils import flatten_trust_anchors
 
 LOGGER = logging.getLogger(__name__)
 
 
-class MdocVerifyResult(BaseModel):
-    """Result from verify."""
+def extract_mdoc_item_value(item: Any) -> Any:
+    """Extract the actual value from an MDocItem enum variant.
 
-    class Meta:
-        """MdocVerifyResult metadata."""
+    MDocItem is a Rust enum exposed via UniFFI with variants:
+    - TEXT(str)
+    - BOOL(bool)
+    - INTEGER(int)
+    - ARRAY(List[MDocItem])
+    - ITEM_MAP(Dict[str, MDocItem])
 
-        schema_class = "MdocVerifyResultSchema"
+    Each variant stores its value in _values[0].
+    """
+    if item is None:
+        return None
+
+    # Check if it's an MDocItem variant by checking for _values attribute
+    if hasattr(item, "_values") and item._values:
+        inner_value = item._values[0]
+
+        # Handle nested structures recursively
+        if isinstance(inner_value, dict):
+            return {k: extract_mdoc_item_value(v) for k, v in inner_value.items()}
+        elif isinstance(inner_value, list):
+            return [extract_mdoc_item_value(v) for v in inner_value]
+        else:
+            return inner_value
+
+    # Already a plain value
+    return item
+
+
+def extract_verified_claims(verified_response: dict) -> dict:
+    """Extract claims from MdlReaderVerifiedData.verified_response.
+
+    The verified_response is structured as:
+    dict[str, dict[str, MDocItem]]
+    e.g. {"org.iso.18013.5.1": {"given_name": MDocItem.TEXT("Alice"), ...}}
+
+    This function converts it to:
+    {"org.iso.18013.5.1": {"given_name": "Alice", ...}}
+    """
+    claims = {}
+    for namespace, elements in verified_response.items():
+        ns_claims = {}
+        for element_name, mdoc_item in elements.items():
+            ns_claims[element_name] = extract_mdoc_item_value(mdoc_item)
+        claims[namespace] = ns_claims
+    return claims
+
+
+class TrustStore(Protocol):
+    """Protocol for retrieving trust anchors."""
+
+    @abstractmethod
+    def get_trust_anchors(self) -> List[str]:
+        """Retrieve trust anchors as PEM strings."""
+        ...
+
+
+class WalletTrustStore:
+    """Trust store implementation backed by Askar wallet storage.
+
+    This implementation stores trust anchor certificates in the ACA-Py
+    wallet using the MdocStorageManager, providing secure storage that
+    doesn't require filesystem access or static certificate files.
+    """
+
+    def __init__(self, profile: Profile):
+        """Initialize the wallet trust store.
+
+        Args:
+            profile: ACA-Py profile for accessing wallet storage
+        """
+        self.profile = profile
+        self._cached_anchors: Optional[List[str]] = None
+
+    def get_trust_anchors(self) -> List[str]:
+        """Retrieve trust anchors from wallet storage.
+
+        This method is synchronous to satisfy the TrustStore protocol
+        expected by the isomdl-uniffi Rust layer.  The cache **must**
+        be populated by ``await refresh_cache()`` before calling this
+        method (all ACA-Py verification paths do this).
+
+        Returns:
+            List of PEM-encoded trust anchor certificates
+
+        Raises:
+            RuntimeError: If called before ``refresh_cache()`` has been
+                awaited.  Always call ``await refresh_cache()`` before
+                any verification operation.
+        """
+        if self._cached_anchors is not None:
+            return self._cached_anchors
+
+        raise RuntimeError(
+            "WalletTrustStore.get_trust_anchors() called before cache was "
+            "populated.  Always await refresh_cache() before verification."
+        )
+
+    async def refresh_cache(self) -> List[str]:
+        """Refresh the cached trust anchors from wallet storage.
+
+        This method should be called before verification operations
+        when running in an async context.
+
+        Returns:
+            List of PEM-encoded trust anchor certificates
+        """
+        self._cached_anchors = await self._fetch_trust_anchors()
+        return self._cached_anchors
+
+    async def _fetch_trust_anchors(self) -> List[str]:
+        """Fetch trust anchors from wallet storage.
+
+        Returns:
+            List of PEM-encoded trust anchor certificates
+        """
+        storage_manager = MdocStorageManager(self.profile)
+        async with self.profile.session() as session:
+            anchors = await storage_manager.get_all_trust_anchor_pems(session)
+            LOGGER.debug("Loaded %d trust anchors from wallet", len(anchors))
+            return anchors
+
+    def clear_cache(self) -> None:
+        """Clear the cached trust anchors."""
+        self._cached_anchors = None
+
+
+@dataclass
+class PreverifiedMdocClaims:
+    """Typed sentinel wrapping namespaced claims already verified by verify_presentation.
+
+    C-5 fix: replaces a heuristic ``dict`` key-prefix check that could be
+    bypassed by any caller-controlled dict containing an ``org.iso.*`` key.
+    Only ``MsoMdocPresVerifier.verify_presentation`` (trusted code) should
+    construct instances of this class; external callers cannot spoof it.
+    """
+
+    claims: dict
+
+
+def _is_preverified_claims_dict(credential: Any) -> bool:
+    """Return True only when *credential* is a typed :class:`PreverifiedMdocClaims`.
+
+    C-5 fix: the previous heuristic — checking for ``org.iso.*`` key prefixes —
+    was bypassable by any external caller whose dict happened to contain such a
+    key.  Using a typed sentinel makes the check unforgeable.
+    """
+    return isinstance(credential, PreverifiedMdocClaims)
+
+
+def _parse_string_credential(credential: str) -> tuple[Optional[Any], Optional[str]]:
+    """Parse a string credential into an Mdoc object.
+
+    Tries multiple formats: hex, base64url IssuerSigned, base64url DeviceResponse.
+
+    Args:
+        credential: String credential to parse
+
+    Returns:
+        Tuple of (Parsed Mdoc object or None if parsing fails, error message if any)
+    """
+    last_error = None
+
+    # Try hex first (full DeviceResponse)
+    try:
+        if all(c in "0123456789abcdefABCDEF" for c in credential):
+            LOGGER.debug("Trying to parse credential as hex DeviceResponse")
+            return isomdl_uniffi.Mdoc.from_string(credential), None
+    except Exception as hex_err:
+        last_error = str(hex_err)
+        LOGGER.debug("Hex parsing failed: %s", hex_err)
+
+    # Try base64url-encoded IssuerSigned
+    try:
+        LOGGER.debug("Trying to parse credential as base64url IssuerSigned")
+        mdoc = isomdl_uniffi.Mdoc.new_from_base64url_encoded_issuer_signed(
+            credential, "verified-inner"
+        )
+        return mdoc, None
+    except Exception as issuer_signed_err:
+        last_error = str(issuer_signed_err)
+        LOGGER.debug("IssuerSigned parsing failed: %s", issuer_signed_err)
+
+    # Try base64url decoding to hex, then DeviceResponse parsing
+    try:
+        LOGGER.debug("Trying to parse credential as base64url DeviceResponse")
+        padded = (
+            credential + "=" * (4 - len(credential) % 4)
+            if len(credential) % 4
+            else credential
+        )
+        standard_b64 = padded.replace("-", "+").replace("_", "/")
+        decoded_bytes = base64.b64decode(standard_b64)
+        return isomdl_uniffi.Mdoc.from_string(decoded_bytes.hex()), None
+    except Exception as b64_err:
+        last_error = str(b64_err)
+        LOGGER.debug("Base64 parsing failed: %s", b64_err)
+
+    # Last resort: try direct string parsing
+    try:
+        return isomdl_uniffi.Mdoc.from_string(credential), None
+    except Exception as final_err:
+        last_error = str(final_err)
+        return None, last_error
+
+
+def _extract_mdoc_claims(mdoc: Any) -> dict:
+    """Extract claims from an Mdoc object.
+
+    Args:
+        mdoc: The Mdoc object
+
+    Returns:
+        Dictionary of namespaced claims
+    """
+    claims = {}
+    try:
+        details = mdoc.details()
+        LOGGER.debug("mdoc details keys: %s", list(details.keys()))
+        for namespace, elements in details.items():
+            ns_claims = {}
+            for element in elements:
+                if element.value:
+                    try:
+                        ns_claims[element.identifier] = json.loads(element.value)
+                    except json.JSONDecodeError:
+                        ns_claims[element.identifier] = element.value
+                else:
+                    ns_claims[element.identifier] = None
+            claims[namespace] = ns_claims
+    except Exception as e:
+        LOGGER.warning("Failed to extract claims from mdoc: %s", e)
+    return claims
+
+
+class MsoMdocCredVerifier(CredVerifier):
+    """Verifier for mso_mdoc credentials."""
+
+    def __init__(self, trust_store: Optional[TrustStore] = None):
+        """Initialize the credential verifier."""
+        self.trust_store = trust_store
+
+    async def verify_credential(
+        self,
+        profile: Profile,
+        credential: Any,
+    ) -> VerifyResult:
+        """Verify an mso_mdoc credential.
+
+        For mso_mdoc format, credentials can arrive in two forms:
+        1. Raw credential (bytes/hex string) - parsed and verified via Rust library
+        2. Pre-verified claims dict - already verified by verify_presentation,
+           contains namespaced claims extracted from DeviceResponse
+
+        Args:
+            profile: The profile for context
+            credential: The credential to verify (bytes, hex string, or claims dict)
+
+        Returns:
+            VerifyResult: The verification result
+        """
+        try:
+            # Check if credential is pre-verified claims sentinel
+            if _is_preverified_claims_dict(credential):
+                LOGGER.debug("Credential is pre-verified claims dict from presentation")
+                return VerifyResult(verified=True, payload=credential.claims)
+
+            # Parse credential to Mdoc object
+            mdoc = None
+            parse_error = None
+            if isinstance(credential, str):
+                mdoc, parse_error = _parse_string_credential(credential)
+            elif isinstance(credential, bytes):
+                try:
+                    mdoc = isomdl_uniffi.Mdoc.from_string(credential.hex())
+                except Exception as e:
+                    parse_error = str(e)
+
+            if not mdoc:
+                if parse_error:
+                    error_msg = f"Invalid credential format: {parse_error}"
+                else:
+                    error_msg = "Invalid credential format"
+                return VerifyResult(verified=False, payload={"error": error_msg})
+
+            # Refresh trust store cache if needed
+            if self.trust_store and isinstance(self.trust_store, WalletTrustStore):
+                await self.trust_store.refresh_cache()
+
+            trust_anchors = (
+                self.trust_store.get_trust_anchors() if self.trust_store else []
+            )
+
+            # Flatten any concatenated PEM chains into individual cert PEMs.
+            # isomdl_uniffi (x509_cert) reads only the first certificate in a
+            # PEM string; passing a chain as one element silently drops all
+            # certs after the first, breaking trust-anchor validation.
+            if trust_anchors:
+                trust_anchors = flatten_trust_anchors(trust_anchors)
+
+            # Fail-closed guard: refuse to verify without at least one trust
+            # anchor.  An empty list causes the Rust library to accept any
+            # self-signed issuer certificate, effectively disabling chain
+            # validation and allowing an attacker to present forgeries.
+            if not trust_anchors:
+                return VerifyResult(
+                    verified=False,
+                    payload={
+                        "error": "No trust anchors configured; credential "
+                        "verification requires at least one trust anchor."
+                    },
+                )
+
+            # Verify issuer signature
+            try:
+                verification_result = mdoc.verify_issuer_signature(trust_anchors, True)
+
+                if verification_result.verified:
+                    claims = _extract_mdoc_claims(mdoc)
+                    payload = {
+                        "status": "verified",
+                        "doctype": mdoc.doctype(),
+                        "id": str(mdoc.id()),
+                        "issuer_common_name": verification_result.common_name,
+                    }
+                    payload.update(claims)
+                    LOGGER.debug("Mdoc Payload: %s", json.dumps(payload))
+                    return VerifyResult(verified=True, payload=payload)
+                else:
+                    return VerifyResult(
+                        verified=False,
+                        payload={
+                            "error": verification_result.error
+                            or "Signature verification failed",
+                            "doctype": mdoc.doctype(),
+                            "id": str(mdoc.id()),
+                        },
+                    )
+            except isomdl_uniffi.MdocVerificationError as e:
+                LOGGER.error("Issuer signature verification failed: %s", e)
+                return VerifyResult(
+                    verified=False,
+                    payload={
+                        "error": str(e),
+                        "doctype": mdoc.doctype(),
+                        "id": str(mdoc.id()),
+                    },
+                )
+
+        except Exception as e:
+            LOGGER.error("Failed to parse mdoc credential: %s", e)
+            return VerifyResult(verified=False, payload={"error": str(e)})
+
+
+def _normalize_presentation_input(presentation: Any) -> tuple[list, bool]:
+    """Normalize presentation input to a list.
+
+    Args:
+        presentation: The presentation data
+
+    Returns:
+        Tuple of (list of presentations, is_list_input flag)
+    """
+    if isinstance(presentation, str):
+        try:
+            parsed = json.loads(presentation)
+            if isinstance(parsed, list):
+                return parsed, True
+        except json.JSONDecodeError:
+            pass
+        return [presentation], False
+    elif isinstance(presentation, list):
+        return presentation, True
+    return [presentation], False
+
+
+def _decode_presentation_bytes(pres_item: Any) -> bytes:
+    """Decode presentation item to bytes.
+
+    Args:
+        pres_item: The presentation item (string or bytes)
+
+    Returns:
+        Decoded bytes
+
+    Raises:
+        PresVerifierError: If unable to decode to bytes
+    """
+    if isinstance(pres_item, bytes):
+        return pres_item
+
+    if isinstance(pres_item, str):
+        # Try base64url decode
+        try:
+            return base64.urlsafe_b64decode(pres_item + "=" * (-len(pres_item) % 4))
+        except (ValueError, TypeError):
+            pass
+        # Try hex decode
+        try:
+            return bytes.fromhex(pres_item)
+        except (ValueError, TypeError):
+            pass
+
+    raise PresVerifierError("Presentation must be bytes or base64/hex string")
+
+
+async def _get_oid4vp_verification_params(
+    profile: Profile,
+    presentation_record: "OID4VPPresentation",
+) -> tuple[str, str, str]:
+    """Get OID4VP verification parameters.
+
+    Args:
+        profile: The profile
+        presentation_record: The presentation record
+
+    Returns:
+        Tuple of (nonce, client_id, response_uri)
+    """
+    nonce = presentation_record.nonce
+    config = Config.from_settings(profile.settings)
+
+    async with profile.session() as session:
+        jwk = await retrieve_or_create_did_jwk(session)
+
+    client_id = jwk.did
+
+    wallet_id = (
+        profile.settings.get("wallet.id")
+        if profile.settings.get("multitenant.enabled")
+        else None
+    )
+    subpath = f"/tenant/{wallet_id}" if wallet_id else ""
+    response_uri = (
+        f"{config.endpoint}{subpath}/oid4vp/response/"
+        f"{presentation_record.presentation_id}"
+    )
+
+    return nonce, client_id, response_uri
+
+
+def _verify_single_presentation(
+    response_bytes: bytes,
+    nonce: str,
+    client_id: str,
+    response_uri: str,
+    trust_anchor_registry: List[str],
+) -> Any:
+    """Verify a single OID4VP presentation.
+
+    Args:
+        response_bytes: The presentation bytes
+        nonce: The nonce
+        client_id: The client ID
+        response_uri: The response URI
+        trust_anchor_registry: JSON-serialized PemTrustAnchor strings, each of the form
+            '{"certificate_pem": "...", "purpose": "Iaca"}'
+
+    Returns:
+        Verified payload dict if successful, None if failed
+    """
+    LOGGER.debug(
+        "Calling verify_oid4vp_response with: "
+        "nonce=%s client_id=%s response_uri=%s "
+        "response_bytes_len=%d",
+        nonce,
+        client_id,
+        response_uri,
+        len(response_bytes),
+    )
+
+    # Try spec-compliant format (2024) first
+    verified_data = isomdl_uniffi.verify_oid4vp_response(
+        response_bytes,
+        nonce,
+        client_id,
+        response_uri,
+        trust_anchor_registry,
+        True,
+    )
+
+    # If device auth failed but issuer is valid, try legacy format
+    if (
+        verified_data.device_authentication != isomdl_uniffi.AuthenticationStatus.VALID
+        and verified_data.issuer_authentication
+        == isomdl_uniffi.AuthenticationStatus.VALID
+    ):
+        if hasattr(isomdl_uniffi, "verify_oid4vp_response_legacy"):
+            LOGGER.info(
+                "Device auth failed with spec-compliant format, trying legacy 2023 format"
+            )
+            verified_data = isomdl_uniffi.verify_oid4vp_response_legacy(
+                response_bytes,
+                nonce,
+                client_id,
+                response_uri,
+                trust_anchor_registry,
+                True,
+            )
+        else:
+            LOGGER.warning(
+                "Device auth failed and legacy format not available in isomdl_uniffi"
+            )
+
+    return verified_data
+
+
+class MsoMdocPresVerifier(PresVerifier):
+    """Verifier for mso_mdoc presentations (OID4VP)."""
+
+    def __init__(self, trust_store: Optional[TrustStore] = None):
+        """Initialize the presentation verifier."""
+        self.trust_store = trust_store
+
+    def _parse_jsonpath(self, path: str) -> List[str]:
+        """Parse JSONPath to extract segments."""
+        # Handle $['namespace']['element'] format
+        if "['" in path:
+            return [
+                p.strip("]['\"")
+                for p in path.split("['")
+                if p.strip("]['\"") and p != "$"
+            ]
+
+        # Handle $.namespace.element format
+        clean = path.replace("$", "")
+        if clean.startswith("."):
+            clean = clean[1:]
+        return clean.split(".")
+
+    async def verify_presentation(
+        self,
+        profile: Profile,
+        presentation: Any,
+        presentation_record: OID4VPPresentation,
+    ) -> VerifyResult:
+        """Verify an mso_mdoc presentation.
+
+        Args:
+            profile: The profile for context
+            presentation: The presentation data (bytes)
+            presentation_record: The presentation record containing request info
+
+        Returns:
+            VerifyResult: The verification result
+        """
+        try:
+            # 1. Prepare Trust Anchors
+            if self.trust_store and isinstance(self.trust_store, WalletTrustStore):
+                await self.trust_store.refresh_cache()
+
+            trust_anchors = (
+                self.trust_store.get_trust_anchors() if self.trust_store else []
+            )
+            LOGGER.debug(
+                "Trust anchors loaded: %d cert(s)",
+                len(trust_anchors) if trust_anchors else 0,
+            )
+            for i, pem in enumerate(trust_anchors or []):
+                pem_stripped = pem.strip() if pem else ""
+                LOGGER.debug(
+                    "Trust anchor %d: len=%d",
+                    i,
+                    len(pem_stripped),
+                )
+                # Validate that the PEM is parseable by Python before
+                # passing to Rust
+                try:
+                    from cryptography import x509 as _x509  # noqa: PLC0415
+
+                    _x509.load_pem_x509_certificate(pem_stripped.encode())
+                except Exception as pem_err:
+                    LOGGER.error(
+                        "Trust anchor %d: PEM validation FAILED: %s",
+                        i,
+                        pem_err,
+                    )
+
+            # Flatten concatenated PEM chains into individual certs BEFORE
+            # building the registry.  Rust (x509_cert) only reads the first
+            # PEM block from a string; any additional certs in a chain string
+            # are silently dropped, breaking trust-anchor validation.
+            if trust_anchors:
+                trust_anchors = flatten_trust_anchors(trust_anchors)
+                LOGGER.debug(
+                    "Trust anchors after chain-splitting: %d individual cert(s)",
+                    len(trust_anchors),
+                )
+
+            # Fail-closed guard: refuse to verify without at least one trust
+            # anchor.  An empty list causes Rust to accept any self-signed
+            # issuer certificate, bypassing chain validation entirely.
+            if not trust_anchors:
+                return VerifyResult(
+                    verified=False,
+                    payload={
+                        "error": "No trust anchors configured; presentation "
+                        "verification requires at least one trust anchor."
+                    },
+                )
+
+            # verify_oid4vp_response expects JSON-serialized PemTrustAnchor per anchor:
+            # {"certificate_pem": "...", "purpose": "Iaca"}
+            # Rust parses each string via serde_json::from_str::<PemTrustAnchor>().
+            trust_anchor_registry = (
+                [
+                    json.dumps({"certificate_pem": pem, "purpose": "Iaca"})
+                    for pem in trust_anchors
+                ]
+                if trust_anchors
+                else []
+            )
+            if trust_anchor_registry:
+                LOGGER.debug(
+                    "trust_anchor_registry[0] first100: %r",
+                    trust_anchor_registry[0][:100],
+                )
+
+            # 2. Get verification parameters
+            nonce, client_id, response_uri = await _get_oid4vp_verification_params(
+                profile, presentation_record
+            )
+
+            # 3. Normalize presentation input
+            presentations_to_verify, is_list_input = _normalize_presentation_input(
+                presentation
+            )
+
+            verified_payloads = []
+
+            for pres_item in presentations_to_verify:
+                LOGGER.debug(
+                    "vp_token type=%s len=%s",
+                    type(pres_item).__name__,
+                    len(pres_item) if hasattr(pres_item, "__len__") else "N/A",
+                )
+
+                response_bytes = _decode_presentation_bytes(pres_item)
+
+                verified_data = _verify_single_presentation(
+                    response_bytes,
+                    nonce,
+                    client_id,
+                    response_uri,
+                    trust_anchor_registry,
+                )
+
+                # Per ISO 18013-5, deviceSigned is optional (marked with '?' in
+                # the CDDL).  For OID4VP web-wallet flows a device key binding
+                # round-trip is not performed, so device_authentication will not
+                # be VALID.  Issuer authentication is sufficient to trust that
+                # the credential was issued by a known authority.
+                issuer_ok = (
+                    verified_data.issuer_authentication
+                    == isomdl_uniffi.AuthenticationStatus.VALID
+                )
+                device_ok = (
+                    verified_data.device_authentication
+                    == isomdl_uniffi.AuthenticationStatus.VALID
+                )
+
+                if issuer_ok:
+                    if not device_ok:
+                        LOGGER.info(
+                            "Device authentication not present/valid (issuer-only "
+                            "OID4VP presentation — deviceSigned is optional per "
+                            "ISO 18013-5): Device=%s",
+                            verified_data.device_authentication,
+                        )
+                    try:
+                        claims = extract_verified_claims(verified_data.verified_response)
+                    except Exception as e:
+                        LOGGER.warning("Failed to extract claims: %s", e)
+                        claims = {}
+
+                    payload = {
+                        "status": "verified",
+                        "docType": verified_data.doc_type,
+                        "issuer_auth": str(verified_data.issuer_authentication),
+                        "device_auth": str(verified_data.device_authentication),
+                    }
+                    payload.update(claims)
+                    verified_payloads.append(PreverifiedMdocClaims(claims=payload))
+                else:
+                    LOGGER.error(
+                        "Verification failed: Issuer=%s, Device=%s, Errors=%s",
+                        verified_data.issuer_authentication,
+                        verified_data.device_authentication,
+                        verified_data.errors,
+                    )
+                    try:
+                        claims = extract_verified_claims(verified_data.verified_response)
+                    except Exception:
+                        claims = {}
+
+                    return VerifyResult(
+                        verified=False,
+                        payload={
+                            "error": verified_data.errors,
+                            "issuer_auth": str(verified_data.issuer_authentication),
+                            "device_auth": str(verified_data.device_authentication),
+                            "claims": claims,
+                        },
+                    )
+
+            # Return list if input was list, otherwise single item
+            payload = verified_payloads
+            if not is_list_input and len(verified_payloads) == 1:
+                payload = verified_payloads[0]
+
+            return VerifyResult(verified=True, payload=payload)
+
+        except Exception as e:
+            LOGGER.exception("Error verifying mdoc presentation")
+            return VerifyResult(verified=False, payload={"error": str(e)})
+
+
+class MdocVerifyResult:
+    """Result of mdoc verification."""
 
     def __init__(
         self,
-        headers: Mapping[str, Any],
-        payload: Mapping[str, Any],
-        valid: bool,
-        kid: str,
+        verified: bool,
+        payload: Optional[dict] = None,
+        error: Optional[str] = None,
     ):
-        """Initialize a MdocVerifyResult instance."""
-        self.headers = headers
+        """Initialize the verification result."""
+        self.verified = verified
         self.payload = payload
-        self.valid = valid
-        self.kid = kid
+        self.error = error
+
+    def serialize(self):
+        """Serialize the result to a dictionary."""
+        return {
+            "verified": self.verified,
+            "payload": self.payload,
+            "error": self.error,
+        }
 
 
-class MdocVerifyResultSchema(BaseModelSchema):
-    """MdocVerifyResult schema."""
+def mdoc_verify(
+    mso_mdoc: str, trust_anchors: Optional[List[str]] = None
+) -> MdocVerifyResult:
+    """Verify an mso_mdoc credential.
 
-    class Meta:
-        """MdocVerifyResultSchema metadata."""
+    Accepts mDOC strings in any format understood by ``_parse_string_credential``:
+    hex-encoded DeviceResponse, base64url IssuerSigned, or raw base64.
 
-        model_class = MdocVerifyResult
+    Args:
+        mso_mdoc: The mDOC string (hex, base64url, or base64).
+        trust_anchors: Optional list of PEM-encoded trust anchor certificates.
+            Each element may contain a single cert or a concatenated PEM chain;
+            chains are automatically split before being passed to Rust.
 
-    headers = fields.Dict(
-        required=False, metadata={"description": "Headers from verified mso_mdoc."}
-    )
-    payload = fields.Dict(
-        required=True, metadata={"description": "Payload from verified mso_mdoc"}
-    )
-    valid = fields.Bool(required=True)
-    kid = fields.Str(required=False, metadata={"description": "kid of signer"})
-    error = fields.Str(required=False, metadata={"description": "Error text"})
+    Returns:
+        MdocVerifyResult: The verification result.
+    """
+    try:
+        # Parse the mdoc — try all supported formats
+        mdoc, parse_error = _parse_string_credential(mso_mdoc)
+        if not mdoc:
+            return MdocVerifyResult(
+                verified=False,
+                error=f"Failed to parse mDOC: {parse_error or 'unknown format'}",
+            )
 
+        # Flatten concatenated PEM chains so Rust receives one cert per list
+        # entry (isomdl_uniffi only reads the first PEM block in a string).
+        if trust_anchors:
+            trust_anchors = flatten_trust_anchors(trust_anchors)
 
-async def mso_mdoc_verify(profile: Profile, mdoc_str: str) -> MdocVerifyResult:
-    """Verify a mso_mdoc CBOR string."""
-    result = mdoc_verify(mdoc_str)
-    verkey = result.kid
+        # Fail-closed guard: refuse to verify without at least one trust anchor.
+        if not trust_anchors:
+            return MdocVerifyResult(
+                verified=False,
+                error="No trust anchors configured; mDOC verification requires "
+                "at least one trust anchor.",
+            )
 
-    async with profile.session() as session:
-        wallet = session.inject(BaseWallet)
+        # Verify issuer signature
         try:
-            did_info = await wallet.get_local_did_for_verkey(verkey)
-        except WalletNotFoundError:
-            did_info = None
-        verification_method = did_info.did if did_info else ""
-        result.kid = verification_method
+            # Enable intermediate certificate chaining by default
+            verification_result = mdoc.verify_issuer_signature(trust_anchors, True)
 
-    return result
+            if verification_result.verified:
+                return MdocVerifyResult(
+                    verified=True,
+                    payload={
+                        "status": "verified",
+                        "doctype": mdoc.doctype(),
+                        "issuer_common_name": verification_result.common_name,
+                    },
+                )
+            else:
+                return MdocVerifyResult(
+                    verified=False,
+                    payload={"doctype": mdoc.doctype()},
+                    error=verification_result.error or "Signature verification failed",
+                )
+        except isomdl_uniffi.MdocVerificationError as e:
+            return MdocVerifyResult(
+                verified=False,
+                payload={"doctype": mdoc.doctype()},
+                error=str(e),
+            )
 
-
-def mdoc_verify(mdoc_str: str) -> MdocVerifyResult:
-    """Verify a mso_mdoc CBOR string."""
-    mdoc_bytes = unhexlify(mdoc_str)
-    mso_mdoc = cbor2.loads(mdoc_bytes)
-    mso_verifier = MsoVerifier(mso_mdoc["documents"][0]["issuerSigned"]["issuerAuth"])
-    valid = mso_verifier.verify_signature()
-
-    headers = {}
-    mdoc_str = str(cbor2diag(mdoc_bytes)).replace("\n", "").replace("h'", "'")
-    mdoc_str = re.sub(r'\s+(?=(?:[^"]*"[^"]*")*[^"]*$)', "", mdoc_str)
-    payload = {"mso_mdoc": mdoc_str}
-
-    if isinstance(mso_verifier.public_key, Ed25519PublicKey):
-        public_bytes = mso_verifier.public_key.public_bytes_raw()
-    elif isinstance(mso_verifier.public_key, EllipticCurvePublicKey):
-        public_bytes = mso_verifier.public_key.public_bytes(
-            Encoding.DER, PublicFormat.SubjectPublicKeyInfo
-        )
-    verkey = bytes_to_b58(public_bytes)
-
-    return MdocVerifyResult(headers, payload, valid, verkey)
+    except Exception as e:
+        return MdocVerifyResult(verified=False, error=str(e))

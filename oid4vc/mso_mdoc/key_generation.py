@@ -1,0 +1,481 @@
+"""Key and certificate generation utilities for mso_mdoc.
+
+This module provides cryptographic key generation functions that comply with
+ISO 18013-5 requirements for mDoc issuance and verification. All generated
+keys use ECDSA with P-256 curve as specified in ISO 18013-5 § 9.1.3.5.
+
+Key Protocol Compliance:
+- ISO/IEC 18013-5:2021 § 9.1.3.5 - Cryptographic algorithms for mDoc
+- RFC 7517 - JSON Web Key (JWK) format
+- RFC 7518 § 3.4 - ES256 signature algorithm
+- RFC 8152 - CBOR Object Signing and Encryption (COSE)
+"""
+
+import base64
+import logging
+import os
+import uuid
+from datetime import UTC, datetime, timedelta
+from typing import Any, Dict, Optional, Tuple
+
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.x509.oid import NameOID
+
+LOGGER = logging.getLogger(__name__)
+
+
+def int_to_base64url_uint(val: int, length: int = 32) -> str:
+    """Convert integer to base64url unsigned integer.
+
+    Converts an elliptic curve coordinate integer to base64url encoding
+    as required by RFC 7517 for EC JWK format.
+
+    Args:
+        val: Integer value to encode
+        length: Byte length for the integer (default 32 for P-256)
+
+    Returns:
+        Base64url-encoded string without padding
+    """
+    val_bytes = val.to_bytes(length, byteorder="big")
+    return base64.urlsafe_b64encode(val_bytes).decode("ascii").rstrip("=")
+
+
+def generate_ec_key_pair() -> Tuple[str, str, Dict[str, Any]]:
+    """Generate an ECDSA key pair for mDoc signing.
+
+    Generates a P-256 (secp256r1) elliptic curve key pair compliant with
+    ISO 18013-5 § 9.1.3.5 requirements for mDoc cryptographic operations.
+    The generated key supports ES256 algorithm as specified in RFC 7518 § 3.4.
+
+    Returns:
+        Tuple containing:
+        - private_key_pem: PEM-encoded private key string
+        - public_key_pem: PEM-encoded public key string
+        - jwk: JSON Web Key dictionary with EC parameters
+
+    Raises:
+        ValueError: If key generation parameters are invalid
+        RuntimeError: If cryptographic operation fails
+
+    Example:
+        >>> private_pem, public_pem, jwk = generate_ec_key_pair()
+        >>> print(jwk['kty'])  # 'EC'
+        >>> print(jwk['crv'])  # 'P-256'
+    """
+    # Generate private key
+    private_key = ec.generate_private_key(ec.SECP256R1())
+
+    # Serialize private key to PEM
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("utf-8")
+
+    # Serialize public key to PEM
+    public_key = private_key.public_key()
+    public_pem = public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode("utf-8")
+
+    # Create JWK representation
+    private_numbers = private_key.private_numbers()
+    public_numbers = private_numbers.public_numbers
+
+    jwk = {
+        "kty": "EC",
+        "crv": "P-256",
+        "x": int_to_base64url_uint(public_numbers.x),
+        "y": int_to_base64url_uint(public_numbers.y),
+        "d": int_to_base64url_uint(private_numbers.private_value),
+    }
+
+    return private_pem, public_pem, jwk
+
+
+def pem_to_jwk(private_key_pem: str) -> Dict[str, Any]:
+    """Derive JWK from a PEM-encoded EC private key.
+
+    M-1 fix: detect the actual curve instead of hard-coding "P-256".
+
+    Args:
+        private_key_pem: PEM-encoded private key string
+
+    Returns:
+        JSON Web Key dictionary with EC parameters
+    """
+    private_key = serialization.load_pem_private_key(
+        private_key_pem.encode("utf-8"), password=None
+    )
+
+    if not isinstance(private_key, ec.EllipticCurvePrivateKey):
+        raise ValueError("PEM must be an EC private key")
+
+    # Map cryptography curve instances to JWK crv names and their byte sizes.
+    _CURVE_MAP = {
+        ec.SECP256R1: ("P-256", 32),
+        ec.SECP384R1: ("P-384", 48),
+        ec.SECP521R1: ("P-521", 66),
+    }
+    curve_type = type(private_key.curve)
+    crv_info = _CURVE_MAP.get(curve_type)
+    if crv_info is None:
+        raise ValueError(f"Unsupported EC curve: {curve_type.__name__}")
+    crv_name, byte_len = crv_info
+
+    private_numbers = private_key.private_numbers()
+    public_numbers = private_numbers.public_numbers
+
+    return {
+        "kty": "EC",
+        "crv": crv_name,
+        "x": int_to_base64url_uint(public_numbers.x, byte_len),
+        "y": int_to_base64url_uint(public_numbers.y, byte_len),
+        "d": int_to_base64url_uint(private_numbers.private_value, byte_len),
+    }
+
+
+def pem_from_jwk(jwk: Dict[str, Any]) -> str:
+    """Reconstruct a PEM-encoded EC private key from a JWK containing a 'd' parameter.
+
+    C-1 fix: allows callers to avoid persisting raw PEM blobs — the JWK ``d``
+    parameter is the single source of truth for the private scalar.
+
+    Args:
+        jwk: JSON Web Key dictionary containing at least kty, crv, x, y, d.
+
+    Returns:
+        PEM-encoded PKCS#8 private key string.
+
+    Raises:
+        ValueError: If the JWK is missing required fields or uses an unsupported curve.
+    """
+    kty = jwk.get("kty")
+    if kty != "EC":
+        raise ValueError(f"pem_from_jwk: expected EC key, got {kty!r}")
+
+    crv = jwk.get("crv", "P-256")
+    _CURVE_MAP_INV = {
+        "P-256": (ec.SECP256R1(), 32),
+        "P-384": (ec.SECP384R1(), 48),
+        "P-521": (ec.SECP521R1(), 66),
+    }
+    crv_info = _CURVE_MAP_INV.get(crv)
+    if crv_info is None:
+        raise ValueError(f"pem_from_jwk: unsupported curve {crv!r}")
+    curve, _byte_len = crv_info
+
+    def _b64url_to_int(s: str) -> int:
+        padded = s + "=" * (-len(s) % 4)
+        return int.from_bytes(base64.urlsafe_b64decode(padded), "big")
+
+    missing = [f for f in ("x", "y", "d") if f not in jwk]
+    if missing:
+        raise ValueError(f"pem_from_jwk: JWK is missing required field(s): {missing}")
+
+    public_numbers = ec.EllipticCurvePublicNumbers(
+        x=_b64url_to_int(jwk["x"]),
+        y=_b64url_to_int(jwk["y"]),
+        curve=curve,
+    )
+    private_numbers = ec.EllipticCurvePrivateNumbers(
+        private_value=_b64url_to_int(jwk["d"]),
+        public_numbers=public_numbers,
+    )
+    private_key = private_numbers.private_key()
+
+    return private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("utf-8")
+
+
+def generate_self_signed_certificate(
+    private_key_pem: str,
+    subject_name: str = "CN=mDoc Test Issuer,C=US",
+    issuer_name: Optional[str] = None,
+    validity_days: int = 365,
+) -> str:
+    """Generate a self-signed X.509 IACA certificate for mDoc issuer.
+
+    Creates a self-signed certificate compliant with ISO 18013-5 Annex B
+    requirements for IACA (Issuing Authority Certificate Authority)
+    authentication. The certificate includes all required extensions for
+    proper trust chain validation.
+
+    Required Extensions per ISO 18013-5 Annex B.1.1:
+    - BasicConstraints: CA=True
+    - KeyUsage: keyCertSign, cRLSign
+    - SubjectKeyIdentifier: SHA-1 hash of public key
+    - CRLDistributionPoints: HTTP URI for CRL
+    - IssuerAlternativeName: URI
+
+    Extension helpers use the standard `from_public_key` / `from_issuer_public_key`
+    class methods so that the DER encoding is strictly correct.  Manual construction
+    of SubjectKeyIdentifier/AuthorityKeyIdentifier bytes was previously used here but
+    can produce DER that the Rust x509_cert crate (used by isomdl_uniffi) fails to
+    parse when ``Certificate::from_pem`` is called.
+
+    Args:
+        private_key_pem: Private key in PEM format for signing
+        subject_name: Subject Distinguished Name (default: CN=mDoc Test Issuer,C=US)
+        issuer_name: Issuer DN (uses subject_name if None)
+        validity_days: Certificate validity period in days (default: 365)
+
+    Returns:
+        PEM-encoded X.509 certificate string
+
+    Raises:
+        ValueError: If private key format is invalid or parameters are invalid
+        RuntimeError: If certificate generation fails
+
+    Example:
+        >>> private_pem, _, _ = generate_ec_key_pair()
+        >>> cert = generate_self_signed_certificate(private_pem)
+        >>> print("-----BEGIN CERTIFICATE-----" in cert)  # True
+    """
+    # Load private key
+    private_key = serialization.load_pem_private_key(
+        private_key_pem.encode("utf-8"), password=None
+    )
+
+    if issuer_name is None:
+        issuer_name = subject_name
+
+    # Parse subject and issuer names
+    def parse_dn(dn_string: str) -> x509.Name:
+        r"""Parse a DN string into an x509.Name.
+
+        Prefers ``x509.Name.from_rfc4514_string()`` (cryptography >= 38.0),
+        which correctly handles RFC 4514 escaping (commas inside values,
+        multi-valued RDNs such as ``O=Doe\, Inc``).
+
+        Falls back to the minimal comma-split implementation for older
+        cryptography versions, which is sufficient for the straightforward
+        DNs generated by this module (CN, O, C, ST, L without escaped
+        characters).
+        """
+        try:
+            # from_rfc4514_string reverses the attribute order from
+            # most-specific-first (RFC 4514 string) to most-general-first
+            # (X.509 DER / ASN.1), matching what x509.Name() produces.
+            return x509.Name.from_rfc4514_string(dn_string)
+        except AttributeError:
+            # cryptography < 38.0: fall through to minimal parser.
+            pass
+        name_parts = []
+        for part in dn_string.split(","):
+            part = part.strip()
+            if "=" in part:
+                attr, value = part.split("=", 1)
+                attr = attr.strip().upper()
+                value = value.strip()
+
+                if attr == "CN":
+                    name_parts.append(x509.NameAttribute(NameOID.COMMON_NAME, value))
+                elif attr == "O":
+                    name_parts.append(
+                        x509.NameAttribute(NameOID.ORGANIZATION_NAME, value)
+                    )
+                elif attr == "C":
+                    name_parts.append(x509.NameAttribute(NameOID.COUNTRY_NAME, value))
+                elif attr == "ST":
+                    name_parts.append(
+                        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, value)
+                    )
+                elif attr == "L":
+                    name_parts.append(x509.NameAttribute(NameOID.LOCALITY_NAME, value))
+        return x509.Name(name_parts)
+
+    subject = parse_dn(subject_name)
+    issuer = parse_dn(issuer_name)
+
+    public_key = private_key.public_key()
+
+    # Generate certificate
+    now = datetime.now(UTC)
+    cert_builder = x509.CertificateBuilder()
+    cert_builder = cert_builder.subject_name(subject)
+    cert_builder = cert_builder.issuer_name(issuer)
+    cert_builder = cert_builder.public_key(public_key)
+    cert_builder = cert_builder.serial_number(int(uuid.uuid4()))
+    cert_builder = cert_builder.not_valid_before(now)
+    cert_builder = cert_builder.not_valid_after(now + timedelta(days=validity_days))
+
+    # Add ISO 18013-5 Annex B required extensions for IACA certificate
+
+    # 1. BasicConstraints - CA=True (required)
+    cert_builder = cert_builder.add_extension(
+        x509.BasicConstraints(ca=True, path_length=0),
+        critical=True,
+    )
+
+    # 2. KeyUsage - keyCertSign and cRLSign (required for IACA)
+    cert_builder = cert_builder.add_extension(
+        x509.KeyUsage(
+            digital_signature=False,
+            key_cert_sign=True,
+            crl_sign=True,
+            key_encipherment=False,
+            data_encipherment=False,
+            key_agreement=False,
+            content_commitment=False,
+            encipher_only=False,
+            decipher_only=False,
+        ),
+        critical=True,
+    )
+
+    # 3. SubjectKeyIdentifier - use the standard helper to produce correct DER.
+    #    Manual bytes-based construction was previously used but can generate DER
+    #    that x509_cert (Rust) rejects in Certificate::from_pem.
+    cert_builder = cert_builder.add_extension(
+        x509.SubjectKeyIdentifier.from_public_key(public_key),
+        critical=False,
+    )
+
+    # 3b. AuthorityKeyIdentifier - use from_issuer_public_key for correct DER encoding.
+    cert_builder = cert_builder.add_extension(
+        x509.AuthorityKeyIdentifier.from_issuer_public_key(public_key),
+        critical=False,
+    )
+
+    # 4. CRLDistributionPoints - HTTP URI (required per Annex B)
+    # M-7: configurable via OID4VC_MDOC_CRL_URI; default is a placeholder.
+    crl_uri = os.getenv("OID4VC_MDOC_CRL_URI", "http://example.com/crl")
+    cert_builder = cert_builder.add_extension(
+        x509.CRLDistributionPoints(
+            [
+                x509.DistributionPoint(
+                    full_name=[x509.UniformResourceIdentifier(crl_uri)],
+                    relative_name=None,
+                    reasons=None,
+                    crl_issuer=None,
+                )
+            ]
+        ),
+        critical=False,
+    )
+
+    # 5. IssuerAlternativeName - URI type (required per Annex B).
+    #    URI is used here instead of RFC822Name because the x509_cert Rust crate
+    #    used by isomdl_uniffi has been observed to reject certs with RFC822Name
+    #    in IssuerAlternativeName when parsing via Certificate::from_pem.
+    # M-7: configurable via OID4VC_MDOC_ISSUER_URI; default is a placeholder.
+    issuer_uri = os.getenv("OID4VC_MDOC_ISSUER_URI", "https://example.com")
+    cert_builder = cert_builder.add_extension(
+        x509.IssuerAlternativeName(
+            [
+                x509.UniformResourceIdentifier(issuer_uri),
+            ]
+        ),
+        critical=False,
+    )
+
+    # Sign the certificate
+    certificate = cert_builder.sign(private_key, hashes.SHA256())
+
+    # Return PEM encoded certificate
+    return certificate.public_bytes(serialization.Encoding.PEM).decode("utf-8")
+
+
+async def generate_default_keys_and_certs(
+    storage_manager: Any, session: Any
+) -> Dict[str, Any]:
+    """Generate default keys and certificates for mDoc operations.
+
+    Creates a complete set of cryptographic materials for mDoc issuance
+    including ECDSA signing keys and X.509 certificates. All materials
+    are generated according to ISO 18013-5 specifications and stored
+    in the configured storage backend.
+
+    Args:
+        storage_manager: MdocStorageManager instance for persistent storage
+        session: Database session for storage operations
+
+    Returns:
+        Dictionary containing generated identifiers:
+        - key_id: Identifier for the signing key
+        - cert_id: Identifier for the X.509 certificate
+        - jwk: JSON Web Key for the generated key pair
+
+    Raises:
+        StorageError: If key/certificate storage fails
+        RuntimeError: If key generation fails
+
+    Example:
+        >>> storage = MdocStorageManager(profile)
+        >>> result = await generate_default_keys_and_certs(storage, session)
+        >>> print(result['key_id'])  # 'mdoc-key-abc12345'
+    """
+    LOGGER.info("Generating default mDoc keys and certificates")
+
+    # Generate key pair
+    private_pem, public_pem, jwk = generate_ec_key_pair()
+    key_id = f"mdoc-key-{uuid.uuid4().hex[:8]}"
+
+    # Store the key
+    # C-1: do NOT store private_key_pem; the JWK 'd' parameter is the
+    # single source of truth for the private scalar.
+    await storage_manager.store_key(
+        session,
+        key_id=key_id,
+        jwk=jwk,
+        purpose="signing",
+        metadata={
+            "public_key_pem": public_pem,
+            "key_type": "EC",
+            "curve": "P-256",
+        },
+    )
+
+    # Generate certificate with ISO 18013-5 compliant subject name
+    # Must include stateOrProvinceName (ST) for IACA validation
+    # Configurable via OID4VC_MDOC_CERT_SUBJECT environment variable
+    default_subject = "CN=mDoc Test Issuer,O=ACA-Py,ST=NY,C=US"
+    cert_subject = os.getenv("OID4VC_MDOC_CERT_SUBJECT", default_subject)
+    cert_pem = generate_self_signed_certificate(
+        private_key_pem=private_pem,
+        subject_name=cert_subject,
+        validity_days=365,
+    )
+
+    cert_id = f"mdoc-cert-{uuid.uuid4().hex[:8]}"
+
+    # Store the certificate
+    await storage_manager.store_certificate(
+        session,
+        cert_id=cert_id,
+        certificate_pem=cert_pem,
+        key_id=key_id,
+        metadata={
+            "self_signed": True,
+            "purpose": "mdoc_issuing",
+            "issuer_dn": cert_subject,
+            "subject_dn": cert_subject,
+            "valid_from": datetime.now(UTC).isoformat(),
+            "valid_to": (datetime.now(UTC) + timedelta(days=365)).isoformat(),
+        },
+    )
+
+    # Set as defaults
+    await storage_manager.store_config(session, "default_signing_key", {"key_id": key_id})
+    await storage_manager.store_config(
+        session, "default_certificate", {"cert_id": cert_id}
+    )
+
+    LOGGER.info("Generated default mDoc key: %s and certificate: %s", key_id, cert_id)
+
+    return {
+        "key_id": key_id,
+        "cert_id": cert_id,
+        "jwk": jwk,
+        "private_key_pem": private_pem,
+        "public_key_pem": public_pem,
+        "certificate_pem": cert_pem,
+    }

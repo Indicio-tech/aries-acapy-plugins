@@ -47,11 +47,14 @@ ACAPY_VERIFIER_OID4VP_URL = os.getenv(
 async def credo_client():
     """HTTP client for Credo agent service."""
     async with httpx.AsyncClient(base_url=CREDO_AGENT_URL, timeout=30.0) as client:
-        # Wait for service to be ready
-        for _ in range(5):  # Reduced since services should already be ready
-            response = await client.get("/health")
-            if response.status_code == 200:
-                break
+        # Wait for service to be ready (30 retries to handle brief unavailability)
+        for _ in range(30):
+            try:
+                response = await client.get("/health")
+                if response.status_code == 200:
+                    break
+            except httpx.ConnectError:
+                pass
             await asyncio.sleep(1)
         else:
             raise RuntimeError("Credo agent service not available")
