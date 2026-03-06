@@ -22,8 +22,6 @@ import json
 import logging
 from typing import Any, Mapping
 
-import cbor2
-
 # ISO 18013-5 § 8.4: Presentation session
 # ISO 18013-5 § 9.1.3.5: ECDSA P-256 key pairs
 # ISO 18013-5 § 8.4.1: Session establishment
@@ -48,7 +46,8 @@ def _prepare_mdl_namespaces(payload: Mapping[str, Any]) -> dict:
         payload: The credential payload
 
     Returns:
-        Dictionary of namespaces with CBOR-encoded values
+        Dictionary of namespaces with JSON-encoded element values
+        (accepted by isomdl-uniffi via convert_namespaces)
     """
     namespaces = {}
 
@@ -58,13 +57,13 @@ def _prepare_mdl_namespaces(payload: Mapping[str, Any]) -> dict:
     for k, v in mdl_payload.items():
         if k == "org.iso.18013.5.1.aamva":
             continue
-        mdl_ns[k] = cbor2.dumps(v)
+        mdl_ns[k] = json.dumps(v)
     namespaces["org.iso.18013.5.1"] = mdl_ns
 
     # Handle AAMVA namespace
     aamva_payload = payload.get("org.iso.18013.5.1.aamva")
     if aamva_payload:
-        aamva_ns = {k: cbor2.dumps(v) for k, v in aamva_payload.items()}
+        aamva_ns = {k: json.dumps(v) for k, v in aamva_payload.items()}
         namespaces["org.iso.18013.5.1.aamva"] = aamva_ns
 
     return namespaces
@@ -78,9 +77,10 @@ def _prepare_generic_namespaces(doctype: str, payload: Mapping[str, Any]) -> dic
         payload: The credential payload
 
     Returns:
-        Dictionary of namespaces with CBOR-encoded values
+        Dictionary of namespaces with JSON-encoded element values
+        (accepted by isomdl-uniffi via convert_namespaces)
     """
-    encoded_payload = {k: cbor2.dumps(v) for k, v in payload.items()}
+    encoded_payload = {k: json.dumps(v) for k, v in payload.items()}
     return {doctype: encoded_payload}
 
 
