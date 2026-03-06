@@ -746,15 +746,9 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
         credential: Any,
     ):
         """Verify an mso_mdoc credential."""
-        # In wallet trust-store mode, self.trust_store was built at startup
-        # with the root profile.  Sub-wallet credential verification must use
-        # the calling profile so per-tenant Askar partitions are queried.
-        # For file- or None-based trust stores the singleton is fine.
-        if os.getenv("OID4VC_MDOC_TRUST_STORE_TYPE", "file").lower() == "wallet":
-            trust_store = WalletTrustStore(profile)
-        else:
-            trust_store = self.trust_store
-
+        # Always build a per-request WalletTrustStore from the calling profile
+        # so each tenant's Askar partition is queried (wallet-scoped registry).
+        trust_store = WalletTrustStore(profile)
         verifier = MsoMdocCredVerifier(trust_store=trust_store)
         return await verifier.verify_credential(profile, credential)
 
@@ -765,17 +759,9 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
         presentation_record: "OID4VPPresentation",
     ):
         """Verify an mso_mdoc presentation."""
-        # In wallet trust-store mode, self.trust_store was built at startup
-        # with the root profile.  Sub-wallet VP verification must use the
-        # calling profile so per-tenant Askar partitions are queried and
-        # anchors registered via /mso_mdoc/trust-anchors with a sub-wallet
-        # Bearer token are visible.  For file- or None-based trust stores
-        # the singleton is reused as-is.
-        if os.getenv("OID4VC_MDOC_TRUST_STORE_TYPE", "file").lower() == "wallet":
-            trust_store = WalletTrustStore(profile)
-        else:
-            trust_store = self.trust_store
-
+        # Always build a per-request WalletTrustStore from the calling profile
+        # so each tenant's Askar partition is queried (wallet-scoped registry).
+        trust_store = WalletTrustStore(profile)
         verifier = MsoMdocPresVerifier(trust_store=trust_store)
         return await verifier.verify_presentation(
             profile, presentation, presentation_record

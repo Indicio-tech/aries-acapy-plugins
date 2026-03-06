@@ -3,7 +3,6 @@
 import base64
 import json
 import logging
-import os
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Any, List, Optional, Protocol
@@ -85,30 +84,6 @@ class TrustStore(Protocol):
     def get_trust_anchors(self) -> List[str]:
         """Retrieve trust anchors as PEM strings."""
         ...
-
-
-class FileTrustStore:
-    """Trust store implementation backed by a directory of PEM files."""
-
-    def __init__(self, path: str):
-        """Initialize the file trust store."""
-        self.path = path
-
-    def get_trust_anchors(self) -> List[str]:
-        """Retrieve trust anchors from the directory."""
-        anchors = []
-        if not os.path.isdir(self.path):
-            LOGGER.warning("Trust store path %s is not a directory.", self.path)
-            return anchors
-
-        for filename in os.listdir(self.path):
-            if filename.endswith(".pem") or filename.endswith(".crt"):
-                try:
-                    with open(os.path.join(self.path, filename), "r") as f:
-                        anchors.append(f.read())
-                except Exception as e:
-                    LOGGER.warning("Failed to read trust anchor %s: %s", filename, e)
-        return anchors
 
 
 class WalletTrustStore:
