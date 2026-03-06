@@ -1,36 +1,5 @@
 # =============================================================================
-# Stage 1: Build isomdl-uniffi wheel (requires Rust)
-# =============================================================================
-FROM python:3.12-slim-bookworm AS isomdl-build
-
-WORKDIR /build
-
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    git \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Rust toolchain (minimal profile to save space)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Clone isomdl-uniffi with shallow clone
-ARG ISOMDL_BRANCH=fix/python-build-system
-RUN git clone --depth 1 --branch ${ISOMDL_BRANCH} \
-    https://github.com/Indicio-tech/isomdl-uniffi.git /build/isomdl-uniffi
-
-WORKDIR /build/isomdl-uniffi/python
-
-# Build wheel — limit Cargo parallelism to avoid Docker VM OOM on resource-constrained hosts
-# (CARGO_BUILD_JOBS=2 cuts peak memory roughly in half vs. the default all-cores build)
-RUN pip install --no-cache-dir build wheel setuptools
-ENV CARGO_BUILD_JOBS=2
-RUN python setup.py bdist_wheel
-
-# =============================================================================
-# Stage 2: Install ACA-Py and plugin dependencies
+# Stage 1: Install ACA-Py and plugin dependencies
 # =============================================================================
 FROM python:3.12-slim-bookworm AS base
 
@@ -69,9 +38,10 @@ COPY oid4vc/sd_jwt_vc/ sd_jwt_vc/
 COPY status_list/ status_list/
 RUN pip install -e ./status_list
 
-# Install isomdl-uniffi from builder stage
-COPY --from=isomdl-build /build/isomdl-uniffi/python/dist/*.whl /tmp/
-RUN pip install --no-cache-dir /tmp/*.whl && rm -rf /tmp/*.whl
+# Install isomdl-uniffi from pre-built wheel (Linux x86_64, manylinux2014)
+# Updating this ARG invalidates the Docker layer cache for this step.
+ARG ISOMDL_WHEEL_URL=https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test11/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+RUN pip install --no-cache-dir "${ISOMDL_WHEEL_URL}"
 
 # Install the plugin with extras for mso_mdoc and sd_jwt_vc
 RUN pip install --no-cache-dir -e ".[mso_mdoc,sd_jwt_vc]"
