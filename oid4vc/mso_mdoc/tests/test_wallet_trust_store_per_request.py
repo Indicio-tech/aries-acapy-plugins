@@ -219,6 +219,5 @@ class TestVerifyCredentialWalletTrustStorePerRequest:
 
         assert len(captured_wts_profiles) == 1
         assert captured_wts_profiles[0] is sub_profile, (
-            "verify_credential must construct WalletTrustStore with the calling "
-            "profile."
+            "verify_credential must construct WalletTrustStore with the calling profile."
         )
