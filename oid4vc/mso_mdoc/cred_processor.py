@@ -740,6 +740,27 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
 
         return True
 
+    def format_data_is_top_level(self) -> bool:
+        """mso_mdoc format_data fields belong at the top level of credential config."""
+        return True
+
+    # COSE algorithm name → integer identifier mapping (RFC 8152 / IANA COSE registry)
+    _COSE_ALG: dict = {"ES256": -7, "ES384": -35, "ES512": -36, "ES256K": -47}
+
+    def transform_issuer_metadata(self, metadata: dict) -> None:
+        """Convert mso_mdoc algorithm names to COSE integer identifiers.
+
+        Per OID4VCI spec Appendix E and ISO 18013-5, ``credential_signing_alg_
+        values_supported`` for mso_mdoc must contain COSE algorithm integer
+        identifiers (e.g. -7 for ES256), NOT string names. This method converts
+        any string entries in-place.
+        """
+        algs = metadata.get("credential_signing_alg_values_supported")
+        if algs:
+            metadata["credential_signing_alg_values_supported"] = [
+                self._COSE_ALG.get(a, a) if isinstance(a, str) else a for a in algs
+            ]
+
     async def verify_credential(
         self,
         profile: Profile,

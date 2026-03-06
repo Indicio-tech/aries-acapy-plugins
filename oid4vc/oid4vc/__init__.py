@@ -18,6 +18,7 @@ from .jwk import DID_JWK
 from .jwk_resolver import JwkResolver
 from .oid4vci_server import Oid4vciServer
 from .status_handler import StatusHandler
+from .migrate import run_migrations
 
 LOGGER = logging.getLogger(__name__)
 
@@ -69,6 +70,11 @@ async def setup(context: InjectionContext):
 async def startup(profile: Profile, event: Event):
     """Startup event handler; start the OpenID4VCI server."""
     LOGGER.info("OID4VC plugin startup event triggered: %s", event.topic)
+    try:
+        await run_migrations(profile)
+    except Exception:
+        LOGGER.exception("OID4VC schema migration failed; continuing anyway")
+
     try:
         config = Config.from_settings(profile.settings)
         LOGGER.info("OID4VCI server config: host=%s, port=%s", config.host, config.port)
