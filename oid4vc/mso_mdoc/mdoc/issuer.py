@@ -20,7 +20,7 @@ credential format that follows the ISO 18013-5 mobile document structure.
 
 import json
 import logging
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
 # ISO 18013-5 § 8.4: Presentation session
 # ISO 18013-5 § 9.1.3.5: ECDSA P-256 key pairs
@@ -39,34 +39,26 @@ from .utils import extract_signing_cert
 LOGGER = logging.getLogger(__name__)
 
 
-def _prepare_mdl_namespaces(payload: Mapping[str, Any]) -> dict:
-    """Prepare namespaces for mDL doctype.
+def _prepare_mdl_namespaces(
+    payload: Mapping[str, Any],
+) -> tuple[str, Optional[str]]:
+    """Prepare mDL namespace items for create_and_sign_mdl.
 
     Args:
         payload: The credential payload
 
     Returns:
-        Dictionary of namespaces with JSON-encoded element values
-        (accepted by isomdl-uniffi via convert_namespaces)
+        Tuple of (mdl_items_json, aamva_items_json) where aamva_items_json
+        may be None. Both are JSON-serialized dicts; isomdl-uniffi handles
+        CBOR encoding internally.
     """
-    namespaces = {}
-
-    # Extract mDL items from payload if wrapped in namespace
     mdl_payload = payload.get("org.iso.18013.5.1", payload)
-    mdl_ns = {}
-    for k, v in mdl_payload.items():
-        if k == "org.iso.18013.5.1.aamva":
-            continue
-        mdl_ns[k] = json.dumps(v)
-    namespaces["org.iso.18013.5.1"] = mdl_ns
+    mdl_items = {k: v for k, v in mdl_payload.items() if k != "org.iso.18013.5.1.aamva"}
 
-    # Handle AAMVA namespace
     aamva_payload = payload.get("org.iso.18013.5.1.aamva")
-    if aamva_payload:
-        aamva_ns = {k: json.dumps(v) for k, v in aamva_payload.items()}
-        namespaces["org.iso.18013.5.1.aamva"] = aamva_ns
+    aamva_items_json = json.dumps(aamva_payload) if aamva_payload else None
 
-    return namespaces
+    return json.dumps(mdl_items), aamva_items_json
 
 
 def _prepare_generic_namespaces(doctype: str, payload: Mapping[str, Any]) -> dict:
@@ -78,7 +70,7 @@ def _prepare_generic_namespaces(doctype: str, payload: Mapping[str, Any]) -> dic
 
     Returns:
         Dictionary of namespaces with JSON-encoded element values
-        (accepted by isomdl-uniffi via convert_namespaces)
+        for use with Mdoc.create_and_sign.
     """
     encoded_payload = {k: json.dumps(v) for k, v in payload.items()}
     return {doctype: encoded_payload}
@@ -141,19 +133,27 @@ def isomdl_mdoc_sign(
 
         # Prepare namespaces based on doctype
         if doctype == "org.iso.18013.5.1.mDL":
-            namespaces = _prepare_mdl_namespaces(payload)
+            # Use the dedicated mDL constructor — accepts JSON strings and
+            # handles CBOR encoding internally (isomdl-uniffi >= create_and_sign_mdl)
+            mdl_items, aamva_items = _prepare_mdl_namespaces(payload)
+            LOGGER.info("Creating mDL mdoc via create_and_sign_mdl")
+            mdoc = Mdoc.create_and_sign_mdl(
+                mdl_items,
+                aamva_items,
+                holder_jwk,
+                signing_cert_pem,
+                iaca_key_pem,
+            )
         else:
             namespaces = _prepare_generic_namespaces(doctype, payload)
-
-        LOGGER.info("Creating mdoc with namespaces: %s", list(namespaces.keys()))
-
-        mdoc = Mdoc.create_and_sign(
-            doctype,
-            namespaces,
-            holder_jwk,
-            signing_cert_pem,
-            iaca_key_pem,
-        )
+            LOGGER.info("Creating mdoc with namespaces: %s", list(namespaces.keys()))
+            mdoc = Mdoc.create_and_sign(
+                doctype,
+                namespaces,
+                holder_jwk,
+                signing_cert_pem,
+                iaca_key_pem,
+            )
 
         LOGGER.info("Generated mdoc with doctype: %s", mdoc.doctype())
 
@@ -164,8 +164,8 @@ def isomdl_mdoc_sign(
         return mdoc.issuer_signed_b64()
 
     except Exception as ex:
-        LOGGER.error("Failed to create mdoc with isomdl: %s", ex)
-        raise ValueError(f"Failed to create mdoc: {ex}") from ex
+        LOGGER.error("Failed to create mdoc with isomdl: %r", ex)
+        raise ValueError(f"Failed to create mdoc: {ex!r}") from ex
 
 
 def parse_mdoc(cbor_data: str) -> Mdoc:

@@ -18,9 +18,18 @@
 #   WALLET_URL               default http://localhost:7101
 set -euo pipefail
 
+# Load .env from the same directory as this script so port overrides are honoured.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$SCRIPT_DIR/.env"
+  set +a
+fi
+
 ISSUER_ADMIN="${ACAPY_ISSUER_ADMIN_URL:-http://localhost:8021}"
 VERIFIER_ADMIN="${ACAPY_VERIFIER_ADMIN_URL:-http://localhost:8031}"
-WALLET_URL="${WALLET_URL:-http://localhost:7101}"
+WALLET_URL="${WALTID_WALLET_URL:-${WALLET_URL:-http://localhost:7101}}"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
