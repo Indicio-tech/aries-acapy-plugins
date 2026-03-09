@@ -7,6 +7,47 @@ class TestMsoMdocCredProcessor(unittest.TestCase):
     def setUp(self):
         self.processor = MsoMdocCredProcessor()
 
+    def test_transform_issuer_metadata_converts_claims_to_array(self):
+        """Claims namespace dict is converted to spec-compliant path array."""
+        metadata = {
+            "claims": {
+                "org.iso.18013.5.1": {
+                    "given_name": {
+                        "mandatory": True,
+                        "display": [{"name": "Given Name", "locale": "en"}],
+                    },
+                    "family_name": {"mandatory": True},
+                }
+            }
+        }
+        self.processor.transform_issuer_metadata(metadata)
+        self.assertIsInstance(metadata["claims"], list)
+        paths = [tuple(e["path"]) for e in metadata["claims"]]
+        self.assertIn(("org.iso.18013.5.1", "given_name"), paths)
+        self.assertIn(("org.iso.18013.5.1", "family_name"), paths)
+        gn = next(
+            e
+            for e in metadata["claims"]
+            if e["path"] == ["org.iso.18013.5.1", "given_name"]
+        )
+        self.assertTrue(gn["mandatory"])
+        self.assertEqual(gn["display"], [{"name": "Given Name", "locale": "en"}])
+
+    def test_transform_issuer_metadata_converts_cose_alg(self):
+        """Algorithm strings are converted to COSE integer identifiers."""
+        metadata = {"credential_signing_alg_values_supported": ["ES256", "ES384"]}
+        self.processor.transform_issuer_metadata(metadata)
+        self.assertEqual(
+            metadata["credential_signing_alg_values_supported"], [-7, -35]
+        )
+
+    def test_transform_issuer_metadata_noop_when_claims_already_array(self):
+        """Already-array claims are not double-transformed."""
+        original = [{"path": ["org.iso.18013.5.1", "given_name"], "mandatory": True}]
+        metadata = {"claims": original}
+        self.processor.transform_issuer_metadata(metadata)
+        self.assertEqual(metadata["claims"], original)
+
     def test_prepare_payload_flattens_doctype(self):
         """Test that _prepare_payload flattens the dictionary if doctype is present as a key."""
         doctype = "org.iso.18013.5.1.mDL"
