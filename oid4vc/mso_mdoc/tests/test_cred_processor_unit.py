@@ -7,31 +7,25 @@ class TestMsoMdocCredProcessor(unittest.TestCase):
     def setUp(self):
         self.processor = MsoMdocCredProcessor()
 
-    def test_transform_issuer_metadata_converts_claims_to_array(self):
-        """Claims namespace dict is converted to spec-compliant path array."""
-        metadata = {
-            "claims": {
-                "org.iso.18013.5.1": {
-                    "given_name": {
-                        "mandatory": True,
-                        "display": [{"name": "Given Name", "locale": "en"}],
-                    },
-                    "family_name": {"mandatory": True},
-                }
+    def test_transform_issuer_metadata_preserves_namespace_claims_dict(self):
+        """mso_mdoc claims namespace dict is preserved as-is (not converted to array).
+
+        Per OID4VCI 1.0 Appendix B.2, mso_mdoc uses a namespace-keyed dict for
+        claims, unlike sd_jwt_vc which uses a flat path-array.
+        """
+        original_claims = {
+            "org.iso.18013.5.1": {
+                "given_name": {
+                    "mandatory": True,
+                    "display": [{"name": "Given Name", "locale": "en"}],
+                },
+                "family_name": {"mandatory": True},
             }
         }
+        metadata = {"claims": original_claims}
         self.processor.transform_issuer_metadata(metadata)
-        self.assertIsInstance(metadata["claims"], list)
-        paths = [tuple(e["path"]) for e in metadata["claims"]]
-        self.assertIn(("org.iso.18013.5.1", "given_name"), paths)
-        self.assertIn(("org.iso.18013.5.1", "family_name"), paths)
-        gn = next(
-            e
-            for e in metadata["claims"]
-            if e["path"] == ["org.iso.18013.5.1", "given_name"]
-        )
-        self.assertTrue(gn["mandatory"])
-        self.assertEqual(gn["display"], [{"name": "Given Name", "locale": "en"}])
+        self.assertIsInstance(metadata["claims"], dict)
+        self.assertEqual(metadata["claims"], original_claims)
 
     def test_transform_issuer_metadata_converts_cose_alg(self):
         """Algorithm strings are converted to COSE integer identifiers."""
@@ -41,9 +35,9 @@ class TestMsoMdocCredProcessor(unittest.TestCase):
             metadata["credential_signing_alg_values_supported"], [-7, -35]
         )
 
-    def test_transform_issuer_metadata_noop_when_claims_already_array(self):
-        """Already-array claims are not double-transformed."""
-        original = [{"path": ["org.iso.18013.5.1", "given_name"], "mandatory": True}]
+    def test_transform_issuer_metadata_noop_when_claims_already_dict(self):
+        """Already dict claims stay unchanged (idempotent transform)."""
+        original = {"org.iso.18013.5.1": {"given_name": {"mandatory": True}}}
         metadata = {"claims": original}
         self.processor.transform_issuer_metadata(metadata)
         self.assertEqual(metadata["claims"], original)

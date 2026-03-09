@@ -195,37 +195,20 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
     def transform_issuer_metadata(self, metadata: dict) -> None:
         """Convert mso_mdoc metadata to OID4VCI 1.0 spec-compliant form.
 
-        Two transformations are applied in-place:
+        Converts ``credential_signing_alg_values_supported`` string names to
+        COSE integer identifiers (e.g. "ES256" → -7) per OID4VCI 1.0
+        Appendix E.2.1 and ISO 18013-5.
 
-        1. ``credential_signing_alg_values_supported``: string names → COSE
-           integer identifiers (e.g. "ES256" → -7) per OID4VCI 1.0 Appendix
-           E.2.1 and ISO 18013-5.
-
-        2. ``claims``: stored as ``{namespace: {claim_name: descriptor}}``
-           dict; converted to the array of claim descriptor objects required
-           by OID4VCI 1.0 Appendix B.2 / E.2.1:
-           ``[{"path": [namespace, claim_name], "mandatory": ..., "display": ...}]``
+        Note: for ``mso_mdoc``, ``claims`` is specified as a namespace-keyed
+        dict ``{namespace: {claim_name: descriptor}}`` per OID4VCI 1.0
+        Appendix B.2.  This is different from ``sd_jwt_vc`` which uses a flat
+        path-array.  The namespace dict is therefore left as-is.
         """
         algs = metadata.get("credential_signing_alg_values_supported")
         if algs:
             metadata["credential_signing_alg_values_supported"] = [
                 self._COSE_ALG.get(a, a) if isinstance(a, str) else a for a in algs
             ]
-
-        claims = metadata.get("claims")
-        if isinstance(claims, dict):
-            claims_arr = []
-            for namespace, namespace_claims in claims.items():
-                if isinstance(namespace_claims, dict):
-                    for claim_name, claim_meta in namespace_claims.items():
-                        entry: dict = {"path": [namespace, claim_name]}
-                        if isinstance(claim_meta, dict):
-                            if "display" in claim_meta:
-                                entry["display"] = claim_meta["display"]
-                            if "mandatory" in claim_meta:
-                                entry["mandatory"] = claim_meta["mandatory"]
-                        claims_arr.append(entry)
-            metadata["claims"] = claims_arr
 
     def __init__(self, trust_store: Optional[Any] = None):
         """Initialize the processor."""
