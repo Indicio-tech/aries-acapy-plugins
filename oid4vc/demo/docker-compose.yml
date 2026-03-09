@@ -33,8 +33,8 @@ services:
         ACAPY_VERSION: 1.4.0
         ISOMDL_BRANCH: fix/python-build-system
     ports:
-      - "${ACAPY_ISSUER_ADMIN_PORT:-8021}:8021"
-      - "${ACAPY_ISSUER_OID4VCI_PORT:-8022}:8022"
+      - "${ACAPY_ISSUER_ADMIN_PORT:-8121}:8021"
+      - "${ACAPY_ISSUER_OID4VCI_PORT:-8122}:8022"
     environment:
       - AGENT_ENDPOINT=http://acapy-issuer:8020
       # OID4VCI_ENDPOINT is the URL embedded in credential offers.
