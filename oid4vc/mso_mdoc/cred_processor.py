@@ -145,6 +145,25 @@ async def resolve_signing_key_for_credential(
         )
         LOGGER.info("Persisted generated signing key: %s", key_id)
 
+        # Store a self-signed certificate alongside every newly generated key so
+        # that get_certificate_for_key always finds one and we never fall back to
+        # on-demand generation later.
+        certificate_pem = generate_self_signed_certificate(private_key_pem)
+        cert_id = f"mdoc-cert-{uuid.uuid4().hex[:8]}"
+        await storage_manager.store_certificate(
+            session,
+            cert_id=cert_id,
+            certificate_pem=certificate_pem,
+            key_id=key_id,
+            metadata={
+                "self_signed": True,
+                "purpose": "mdoc_issuing",
+                "valid_from": datetime.now(UTC).isoformat(),
+                "valid_to": (datetime.now(UTC) + timedelta(days=365)).isoformat(),
+            },
+        )
+        LOGGER.info("Stored self-signed certificate for key: %s", key_id)
+
         return jwk
 
     # Fall back to default key
@@ -177,6 +196,24 @@ async def resolve_signing_key_for_credential(
         await storage_manager.store_config(
             session, "default_signing_key", {"key_id": "default"}
         )
+        # Store a self-signed certificate alongside every newly generated key so
+        # that get_certificate_for_key always finds one and we never fall back to
+        # on-demand generation later.
+        certificate_pem = generate_self_signed_certificate(private_key_pem)
+        cert_id = f"mdoc-cert-{uuid.uuid4().hex[:8]}"
+        await storage_manager.store_certificate(
+            session,
+            cert_id=cert_id,
+            certificate_pem=certificate_pem,
+            key_id="default",
+            metadata={
+                "self_signed": True,
+                "purpose": "mdoc_issuing",
+                "valid_from": datetime.now(UTC).isoformat(),
+                "valid_to": (datetime.now(UTC) + timedelta(days=365)).isoformat(),
+            },
+        )
+        LOGGER.info("Stored self-signed certificate for default key")
     except StorageError as e:
         LOGGER.warning("Unable to persist default signing key: %s", e)
 
@@ -552,28 +589,10 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                     session, key_id
                 )
 
-                if not certificate_pem and private_key_pem:
-                    LOGGER.info(
-                        "Certificate not found for key %s, generating one", key_id
-                    )
-                    certificate_pem = generate_self_signed_certificate(private_key_pem)
-
-                    # Store the generated certificate
-                    cert_id = f"mdoc-cert-{uuid.uuid4().hex[:8]}"
-                    await storage_manager.store_certificate(
-                        session,
-                        cert_id=cert_id,
-                        certificate_pem=certificate_pem,
-                        key_id=key_id,
-                        metadata={
-                            "self_signed": True,
-                            "purpose": "mdoc_issuing",
-                            "generated_on_demand": True,
-                            "valid_from": datetime.now(UTC).isoformat(),
-                            "valid_to": (
-                                datetime.now(UTC) + timedelta(days=365)
-                            ).isoformat(),
-                        },
+                if not certificate_pem:
+                    raise CredProcessorError(
+                        f"Certificate not found for key {key_id!r}. "
+                        "Keys must be registered with a certificate before use."
                     )
 
             if not private_key_pem:

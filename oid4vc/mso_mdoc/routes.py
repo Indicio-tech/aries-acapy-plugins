@@ -12,8 +12,6 @@ Protocol Compliance:
 """
 
 import logging
-import uuid
-from datetime import UTC, datetime, timedelta
 
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.messaging.models.openapi import OpenAPISchema
@@ -23,7 +21,7 @@ from aiohttp_apispec import docs, request_schema, response_schema
 from marshmallow import fields
 
 from .cred_processor import MsoMdocCredProcessor
-from .key_generation import generate_self_signed_certificate, pem_from_jwk
+from .key_generation import pem_from_jwk
 from .key_routes import register_key_routes
 from .trust_anchor_routes import register_trust_anchor_routes
 from .mdoc import isomdl_mdoc_sign
@@ -193,23 +191,9 @@ async def mdoc_sign(request: web.BaseRequest):
             )
 
             if not certificate_pem:
-                LOGGER.info("Certificate not found for key %s, generating one", key_id)
-                certificate_pem = generate_self_signed_certificate(private_key_pem)
-
-                # Store the generated certificate
-                cert_id = f"mdoc-cert-{uuid.uuid4().hex[:8]}"
-                await storage_manager.store_certificate(
-                    session,
-                    cert_id=cert_id,
-                    certificate_pem=certificate_pem,
-                    key_id=key_id,
-                    metadata={
-                        "self_signed": True,
-                        "purpose": "mdoc_issuing",
-                        "generated_on_demand": True,
-                        "valid_from": datetime.now(UTC).isoformat(),
-                        "valid_to": (datetime.now(UTC) + timedelta(days=365)).isoformat(),
-                    },
+                raise ValueError(
+                    f"Certificate not found for key {key_id!r}. "
+                    "Keys must be registered with a certificate before use."
                 )
 
         mso_mdoc = isomdl_mdoc_sign(

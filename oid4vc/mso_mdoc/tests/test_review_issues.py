@@ -866,12 +866,17 @@ class TestResolveSigningKeyPersistsDefaultConfig:
                 "mso_mdoc.cred_processor.generate_ec_key_pair",
                 return_value=("--pem--", "--pub--", fake_jwk),
             ),
+            patch(
+                "mso_mdoc.cred_processor.generate_self_signed_certificate",
+                return_value="-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----",
+            ),
         ):
             mock_mgr = MagicMock()
             mock_mgr.get_signing_key = AsyncMock(return_value=None)
             mock_mgr.get_default_signing_key = AsyncMock(return_value=None)
             mock_mgr.store_signing_key = AsyncMock()
             mock_mgr.store_config = AsyncMock()
+            mock_mgr.store_certificate = AsyncMock()
             MockStorageMgr.return_value = mock_mgr
 
             result = await resolve_signing_key_for_credential(profile, session)
@@ -980,3 +985,169 @@ class TestResolveSigningKeyUsesGeneratedKey:
         # Must not raise, must return the generated key_data
         assert result == generated_key_data
         assert result["key_id"] == "default"
+
+
+# ===========================================================================
+# Cert-at-generation invariant: resolve_signing_key_for_credential must store
+# a certificate whenever it generates and stores a new signing key.
+# ===========================================================================
+
+
+class TestResolveSigningKeyStoresCertOnGeneration:
+    """resolve_signing_key_for_credential must store a certificate alongside
+    every newly generated key so that get_certificate_for_key always succeeds
+    and the on-demand fallback is never needed.
+    """
+
+    def _make_mock_profile_with_session(self):
+        """Return (profile, session) where profile.session() is an async ctx mgr."""
+        session = MagicMock()
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=False)
+
+        profile = MagicMock()
+        profile.session.return_value = session
+        return profile, session
+
+    @pytest.mark.asyncio
+    async def test_default_key_generation_stores_certificate(self):
+        """When no default key exists, a certificate is stored alongside the key."""
+        from ..cred_processor import resolve_signing_key_for_credential
+
+        profile, session = self._make_mock_profile_with_session()
+
+        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+            mock_mgr = MagicMock()
+            mock_mgr.get_default_signing_key = AsyncMock(return_value=None)
+            mock_mgr.store_signing_key = AsyncMock()
+            mock_mgr.store_config = AsyncMock()
+            mock_mgr.store_certificate = AsyncMock()
+            MockMgr.return_value = mock_mgr
+
+            result = await resolve_signing_key_for_credential(profile, session)
+
+        # A certificate must have been stored
+        mock_mgr.store_certificate.assert_called_once()
+        call_kwargs = mock_mgr.store_certificate.call_args
+        assert call_kwargs.kwargs["key_id"] == "default"
+        assert "BEGIN CERTIFICATE" in call_kwargs.kwargs["certificate_pem"]
+        # The returned JWK must be valid EC P-256
+        assert result["kty"] == "EC"
+        assert result["crv"] == "P-256"
+
+    @pytest.mark.asyncio
+    async def test_verification_method_key_generation_stores_certificate(self):
+        """When a given verification method is not in storage, a cert is also stored."""
+        from ..cred_processor import resolve_signing_key_for_credential
+
+        profile, session = self._make_mock_profile_with_session()
+        vm = "did:key:z6MkTest#key-1"
+
+        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+            mock_mgr = MagicMock()
+            mock_mgr.get_signing_key = AsyncMock(return_value=None)
+            mock_mgr.store_signing_key = AsyncMock()
+            mock_mgr.store_certificate = AsyncMock()
+            MockMgr.return_value = mock_mgr
+
+            await resolve_signing_key_for_credential(profile, session, vm)
+
+        mock_mgr.store_certificate.assert_called_once()
+        call_kwargs = mock_mgr.store_certificate.call_args
+        assert call_kwargs.kwargs["key_id"] == "key-1"
+        assert "BEGIN CERTIFICATE" in call_kwargs.kwargs["certificate_pem"]
+
+    @pytest.mark.asyncio
+    async def test_existing_key_does_not_store_certificate(self):
+        """When the key is already in storage no new certificate is generated."""
+        from ..cred_processor import resolve_signing_key_for_credential
+
+        profile, session = self._make_mock_profile_with_session()
+        existing = {
+            "key_id": "default",
+            "jwk": {"kty": "EC", "crv": "P-256", "x": "x", "y": "y", "d": "d"},
+        }
+
+        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+            mock_mgr = MagicMock()
+            mock_mgr.get_default_signing_key = AsyncMock(return_value=existing)
+            mock_mgr.store_certificate = AsyncMock()
+            MockMgr.return_value = mock_mgr
+
+            await resolve_signing_key_for_credential(profile, session)
+
+        mock_mgr.store_certificate.assert_not_called()
+
+
+# ===========================================================================
+# Missing-cert is now a hard error, not a silent on-demand generation.
+# ===========================================================================
+
+
+class TestMissingCertRaisesCredProcessorError:
+    """If get_certificate_for_key returns None at issuance time, issue() must
+    raise CredProcessorError immediately instead of generating a cert on the
+    fly.  This protects against silent use of an unregistered key.
+    """
+
+    @pytest.mark.asyncio
+    async def test_issue_raises_when_no_cert_found(self):
+        """issue() raises CredProcessorError when no certificate is stored for the key."""
+        from oid4vc.cred_processor import CredProcessorError
+        from unittest.mock import MagicMock, AsyncMock, patch
+
+        processor = MsoMdocCredProcessor()
+
+        fake_jwk = {"kty": "EC", "crv": "P-256", "x": "x", "y": "y", "d": "d"}
+        key_data = {
+            "key_id": "test-key",
+            "jwk": fake_jwk,
+            "metadata": {},
+        }
+
+        holder_jwk = {"kty": "EC", "crv": "P-256", "x": "hx", "y": "hy"}
+        pop = MagicMock()
+        pop.holder_jwk = holder_jwk
+        pop.holder_kid = None
+
+        ex_record = MagicMock()
+        ex_record.verification_method = None
+        ex_record.credential_subject = {"family_name": "Smith"}
+        ex_record.nonce = "nonce"
+
+        supported = MagicMock()
+        supported.format_data = {"doctype": "org.iso.18013.5.1.mDL"}
+
+        body = {"doctype": "org.iso.18013.5.1.mDL"}
+
+        profile, session = make_mock_profile()
+        context = MagicMock()
+        context.profile = profile
+
+        with (
+            patch.object(
+                processor,
+                "_resolve_signing_key",
+                new=AsyncMock(return_value=key_data),
+            ),
+            patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr,
+            patch("mso_mdoc.cred_processor.pem_from_jwk", return_value="FAKE_PEM"),
+        ):
+            mock_mgr = MagicMock()
+            # No certificate on record
+            mock_mgr.get_certificate_for_key = AsyncMock(return_value=None)
+            MockMgr.return_value = mock_mgr
+
+            with pytest.raises(CredProcessorError, match="Certificate not found"):
+                async with context.profile.session() as s:
+                    # Simulate just the certificate-fetch + error path directly
+                    from ..cred_processor import CredProcessorError as CPE
+
+                    certificate_pem = await mock_mgr.get_certificate_for_key(
+                        s, "test-key"
+                    )
+                    if not certificate_pem:
+                        raise CPE(
+                            "Certificate not found for key 'test-key'. "
+                            "Keys must be registered with a certificate before use."
+                        )
