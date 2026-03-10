@@ -21,7 +21,7 @@ between the code under test and test assertions.
 
 import sys
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
 
@@ -948,6 +948,163 @@ class TestResolveSigningKeyRaisesWhenNoKeyRegistered:
                 await processor._resolve_signing_key(
                     context, session, verification_method=None
                 )
+
+
+# ===========================================================================
+# Static env-var key loading in _resolve_signing_key
+# ===========================================================================
+
+_FAKE_JWK = {"kty": "EC", "crv": "P-256", "x": "x", "y": "y", "d": "d"}
+_FAKE_KEY_PATH = "/fake/key.pem"
+_FAKE_CERT_PATH = "/fake/cert.pem"
+_STATIC_KEY_ID = "static-signing-key"
+
+
+def _env_side_effect(k, default=None):
+    return {
+        "OID4VC_MDOC_SIGNING_KEY_PATH": _FAKE_KEY_PATH,
+        "OID4VC_MDOC_SIGNING_CERT_PATH": _FAKE_CERT_PATH,
+    }.get(k, default)
+
+
+class TestStaticEnvVarKeyLoading:
+    """Tests for OID4VC_MDOC_SIGNING_KEY_PATH / OID4VC_MDOC_SIGNING_CERT_PATH
+    bootstrap path inside _resolve_signing_key.
+
+    Three bugs are verified:
+    1. store_config must NOT fire when an operator default is already registered.
+    2. get_signing_key (consistent API) must be used for the existence check,
+       not the lower-level get_key which returns only the raw JWK dict.
+    3. Errors during key loading must propagate as CredProcessorError, not be
+       swallowed and then masked by a misleading 'No default signing key' error.
+    """
+
+    def _make_context(self):
+        profile, session = make_mock_profile()
+        context = MagicMock()
+        context.profile = profile
+        return context, session
+
+    @pytest.mark.asyncio
+    async def test_does_not_overwrite_existing_default_config(self):
+        """Bug 1: when an operator default is already configured, the env-var
+        key load must NOT call store_config — it would silently replace the
+        operator's chosen signing key with the static one.
+        """
+        from oid4vc.cred_processor import CredProcessorError  # noqa: F401
+
+        processor = MsoMdocCredProcessor()
+        context, session = self._make_context()
+        operator_key = {"key_id": "operator-key", "jwk": _FAKE_JWK}
+
+        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+            with patch("mso_mdoc.cred_processor.os.getenv", side_effect=_env_side_effect):
+                with patch("os.path.exists", return_value=True):
+                    with patch("builtins.open", mock_open(read_data="-----BEGIN EC PRIVATE KEY-----\nfake\n-----END EC PRIVATE KEY-----")):
+                        with patch("mso_mdoc.cred_processor.pem_to_jwk", return_value=_FAKE_JWK):
+                            mock_mgr = MagicMock()
+                            mock_mgr.get_signing_key = AsyncMock(return_value=None)
+                            mock_mgr.store_key = AsyncMock()
+                            mock_mgr.store_certificate = AsyncMock()
+                            mock_mgr.get_config = AsyncMock(return_value={"key_id": "operator-key"})
+                            mock_mgr.store_config = AsyncMock()
+                            mock_mgr.get_default_signing_key = AsyncMock(return_value=operator_key)
+                            MockMgr.return_value = mock_mgr
+
+                            result = await processor._resolve_signing_key(
+                                context, session, verification_method=None
+                            )
+
+        # The operator's default must remain untouched
+        mock_mgr.store_config.assert_not_called()
+        assert result == operator_key
+
+    @pytest.mark.asyncio
+    async def test_sets_default_config_when_none_exists(self):
+        """Complement of Bug 1: when no default exists the env-var key IS
+        registered as default via store_config.
+        """
+        processor = MsoMdocCredProcessor()
+        context, session = self._make_context()
+        static_key = {"key_id": _STATIC_KEY_ID, "jwk": _FAKE_JWK}
+
+        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+            with patch("mso_mdoc.cred_processor.os.getenv", side_effect=_env_side_effect):
+                with patch("os.path.exists", return_value=True):
+                    with patch("builtins.open", mock_open(read_data="-----BEGIN EC PRIVATE KEY-----\nfake\n-----END EC PRIVATE KEY-----")):
+                        with patch("mso_mdoc.cred_processor.pem_to_jwk", return_value=_FAKE_JWK):
+                            mock_mgr = MagicMock()
+                            mock_mgr.get_signing_key = AsyncMock(return_value=None)
+                            mock_mgr.store_key = AsyncMock()
+                            mock_mgr.store_certificate = AsyncMock()
+                            mock_mgr.get_config = AsyncMock(return_value=None)  # no existing default
+                            mock_mgr.store_config = AsyncMock()
+                            mock_mgr.get_default_signing_key = AsyncMock(return_value=static_key)
+                            MockMgr.return_value = mock_mgr
+
+                            await processor._resolve_signing_key(
+                                context, session, verification_method=None
+                            )
+
+        mock_mgr.store_config.assert_called_once_with(
+            session, "default_signing_key", {"key_id": _STATIC_KEY_ID}
+        )
+
+    @pytest.mark.asyncio
+    async def test_skips_reload_when_key_already_stored(self):
+        """Bug 2: existence check must use get_signing_key (consistent with
+        the rest of the path) not get_key.  When the static key is already in
+        storage, neither store_key nor store_config should be called again.
+        """
+        processor = MsoMdocCredProcessor()
+        context, session = self._make_context()
+        static_key = {"key_id": _STATIC_KEY_ID, "jwk": _FAKE_JWK}
+
+        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+            with patch("mso_mdoc.cred_processor.os.getenv", side_effect=_env_side_effect):
+                with patch("os.path.exists", return_value=True):
+                    mock_mgr = MagicMock()
+                    # get_signing_key returns the existing record — no reload needed
+                    mock_mgr.get_signing_key = AsyncMock(return_value=static_key)
+                    mock_mgr.store_key = AsyncMock()
+                    mock_mgr.store_config = AsyncMock()
+                    mock_mgr.get_default_signing_key = AsyncMock(return_value=static_key)
+                    MockMgr.return_value = mock_mgr
+
+                    await processor._resolve_signing_key(
+                        context, session, verification_method=None
+                    )
+
+        mock_mgr.store_key.assert_not_called()
+        mock_mgr.store_config.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_load_failure_raises_cred_processor_error(self):
+        """Bug 3: a PEM parse error must raise CredProcessorError with a
+        message that names the failing file, not be silently logged and then
+        masked by the generic 'No default signing key' error.
+        """
+        from oid4vc.cred_processor import CredProcessorError
+
+        processor = MsoMdocCredProcessor()
+        context, session = self._make_context()
+
+        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+            with patch("mso_mdoc.cred_processor.os.getenv", side_effect=_env_side_effect):
+                with patch("os.path.exists", return_value=True):
+                    with patch("builtins.open", mock_open(read_data="broken pem")):
+                        with patch("mso_mdoc.cred_processor.pem_to_jwk", side_effect=ValueError("invalid PEM")):
+                            mock_mgr = MagicMock()
+                            mock_mgr.get_signing_key = AsyncMock(return_value=None)
+                            MockMgr.return_value = mock_mgr
+
+                            with pytest.raises(
+                                CredProcessorError, match="Failed to load static signing key"
+                            ):
+                                await processor._resolve_signing_key(
+                                    context, session, verification_method=None
+                                )
+
 
 
 # ===========================================================================

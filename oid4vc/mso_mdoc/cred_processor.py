@@ -362,8 +362,10 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             and os.path.exists(cert_path)
         ):
             static_key_id = "static-signing-key"
-            # Check if already stored
-            existing_key = await storage_manager.get_key(session, static_key_id)
+            # Use the same API as the rest of the signing-key path.
+            existing_key = await storage_manager.get_signing_key(
+                session, identifier=static_key_id
+            )
             if not existing_key:
                 LOGGER.info("Loading static signing key from %s", key_path)
                 try:
@@ -380,7 +382,6 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                         key_id=static_key_id,
                         jwk=jwk,
                         purpose="signing",
-                        # C-1: store only public metadata; private key is in jwk['d']
                         metadata={"static": True},
                     )
 
@@ -393,13 +394,23 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                         metadata={"static": True, "purpose": "mdoc_issuing"},
                     )
 
-                    # Set as default
-                    await storage_manager.store_config(
-                        session, "default_signing_key", {"key_id": static_key_id}
+                    # Only set as default when no key has been configured yet.
+                    # Without this guard the env-var key would silently overwrite
+                    # whatever key the operator registered via the key management API.
+                    existing_default = await storage_manager.get_config(
+                        session, "default_signing_key"
                     )
+                    if not existing_default:
+                        await storage_manager.store_config(
+                            session, "default_signing_key", {"key_id": static_key_id}
+                        )
 
+                except CredProcessorError:
+                    raise
                 except Exception as e:
-                    LOGGER.error("Failed to load static signing key: %s", e)
+                    raise CredProcessorError(
+                        f"Failed to load static signing key from {key_path!r}: {e}"
+                    ) from e
 
         if verification_method:
             # Use verification method to resolve signing key
