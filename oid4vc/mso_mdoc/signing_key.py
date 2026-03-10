@@ -14,6 +14,8 @@ import logging
 from datetime import UTC, datetime
 from typing import Optional
 
+from cryptography import x509 as _x509
+
 from acapy_agent.core.profile import Profile, ProfileSession
 
 from oid4vc.cred_processor import CredProcessorError
@@ -36,8 +38,6 @@ def check_certificate_not_expired(cert_pem: str) -> None:
         CredProcessorError: If the certificate is expired, not yet valid, or
             cannot be parsed from PEM.
     """
-    from cryptography import x509 as _x509  # noqa: PLC0415
-
     if not cert_pem or not cert_pem.strip():
         raise CredProcessorError("Empty certificate PEM string")
 
