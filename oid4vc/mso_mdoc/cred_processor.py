@@ -195,20 +195,37 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
     def transform_issuer_metadata(self, metadata: dict) -> None:
         """Convert mso_mdoc metadata to OID4VCI 1.0 spec-compliant form.
 
-        Converts ``credential_signing_alg_values_supported`` string names to
-        COSE integer identifiers (e.g. "ES256" → -7) per OID4VCI 1.0
-        Appendix E.2.1 and ISO 18013-5.
+        Performs two transformations required by OID4VCI 1.0:
 
-        Note: for ``mso_mdoc``, ``claims`` is specified as a namespace-keyed
-        dict ``{namespace: {claim_name: descriptor}}`` per OID4VCI 1.0
-        Appendix B.2.  This is different from ``sd_jwt_vc`` which uses a flat
-        path-array.  The namespace dict is therefore left as-is.
+        1. ``credential_signing_alg_values_supported`` — converts string
+           algorithm names to COSE integer identifiers (e.g. "ES256" → -7)
+           per OID4VCI 1.0 Appendix A.2.2 and ISO 18013-5.
+
+        2. ``claims`` — converts the stored namespace-keyed dict
+           ``{namespace: {claim_name: descriptor}}`` to the spec-compliant
+           flat array ``[{path: [namespace, claim_name], ...}]`` per
+           OID4VCI 1.0 Appendix A.2.2 and Appendix B.2.
         """
         algs = metadata.get("credential_signing_alg_values_supported")
         if algs:
             metadata["credential_signing_alg_values_supported"] = [
                 self._COSE_ALG.get(a, a) if isinstance(a, str) else a for a in algs
             ]
+
+        claims = metadata.get("claims")
+        if isinstance(claims, dict):
+            claims_list = []
+            for namespace, claim_map in claims.items():
+                if isinstance(claim_map, dict):
+                    for claim_name, descriptor in claim_map.items():
+                        entry: dict = {"path": [namespace, claim_name]}
+                        if isinstance(descriptor, dict):
+                            if "mandatory" in descriptor:
+                                entry["mandatory"] = descriptor["mandatory"]
+                            if "display" in descriptor:
+                                entry["display"] = descriptor["display"]
+                        claims_list.append(entry)
+            metadata["claims"] = claims_list
 
     def __init__(self, trust_store: Optional[Any] = None):
         """Initialize the processor."""

@@ -7,25 +7,36 @@ class TestMsoMdocCredProcessor(unittest.TestCase):
     def setUp(self):
         self.processor = MsoMdocCredProcessor()
 
-    def test_transform_issuer_metadata_preserves_namespace_claims_dict(self):
-        """mso_mdoc claims namespace dict is preserved as-is (not converted to array).
+    def test_transform_issuer_metadata_converts_namespace_claims_to_array(self):
+        """mso_mdoc claims namespace dict is converted to path-array per OID4VCI spec.
 
-        Per OID4VCI 1.0 Appendix B.2, mso_mdoc uses a namespace-keyed dict for
-        claims, unlike sd_jwt_vc which uses a flat path-array.
+        Per OID4VCI 1.0 Appendix A.2.2 and Appendix B.2, mso_mdoc claims
+        must be served as an array of {path: [namespace, claim_name], ...}
+        objects, not as a namespace-keyed dict.
         """
-        original_claims = {
-            "org.iso.18013.5.1": {
-                "given_name": {
-                    "mandatory": True,
-                    "display": [{"name": "Given Name", "locale": "en"}],
-                },
-                "family_name": {"mandatory": True},
+        metadata = {
+            "claims": {
+                "org.iso.18013.5.1": {
+                    "given_name": {
+                        "mandatory": True,
+                        "display": [{"name": "Given Name", "locale": "en"}],
+                    },
+                    "family_name": {"mandatory": True},
+                }
             }
         }
-        metadata = {"claims": original_claims}
         self.processor.transform_issuer_metadata(metadata)
-        self.assertIsInstance(metadata["claims"], dict)
-        self.assertEqual(metadata["claims"], original_claims)
+        claims = metadata["claims"]
+        self.assertIsInstance(claims, list)
+        self.assertEqual(len(claims), 2)
+        paths = [c["path"] for c in claims]
+        self.assertIn(["org.iso.18013.5.1", "given_name"], paths)
+        self.assertIn(["org.iso.18013.5.1", "family_name"], paths)
+        given = next(c for c in claims if c["path"][1] == "given_name")
+        self.assertTrue(given["mandatory"])
+        self.assertEqual(given["display"], [{"name": "Given Name", "locale": "en"}])
+        family = next(c for c in claims if c["path"][1] == "family_name")
+        self.assertTrue(family["mandatory"])
 
     def test_transform_issuer_metadata_converts_cose_alg(self):
         """Algorithm strings are converted to COSE integer identifiers."""
@@ -35,9 +46,9 @@ class TestMsoMdocCredProcessor(unittest.TestCase):
             metadata["credential_signing_alg_values_supported"], [-7, -35]
         )
 
-    def test_transform_issuer_metadata_noop_when_claims_already_dict(self):
-        """Already dict claims stay unchanged (idempotent transform)."""
-        original = {"org.iso.18013.5.1": {"given_name": {"mandatory": True}}}
+    def test_transform_issuer_metadata_noop_when_claims_already_list(self):
+        """Already-converted list claims are left unchanged (idempotent)."""
+        original = [{"path": ["org.iso.18013.5.1", "given_name"], "mandatory": True}]
         metadata = {"claims": original}
         self.processor.transform_issuer_metadata(metadata)
         self.assertEqual(metadata["claims"], original)
