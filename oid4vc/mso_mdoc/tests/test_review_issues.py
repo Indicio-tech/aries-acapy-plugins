@@ -834,3 +834,149 @@ class TestM3GetDefaultSigningKeyReadOnly:
         assert result == fake_key
         # Must not have written anything as a side-effect
         mock_store.assert_not_called()
+
+
+# ===========================================================================
+# Bug: resolve_signing_key_for_credential does not persist default config
+# ===========================================================================
+
+
+class TestResolveSigningKeyPersistsDefaultConfig:
+    """Bug: when a default key is generated, store_config must be called so
+    get_default_signing_key can find it reliably without relying on list order.
+
+    Without the fix, get_default_signing_key falls back to list_keys()[0],
+    which breaks when other signing keys already exist in storage.
+    """
+
+    @pytest.mark.asyncio
+    async def test_generates_key_and_registers_default_config(self):
+        """resolve_signing_key_for_credential must call store_config after storing key."""
+        from ..cred_processor import resolve_signing_key_for_credential
+
+        profile, session = make_mock_profile()
+
+        fake_jwk = {"kty": "EC", "crv": "P-256", "x": "x", "y": "y", "d": "d"}
+
+        with (
+            patch(
+                "mso_mdoc.cred_processor.MdocStorageManager"
+            ) as MockStorageMgr,
+            patch(
+                "mso_mdoc.cred_processor.generate_ec_key_pair",
+                return_value=("--pem--", "--pub--", fake_jwk),
+            ),
+        ):
+            mock_mgr = MagicMock()
+            mock_mgr.get_signing_key = AsyncMock(return_value=None)
+            mock_mgr.get_default_signing_key = AsyncMock(return_value=None)
+            mock_mgr.store_signing_key = AsyncMock()
+            mock_mgr.store_config = AsyncMock()
+            MockStorageMgr.return_value = mock_mgr
+
+            result = await resolve_signing_key_for_credential(profile, session)
+
+        # Returned value must be the generated JWK
+        assert result == fake_jwk
+
+        # Bug 1: store_config was NOT called before the fix
+        mock_mgr.store_config.assert_called_once_with(
+            session, "default_signing_key", {"key_id": "default"}
+        )
+
+    @pytest.mark.asyncio
+    async def test_existing_keys_do_not_cause_wrong_default_after_generation(self):
+        """When a pre-existing key exists and a new default is generated,
+        get_default_signing_key must return the generated key, not the old one.
+
+        Before the fix, get_default_signing_key falls back to list_keys()[0]
+        which may be the pre-existing key, not the newly generated 'default'.
+        """
+        from ..storage import MdocStorageManager
+
+        profile, session = make_mock_profile()
+        manager = MdocStorageManager(profile)
+
+        old_key = {"key_id": "old-key", "jwk": {"kty": "EC", "x": "old"}, "created_at": "2024-01-01"}
+        new_default_key = {"key_id": "default", "jwk": {"kty": "EC", "x": "new"}, "created_at": "2024-06-01"}
+
+        # Simulate: config points to "default" (registered after generation)
+        with (
+            patch(
+                "mso_mdoc.storage.config.get_config",
+                AsyncMock(return_value={"key_id": "default"}),
+            ),
+            patch(
+                "mso_mdoc.storage.keys.list_keys",
+                # old-key is first — without config lookup this would be returned
+                AsyncMock(return_value=[old_key, new_default_key]),
+            ),
+        ):
+            result = await manager.get_default_signing_key(session)
+
+        # Must return the key registered in config, not list()[0]
+        assert result == new_default_key
+        assert result["key_id"] == "default"
+
+
+# ===========================================================================
+# Bug: _resolve_signing_key discards resolve_signing_key_for_credential result
+# ===========================================================================
+
+
+class TestResolveSigningKeyUsesGeneratedKey:
+    """Bug: _resolve_signing_key discards the return value of
+    resolve_signing_key_for_credential and re-fetches from storage.
+
+    If the second get_default_signing_key call returns None (e.g., because
+    store_config was never called and there are multiple keys), the method
+    raises CredProcessorError instead of returning the generated key.
+    """
+
+    @pytest.mark.asyncio
+    async def test_resolve_does_not_raise_when_generation_succeeds(self):
+        """_resolve_signing_key must return key_data after key generation,
+        not raise CredProcessorError due to a failed re-fetch."""
+        from unittest.mock import call
+
+        from oid4vc.cred_processor import CredProcessorError
+
+        processor = MsoMdocCredProcessor()
+        profile, session = make_mock_profile()
+
+        fake_jwk = {"kty": "EC", "crv": "P-256", "x": "x", "y": "y", "d": "d"}
+        generated_key_data = {
+            "key_id": "default",
+            "jwk": fake_jwk,
+            "purpose": "signing",
+            "created_at": "2026-01-01",
+            "metadata": {},
+        }
+
+        context = MagicMock()
+        context.profile = profile
+
+        with (
+            patch(
+                "mso_mdoc.cred_processor.MdocStorageManager"
+            ) as MockStorageMgr,
+            patch(
+                "mso_mdoc.cred_processor.resolve_signing_key_for_credential",
+                new=AsyncMock(return_value=fake_jwk),
+            ),
+        ):
+            mock_mgr = MagicMock()
+            # First call returns None (no key yet), second call returns the generated key
+            mock_mgr.get_default_signing_key = AsyncMock(
+                side_effect=[None, generated_key_data]
+            )
+            mock_mgr.get_signing_key = AsyncMock(return_value=None)
+            MockStorageMgr.return_value = mock_mgr
+
+            result = await processor._resolve_signing_key(
+                context, session, verification_method=None
+            )
+
+        # Must not raise, must return the generated key_data
+        assert result == generated_key_data
+        assert result["key_id"] == "default"

@@ -171,6 +171,12 @@ async def resolve_signing_key_for_credential(
         await storage_manager.store_signing_key(
             session, key_id="default", key_metadata=key_metadata
         )
+        # Register the generated key as the canonical default so that
+        # get_default_signing_key resolves it by config lookup (not by
+        # list order), which is reliable even when multiple keys exist.
+        await storage_manager.store_config(
+            session, "default_signing_key", {"key_id": "default"}
+        )
     except StorageError as e:
         LOGGER.warning("Unable to persist default signing key: %s", e)
 
@@ -468,7 +474,12 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             LOGGER.info("Using default signing key")
             return key_data
 
-        # Generate new default key if none exists
+        # Generate new default key if none exists.
+        # resolve_signing_key_for_credential is called for its side-effect
+        # (generate + store_signing_key + store_config).  Its return value is
+        # a raw JWK dict, not the full key_data structure this method must
+        # return, so we re-fetch via get_default_signing_key which now
+        # resolves reliably via the config record written above.
         await resolve_signing_key_for_credential(context.profile, session)
         LOGGER.info("Generated new default signing key")
 
