@@ -475,6 +475,26 @@ async def test_proof_with_correct_aud_accepted(profile):
 
 
 @pytest.mark.asyncio
+async def test_proof_aud_with_explicit_default_port_accepted(profile):
+    """Wallets may send aud with explicit :443 — must equal endpoint without it."""
+    nonce = "nonce-port"
+    jwt_str = _build_proof_jwt(
+        nonce, aud="https://myissuerapi.zrok.dev.indicioctech.io:443"
+    )
+    proof = {"proof_type": "jwt", "jwt": jwt_str}
+
+    with patch(
+        "oid4vc.public_routes.token.Config.from_settings",
+        return_value=MagicMock(
+            endpoint="https://myissuerapi.zrok.dev.indicioctech.io"
+        ),
+    ):
+        result = await handle_proof_of_posession(profile, proof, nonce)
+
+    assert result.verified is True
+
+
+@pytest.mark.asyncio
 async def test_proof_with_tenant_scoped_aud_accepted(profile):
     """Diff-3: proof JWT aud set to a tenant-scoped URL must be accepted.
 

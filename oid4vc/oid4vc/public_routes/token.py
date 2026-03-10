@@ -6,6 +6,7 @@ import json
 import time
 from datetime import UTC
 from typing import Any, Dict
+from urllib.parse import urlparse
 
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.core.profile import Profile
@@ -347,8 +348,24 @@ async def handle_proof_of_posession(
         issuer_endpoint = Config.from_settings(profile.settings).endpoint
         # aud may be a string or a list of strings (per RFC 7519 § 4.1.3)
         aud_values = [aud] if isinstance(aud, str) else list(aud)
+
+        def _strip_default_port(url: str) -> str:
+            """Remove explicit default ports (https:443, http:80) for comparison."""
+            try:
+                p = urlparse(url)
+                if (p.scheme == "https" and p.port == 443) or (
+                    p.scheme == "http" and p.port == 80
+                ):
+                    netloc = p.hostname or ""
+                    return p._replace(netloc=netloc).geturl()
+            except Exception:
+                pass
+            return url
+
+        norm_endpoint = _strip_default_port(issuer_endpoint) if issuer_endpoint else ""
         if issuer_endpoint and not any(
-            av == issuer_endpoint or av.startswith(issuer_endpoint + "/tenant/")
+            _strip_default_port(av) == norm_endpoint
+            or _strip_default_port(av).startswith(norm_endpoint + "/tenant/")
             for av in aud_values
         ):
             raise web.HTTPBadRequest(
