@@ -1,15 +1,18 @@
-"""Additional admin routes for mso_mdoc key and certificate management."""
-
-import uuid
+"""Admin routes for mso_mdoc signing key and certificate management."""
 
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.messaging.models.openapi import OpenAPISchema
 from aiohttp import web
-from aiohttp_apispec import docs, request_schema, response_schema
+from aiohttp_apispec import docs, response_schema
 from marshmallow import fields
 
 from .key_generation import generate_default_keys_and_certs
 from .storage import MdocStorageManager
+
+
+# =============================================================================
+# Schemas
+# =============================================================================
 
 
 class MdocKeyListSchema(OpenAPISchema):
@@ -42,51 +45,23 @@ class MdocKeyGenSchema(OpenAPISchema):
     message = fields.Str(required=True, metadata={"description": "Success message"})
 
 
-class TrustAnchorCreateSchema(OpenAPISchema):
-    """Request schema for creating a trust anchor."""
+class DefaultCertificateResponseSchema(OpenAPISchema):
+    """Response schema for default certificate."""
 
-    certificate_pem = fields.Str(
-        required=True,
-        metadata={"description": "PEM-encoded X.509 root CA certificate"},
-    )
-    anchor_id = fields.Str(
-        required=False,
-        metadata={"description": "Optional custom ID for the trust anchor"},
-    )
-    metadata = fields.Dict(
-        required=False,
-        metadata={"description": "Optional metadata (e.g., issuer name, purpose)"},
-    )
-
-
-class TrustAnchorResponseSchema(OpenAPISchema):
-    """Response schema for trust anchor operations."""
-
-    anchor_id = fields.Str(required=True, metadata={"description": "Trust anchor ID"})
-    message = fields.Str(required=True, metadata={"description": "Status message"})
-
-
-class TrustAnchorDetailSchema(OpenAPISchema):
-    """Response schema for trust anchor details."""
-
-    anchor_id = fields.Str(required=True, metadata={"description": "Trust anchor ID"})
+    cert_id = fields.Str(required=True, metadata={"description": "Certificate ID"})
+    key_id = fields.Str(required=True, metadata={"description": "Associated key ID"})
     certificate_pem = fields.Str(
         required=True, metadata={"description": "PEM-encoded certificate"}
     )
     created_at = fields.Str(required=True, metadata={"description": "Creation timestamp"})
     metadata = fields.Dict(
-        required=False, metadata={"description": "Trust anchor metadata"}
+        required=False, metadata={"description": "Certificate metadata"}
     )
 
 
-class TrustAnchorListSchema(OpenAPISchema):
-    """Response schema for listing trust anchors."""
-
-    trust_anchors = fields.List(
-        fields.Dict(),
-        required=True,
-        metadata={"description": "List of stored trust anchors"},
-    )
+# =============================================================================
+# Handlers
+# =============================================================================
 
 
 @docs(
@@ -162,20 +137,6 @@ async def list_certificates(request: web.BaseRequest):
         raise web.HTTPInternalServerError(
             reason=f"Failed to list certificates: {e}"
         ) from e
-
-
-class DefaultCertificateResponseSchema(OpenAPISchema):
-    """Response schema for default certificate."""
-
-    cert_id = fields.Str(required=True, metadata={"description": "Certificate ID"})
-    key_id = fields.Str(required=True, metadata={"description": "Associated key ID"})
-    certificate_pem = fields.Str(
-        required=True, metadata={"description": "PEM-encoded certificate"}
-    )
-    created_at = fields.Str(required=True, metadata={"description": "Creation timestamp"})
-    metadata = fields.Dict(
-        required=False, metadata={"description": "Certificate metadata"}
-    )
 
 
 @docs(
@@ -317,144 +278,17 @@ async def generate_keys(request: web.BaseRequest):
 
 
 # =============================================================================
-# Trust Anchor Routes
+# Route registration
 # =============================================================================
 
 
-@docs(
-    tags=["mso_mdoc"],
-    summary="Add a trust anchor certificate",
-)
-@request_schema(TrustAnchorCreateSchema())
-@response_schema(TrustAnchorResponseSchema(), 200)
-async def create_trust_anchor(request: web.BaseRequest):
-    """Add a new trust anchor certificate to the wallet.
-
-    Trust anchors are root CA certificates used to verify mDoc issuer
-    certificate chains during credential verification.
-    """
-    context: AdminRequestContext = request["context"]
-    storage_manager = MdocStorageManager(context.profile)
-
-    try:
-        body = await request.json()
-        certificate_pem = body.get("certificate_pem")
-        if not certificate_pem:
-            raise web.HTTPBadRequest(reason="certificate_pem is required")
-
-        anchor_id = body.get("anchor_id") or f"trust-anchor-{uuid.uuid4().hex[:8]}"
-        metadata = body.get("metadata", {})
-
-        async with context.profile.session() as session:
-            await storage_manager.store_trust_anchor(
-                session=session,
-                anchor_id=anchor_id,
-                certificate_pem=certificate_pem,
-                metadata=metadata,
-            )
-
-        return web.json_response(
-            {
-                "anchor_id": anchor_id,
-                "message": "Trust anchor stored successfully",
-            }
-        )
-    except web.HTTPError:
-        raise
-    except Exception as e:
-        raise web.HTTPInternalServerError(
-            reason=f"Failed to store trust anchor: {e}"
-        ) from e
-
-
-@docs(
-    tags=["mso_mdoc"],
-    summary="List all trust anchors",
-)
-@response_schema(TrustAnchorListSchema(), 200)
-async def list_trust_anchors(request: web.BaseRequest):
-    """List all stored trust anchor certificates."""
-    context: AdminRequestContext = request["context"]
-    storage_manager = MdocStorageManager(context.profile)
-
-    try:
-        async with context.profile.session() as session:
-            anchors = await storage_manager.list_trust_anchors(session)
-        return web.json_response({"trust_anchors": anchors})
-    except Exception as e:
-        raise web.HTTPInternalServerError(
-            reason=f"Failed to list trust anchors: {e}"
-        ) from e
-
-
-@docs(
-    tags=["mso_mdoc"],
-    summary="Get a trust anchor by ID",
-)
-@response_schema(TrustAnchorDetailSchema(), 200)
-async def get_trust_anchor(request: web.BaseRequest):
-    """Retrieve a specific trust anchor certificate."""
-    context: AdminRequestContext = request["context"]
-    anchor_id = request.match_info["anchor_id"]
-    storage_manager = MdocStorageManager(context.profile)
-
-    try:
-        async with context.profile.session() as session:
-            anchor = await storage_manager.get_trust_anchor(session, anchor_id)
-
-        if not anchor:
-            raise web.HTTPNotFound(reason=f"Trust anchor not found: {anchor_id}")
-
-        return web.json_response(anchor)
-    except web.HTTPError:
-        raise
-    except Exception as e:
-        raise web.HTTPInternalServerError(
-            reason=f"Failed to get trust anchor: {e}"
-        ) from e
-
-
-@docs(
-    tags=["mso_mdoc"],
-    summary="Delete a trust anchor",
-)
-@response_schema(TrustAnchorResponseSchema(), 200)
-async def delete_trust_anchor(request: web.BaseRequest):
-    """Delete a trust anchor certificate."""
-    context: AdminRequestContext = request["context"]
-    anchor_id = request.match_info["anchor_id"]
-    storage_manager = MdocStorageManager(context.profile)
-
-    try:
-        async with context.profile.session() as session:
-            deleted = await storage_manager.delete_trust_anchor(session, anchor_id)
-
-        if not deleted:
-            raise web.HTTPNotFound(reason=f"Trust anchor not found: {anchor_id}")
-
-        return web.json_response(
-            {
-                "anchor_id": anchor_id,
-                "message": "Trust anchor deleted successfully",
-            }
-        )
-    except web.HTTPError:
-        raise
-    except Exception as e:
-        raise web.HTTPInternalServerError(
-            reason=f"Failed to delete trust anchor: {e}"
-        ) from e
-
-
-def register_key_management_routes(app: web.Application):
-    """Register key management routes."""
+def register_key_routes(app: web.Application):
+    """Register signing key and certificate management routes."""
     app.router.add_get("/mso_mdoc/keys", list_keys)
     app.router.add_get("/mso_mdoc/certificates", list_certificates)
     app.router.add_get("/mso_mdoc/certificates/default", get_default_certificate)
     app.router.add_post("/mso_mdoc/generate-keys", generate_keys)
 
-    # Trust anchor routes
-    app.router.add_post("/mso_mdoc/trust-anchors", create_trust_anchor)
-    app.router.add_get("/mso_mdoc/trust-anchors", list_trust_anchors)
-    app.router.add_get("/mso_mdoc/trust-anchors/{anchor_id}", get_trust_anchor)
-    app.router.add_delete("/mso_mdoc/trust-anchors/{anchor_id}", delete_trust_anchor)
+
+# Backward-compat alias used by routes.py
+register_key_management_routes = register_key_routes

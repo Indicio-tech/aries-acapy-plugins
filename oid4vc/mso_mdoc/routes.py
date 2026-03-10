@@ -24,7 +24,8 @@ from marshmallow import fields
 
 from .cred_processor import MsoMdocCredProcessor
 from .key_generation import generate_self_signed_certificate, pem_from_jwk
-from .key_routes import register_key_management_routes
+from .key_routes import register_key_routes
+from .trust_anchor_routes import register_trust_anchor_routes
 from .mdoc import isomdl_mdoc_sign
 from .mdoc import mdoc_verify as mso_mdoc_verify
 from .storage import MdocStorageManager
@@ -287,8 +288,10 @@ async def register(app: web.Application):
         ]
     )
 
-    # Register key management routes
-    register_key_management_routes(app)
+    # Register key and certificate management routes
+    register_key_routes(app)
+    # Register trust anchor management routes
+    register_trust_anchor_routes(app)
 
 
 def post_process_routes(app: web.Application):
