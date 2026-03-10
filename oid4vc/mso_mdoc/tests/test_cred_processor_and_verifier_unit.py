@@ -1047,8 +1047,13 @@ class TestResolveSigningKeyStoresCertOnGeneration:
         assert result["crv"] == "P-256"
 
     @pytest.mark.asyncio
-    async def test_verification_method_key_generation_stores_certificate(self):
-        """When a given verification method is not in storage, a cert is also stored."""
+    async def test_unknown_verification_method_raises(self):
+        """When a verification method is specified but not in storage, raise
+        CredProcessorError instead of silently generating an unrelated key.
+        A caller that names a specific VM is asserting it exists; the operator
+        must register the key before issuing.
+        """
+        from oid4vc.cred_processor import CredProcessorError
         from ..cred_processor import resolve_signing_key_for_credential
 
         profile, session = self._make_mock_profile_with_session()
@@ -1057,16 +1062,36 @@ class TestResolveSigningKeyStoresCertOnGeneration:
         with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
             mock_mgr = MagicMock()
             mock_mgr.get_signing_key = AsyncMock(return_value=None)
-            mock_mgr.store_signing_key = AsyncMock()
+            MockMgr.return_value = mock_mgr
+
+            with pytest.raises(CredProcessorError, match="not found for verification method"):
+                await resolve_signing_key_for_credential(profile, session, vm)
+
+        # Must not have touched storage at all
+        mock_mgr.store_signing_key.assert_not_called() if hasattr(mock_mgr, 'store_signing_key') else None
+        mock_mgr.store_certificate.assert_not_called() if hasattr(mock_mgr, 'store_certificate') else None
+
+    @pytest.mark.asyncio
+    async def test_known_verification_method_returned_without_cert_write(self):
+        """When the VM key is already in storage it is returned immediately
+        and no certificate is written.
+        """
+        from ..cred_processor import resolve_signing_key_for_credential
+
+        profile, session = self._make_mock_profile_with_session()
+        vm = "did:key:z6MkTest#key-1"
+        existing_jwk = {"kty": "EC", "crv": "P-256", "x": "x", "y": "y", "d": "d"}
+
+        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+            mock_mgr = MagicMock()
+            mock_mgr.get_signing_key = AsyncMock(return_value={"jwk": existing_jwk})
             mock_mgr.store_certificate = AsyncMock()
             MockMgr.return_value = mock_mgr
 
-            await resolve_signing_key_for_credential(profile, session, vm)
+            result = await resolve_signing_key_for_credential(profile, session, vm)
 
-        mock_mgr.store_certificate.assert_called_once()
-        call_kwargs = mock_mgr.store_certificate.call_args
-        assert call_kwargs.kwargs["key_id"] == "key-1"
-        assert "BEGIN CERTIFICATE" in call_kwargs.kwargs["certificate_pem"]
+        assert result == existing_jwk
+        mock_mgr.store_certificate.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_existing_key_does_not_store_certificate(self):

@@ -123,48 +123,10 @@ async def resolve_signing_key_for_credential(
         if stored_key and stored_key.get("jwk"):
             return stored_key["jwk"]
 
-        # If not found or storage unavailable, generate a transient keypair
-        private_key_pem, public_key_pem, jwk = generate_ec_key_pair()
-
-        # Persist the generated key.
-        # C-1: do NOT store private_key_pem; the JWK 'd' parameter is the
-        # single source of truth for the private scalar.
-        key_metadata = {
-            "jwk": jwk,
-            "public_key_pem": public_key_pem,
-            "verification_method": verification_method,
-            "key_id": key_id,
-            "key_type": "EC",
-            "curve": "P-256",
-            "purpose": "signing",
-        }
-        await storage_manager.store_signing_key(
-            session,
-            key_id=verification_method or key_id,
-            key_metadata=key_metadata,
+        raise CredProcessorError(
+            f"Signing key not found for verification method {verification_method!r}. "
+            "Register the key via the mso_mdoc key management API before issuing."
         )
-        LOGGER.info("Persisted generated signing key: %s", key_id)
-
-        # Store a self-signed certificate alongside every newly generated key so
-        # that get_certificate_for_key always finds one and we never fall back to
-        # on-demand generation later.
-        certificate_pem = generate_self_signed_certificate(private_key_pem)
-        cert_id = f"mdoc-cert-{uuid.uuid4().hex[:8]}"
-        await storage_manager.store_certificate(
-            session,
-            cert_id=cert_id,
-            certificate_pem=certificate_pem,
-            key_id=key_id,
-            metadata={
-                "self_signed": True,
-                "purpose": "mdoc_issuing",
-                "valid_from": datetime.now(UTC).isoformat(),
-                "valid_to": (datetime.now(UTC) + timedelta(days=365)).isoformat(),
-            },
-        )
-        LOGGER.info("Stored self-signed certificate for key: %s", key_id)
-
-        return jwk
 
     # Fall back to default key
     stored_key = await storage_manager.get_default_signing_key(session)
