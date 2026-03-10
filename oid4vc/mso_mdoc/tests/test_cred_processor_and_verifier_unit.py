@@ -1,11 +1,22 @@
-"""Tests verifying fixes for issues identified in CODE_REVIEW.md.
+"""Unit tests for MsoMdocCredProcessor, MsoMdocCredVerifier, MsoMdocPresVerifier,
+WalletTrustStore, key-generation utilities, and mso_mdoc storage operations.
 
-Each test class is labelled with the review issue ID it covers.
-Tests in this module are pure-unit tests: the only dependency that
-requires mocking is isomdl_uniffi (a native Rust extension). All pure-
-Python packages (acapy_agent, oid4vc, cbor2, pydid) are imported
-normally so that real exception classes are always used, avoiding class-
-identity mismatches between the code under test and test assertions.
+Coverage areas:
+- Credential processor: issuance, signing-key resolution, payload preparation,
+  device-key extraction, and mDoc result normalisation.
+- Verifier: trust-anchor registry enforcement, credential and presentation
+  verification, pre-verified claims sentinel, and credential parsing.
+- Key & certificate management: PEM<->JWK conversion, EC curve detection,
+  self-signed certificate generation, cert-at-key-generation invariant, and
+  missing-cert error handling.
+- Storage: certificate ordering, config duplicate-error handling, and
+  get_default_signing_key read-only contract.
+
+Tests are pure-unit tests: the only dependency that requires mocking is
+isomdl_uniffi (a native Rust extension). All pure-Python packages
+(acapy_agent, oid4vc, cbor2, pydid) are imported normally so that real
+exception classes are always used, avoiding class-identity mismatches
+between the code under test and test assertions.
 """
 
 import sys
