@@ -1,15 +1,13 @@
-"""Issue a mso_mdoc credential.
+"""mso_mdoc credential processor.
 
-This module implements ISO/IEC 18013-5:2021 compliant mobile document (mDoc)
-credential issuance using the isomdl-uniffi library. The implementation follows
-the mDoc format specification for mobile driver's licenses and other mobile
-identity documents as defined in ISO 18013-5.
+Glues together the signing-key resolution, payload preparation, and isomdl
+binding layers to implement ISO/IEC 18013-5:2021 compliant mDoc issuance and
+verification inside the OID4VCI plugin framework.
 
-Key Protocol Compliance:
-- ISO/IEC 18013-5:2021 - Mobile driving licence (mDL) application
-- RFC 8152 - CBOR Object Signing and Encryption (COSE)
-- RFC 9052 - CBOR Object Signing and Encryption (COSE): Structures and Process
-- RFC 8949 - Concise Binary Object Representation (CBOR)
+Public API re-exported from sub-modules for backward compatibility:
+
+- ``check_certificate_not_expired`` — from :mod:`.signing_key`
+- ``resolve_signing_key_for_credential`` — from :mod:`.signing_key`
 """
 
 import base64
@@ -17,12 +15,10 @@ import json
 import logging
 import os
 import re
-from datetime import UTC, datetime
 from typing import Any, Dict, Optional
 
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.core.profile import Profile, ProfileSession
-
 
 from oid4vc.cred_processor import CredProcessorError, CredVerifier, Issuer, PresVerifier
 from oid4vc.models.exchange import OID4VCIExchangeRecord
@@ -30,110 +26,25 @@ from oid4vc.models.presentation import OID4VPPresentation
 from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.pop_result import PopResult
 
-from .key_generation import (
-    pem_from_jwk,
-    pem_to_jwk,
-)
+from .key_generation import pem_from_jwk, pem_to_jwk
 from .mdoc.issuer import isomdl_mdoc_sign
 from .mdoc.verifier import MsoMdocCredVerifier, MsoMdocPresVerifier, WalletTrustStore
+from .payload import normalize_mdoc_result, prepare_mdoc_payload
+from .signing_key import (
+    check_certificate_not_expired,
+    resolve_signing_key_for_credential,
+)
 from .storage import MdocStorageManager
 
+# Re-export so existing ``from .cred_processor import X`` and
+# ``patch("mso_mdoc.cred_processor.X")`` usages continue to work.
+__all__ = [
+    "MsoMdocCredProcessor",
+    "check_certificate_not_expired",
+    "resolve_signing_key_for_credential",
+]
+
 LOGGER = logging.getLogger(__name__)
-
-
-def check_certificate_not_expired(cert_pem: str) -> None:
-    """Validate that a PEM-encoded X.509 certificate is currently valid.
-
-    Raises ``CredProcessorError`` when the certificate is expired, not yet
-    valid, or cannot be parsed.  Returns ``None`` silently on success.
-
-    Args:
-        cert_pem: PEM-encoded X.509 certificate string.
-
-    Raises:
-        CredProcessorError: If the certificate is expired, not yet valid, or
-            cannot be parsed from PEM.
-    """
-    from cryptography import x509 as _x509  # noqa: PLC0415
-
-    if not cert_pem or not cert_pem.strip():
-        raise CredProcessorError("Empty certificate PEM string")
-
-    try:
-        cert = _x509.load_pem_x509_certificate(cert_pem.strip().encode())
-    except Exception as exc:
-        raise CredProcessorError(
-            f"Invalid certificate PEM — could not parse: {exc}"
-        ) from exc
-
-    now = datetime.now(UTC)
-    if cert.not_valid_before_utc > now:
-        nb = cert.not_valid_before_utc.isoformat()
-        raise CredProcessorError(f"Certificate is not yet valid (NotBefore={nb})")
-    if cert.not_valid_after_utc < now:
-        na = cert.not_valid_after_utc.isoformat()
-        raise CredProcessorError(f"Certificate has expired (NotAfter={na})")
-
-
-async def resolve_signing_key_for_credential(
-    profile: Profile,
-    session: ProfileSession,
-    verification_method: Optional[str] = None,
-) -> dict:
-    """Resolve a signing key for credential issuance.
-
-    This function implements ISO 18013-5 § 7.2.4 requirements for issuer
-    authentication by resolving cryptographic keys for mDoc signing.
-    The keys must support ECDSA with P-256 curve (ES256) as per
-    ISO 18013-5 § 9.1.3.5 and RFC 7518 § 3.4.
-
-    Protocol Compliance:
-    - ISO 18013-5 § 7.2.4: Issuer authentication mechanisms
-    - ISO 18013-5 § 9.1.3.5: Cryptographic algorithms for mDoc
-    - RFC 7517: JSON Web Key (JWK) format
-    - RFC 7518 § 3.4: ES256 signature algorithm
-
-    Args:
-        profile: The active profile
-        session: The active profile session
-        verification_method: Optional verification method identifier
-
-    Returns:
-        Dictionary containing key information
-    """
-    storage_manager = MdocStorageManager(profile)
-
-    if verification_method:
-        # Parse verification method to get key identifier
-        if "#" in verification_method:
-            _, key_id = verification_method.split("#", 1)
-        else:
-            key_id = verification_method
-
-        # Look up in storage using the new get_signing_key method
-        stored_key = await storage_manager.get_signing_key(
-            session,
-            identifier=key_id,
-            verification_method=verification_method,
-        )
-
-        if stored_key and stored_key.get("jwk"):
-            return stored_key["jwk"]
-
-        raise CredProcessorError(
-            f"Signing key not found for verification method {verification_method!r}. "
-            "Register the key via the mso_mdoc key management API before issuing."
-        )
-
-    # Fall back to default key
-    stored_key = await storage_manager.get_default_signing_key(session)
-    if stored_key and stored_key.get("jwk"):
-        return stored_key["jwk"]
-
-    raise CredProcessorError(
-        "No default signing key is configured. "
-        "Register a signing key via the mso_mdoc key management API before issuing."
-    )
 
 
 class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
@@ -484,7 +395,7 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
 
             # Get payload and verification method
             verification_method = ex_record.verification_method
-            payload = self._prepare_payload(ex_record.credential_subject, doctype)
+            payload = prepare_mdoc_payload(ex_record.credential_subject, doctype)
 
             # Resolve signing key
             async with context.profile.session() as session:
@@ -580,7 +491,7 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             )
 
             # Normalize mDoc result handling for robust string/bytes processing
-            mso_mdoc = self._normalize_mdoc_result(mso_mdoc)
+            mso_mdoc = normalize_mdoc_result(mso_mdoc)
 
             LOGGER.info(
                 "Issued mso_mdoc credential with doctype: %s, format: %s",
@@ -599,109 +510,10 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
     def _prepare_payload(
         self, payload: Dict[str, Any], doctype: str = None
     ) -> Dict[str, Any]:
-        """Prepare payload for mDoc issuance.
-
-        Ensures required fields are present and binary data is correctly encoded.
-        """
-        prepared = payload.copy()
-
-        # Flatten doctype dictionary if present
-        # The Rust struct expects a flat dictionary with all fields
-        if doctype and doctype in prepared:
-            doctype_claims = prepared.pop(doctype)
-            if isinstance(doctype_claims, dict):
-                # Warn if flattening would silently overwrite existing top-level
-                # keys — callers should not mix namespaced and flat claims for
-                # the same fields.
-                conflicts = set(doctype_claims.keys()) & set(prepared.keys())
-                if conflicts:
-                    LOGGER.warning(
-                        "Payload namespace flattening for doctype '%s': "
-                        "top-level keys %s will be overwritten by doctype claims",
-                        doctype,
-                        sorted(conflicts),
-                    )
-                LOGGER.debug(
-                    "Flattening doctype wrapper '%s' (%d claims) into top-level payload",
-                    doctype,
-                    len(doctype_claims),
-                )
-                prepared.update(doctype_claims)
-
-        # Encode portrait if present
-        if "portrait" in prepared:
-            portrait = prepared["portrait"]
-            if isinstance(portrait, bytes):
-                prepared["portrait"] = base64.b64encode(portrait).decode("utf-8")
-            elif isinstance(portrait, list):
-                # Handle list of integers (byte array representation)
-                try:
-                    prepared["portrait"] = base64.b64encode(bytes(portrait)).decode(
-                        "utf-8"
-                    )
-                except Exception:
-                    # If conversion fails, leave as is
-                    pass
-
-        return prepared
+        return prepare_mdoc_payload(payload, doctype)
 
     def _normalize_mdoc_result(self, result: Any) -> str:
-        """Normalize mDoc result handling for robust string/bytes processing.
-
-        Handles various return formats from isomdl-uniffi library including
-        string representations of bytes, actual bytes objects, and plain strings.
-        Ensures consistent string output for credential storage and transmission.
-
-        Args:
-            result: Raw result from isomdl_mdoc_sign operation
-
-        Returns:
-            Normalized string representation of the mDoc credential
-
-        Raises:
-            CredProcessorError: If result format cannot be normalized
-        """
-        if result is None:
-            raise CredProcessorError(
-                "mDoc signing returned None result. "
-                "Check key material and payload format."
-            )
-
-        # Handle bytes objects
-        if isinstance(result, bytes):
-            try:
-                return result.decode("utf-8")
-            except UnicodeDecodeError as e:
-                raise CredProcessorError(
-                    f"Failed to decode mDoc bytes result: {e}. "
-                    "Result may contain binary data requiring base64 encoding."
-                ) from e
-
-        # Handle string representations of bytes (e.g., "b'data'")
-        if isinstance(result, str):
-            # Remove b' prefix and ' suffix if present
-            if result.startswith("b'") and result.endswith("'"):
-                cleaned = result[2:-1]
-                # C-2: do NOT call codecs.decode(cleaned, "unicode_escape") —
-                # that interprets arbitrary byte sequences in attacker-controlled
-                # input and can be exploited for code-path attacks.  The hex/base64
-                # string produced by isomdl-uniffi contains only printable ASCII,
-                # so returning it directly is both safe and correct.
-                return cleaned
-            # Remove b" prefix and " suffix if present
-            elif result.startswith('b"') and result.endswith('"'):
-                cleaned = result[2:-1]
-                return cleaned
-            else:
-                return result
-
-        # Handle other types by converting to string
-        try:
-            return str(result)
-        except Exception as e:
-            raise CredProcessorError(
-                f"Failed to normalize mDoc result of type {type(result).__name__}: {e}"
-            ) from e
+        return normalize_mdoc_result(result)
 
     def validate_credential_subject(self, supported: SupportedCredential, subject: dict):
         """Validate the credential subject."""

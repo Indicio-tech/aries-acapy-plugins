@@ -499,7 +499,7 @@ class TestMin5PayloadFlatteningDebugLog:
         doctype = "org.iso.18013.5.1.mDL"
         payload = {doctype: {"given_name": "Alice"}}
 
-        with caplog.at_level(logging.DEBUG, logger="mso_mdoc.cred_processor"):
+        with caplog.at_level(logging.DEBUG, logger="mso_mdoc.payload"):
             result = proc._prepare_payload(payload, doctype)
 
         assert "given_name" in result
@@ -867,7 +867,7 @@ class TestResolveSigningKeyRaisesWhenNoKeyRegistered:
 
         profile, session = make_mock_profile()
 
-        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+        with patch("mso_mdoc.signing_key.MdocStorageManager") as MockMgr:
             mock_mgr = MagicMock()
             mock_mgr.get_default_signing_key = AsyncMock(return_value=None)
             MockMgr.return_value = mock_mgr
@@ -883,7 +883,7 @@ class TestResolveSigningKeyRaisesWhenNoKeyRegistered:
         profile, session = make_mock_profile()
         existing_jwk = {"kty": "EC", "crv": "P-256", "x": "x", "y": "y", "d": "d"}
 
-        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+        with patch("mso_mdoc.signing_key.MdocStorageManager") as MockMgr:
             mock_mgr = MagicMock()
             mock_mgr.get_default_signing_key = AsyncMock(
                 return_value={"jwk": existing_jwk}
@@ -1138,7 +1138,7 @@ class TestResolveSigningKeyEdgeCases:
 
         profile, session = self._make_mock_profile_with_session()
 
-        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+        with patch("mso_mdoc.signing_key.MdocStorageManager") as MockMgr:
             mock_mgr = MagicMock()
             mock_mgr.get_default_signing_key = AsyncMock(return_value=None)
             mock_mgr.store_signing_key = AsyncMock()
@@ -1164,7 +1164,7 @@ class TestResolveSigningKeyEdgeCases:
         profile, session = self._make_mock_profile_with_session()
         vm = "did:key:z6MkTest#key-1"
 
-        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+        with patch("mso_mdoc.signing_key.MdocStorageManager") as MockMgr:
             mock_mgr = MagicMock()
             mock_mgr.get_signing_key = AsyncMock(return_value=None)
             MockMgr.return_value = mock_mgr
@@ -1187,7 +1187,7 @@ class TestResolveSigningKeyEdgeCases:
         vm = "did:key:z6MkTest#key-1"
         existing_jwk = {"kty": "EC", "crv": "P-256", "x": "x", "y": "y", "d": "d"}
 
-        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+        with patch("mso_mdoc.signing_key.MdocStorageManager") as MockMgr:
             mock_mgr = MagicMock()
             mock_mgr.get_signing_key = AsyncMock(return_value={"jwk": existing_jwk})
             mock_mgr.store_certificate = AsyncMock()
@@ -1209,7 +1209,7 @@ class TestResolveSigningKeyEdgeCases:
             "jwk": {"kty": "EC", "crv": "P-256", "x": "x", "y": "y", "d": "d"},
         }
 
-        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+        with patch("mso_mdoc.signing_key.MdocStorageManager") as MockMgr:
             mock_mgr = MagicMock()
             mock_mgr.get_default_signing_key = AsyncMock(return_value=existing)
             mock_mgr.store_certificate = AsyncMock()
