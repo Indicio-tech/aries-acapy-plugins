@@ -203,8 +203,12 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
 
         2. ``claims`` — converts the stored namespace-keyed dict
            ``{namespace: {claim_name: descriptor}}`` to the spec-compliant
-           flat array ``[{path: [namespace, claim_name], ...}]`` per
-           OID4VCI 1.0 Appendix A.2.2 and Appendix B.2.
+           flat array ``[{path: [namespace, claim_name], ...}]`` and nests
+           it inside ``credential_metadata`` per OID4VCI 1.0 Appendix A.2.2,
+           Section 12.2.4, and Appendix B.2.
+
+        3. ``display`` — moves the credential display array into
+           ``credential_metadata`` per OID4VCI 1.0 Section 12.2.4.
         """
         algs = metadata.get("credential_signing_alg_values_supported")
         if algs:
@@ -212,7 +216,7 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                 self._COSE_ALG.get(a, a) if isinstance(a, str) else a for a in algs
             ]
 
-        claims = metadata.get("claims")
+        claims = metadata.pop("claims", None)
         if isinstance(claims, dict):
             claims_list = []
             for namespace, claim_map in claims.items():
@@ -225,7 +229,18 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                             if "display" in descriptor:
                                 entry["display"] = descriptor["display"]
                         claims_list.append(entry)
-            metadata["claims"] = claims_list
+            credential_metadata = metadata.setdefault("credential_metadata", {})
+            credential_metadata["claims"] = claims_list
+        elif isinstance(claims, list):
+            # Already converted — just ensure it's nested in credential_metadata
+            credential_metadata = metadata.setdefault("credential_metadata", {})
+            credential_metadata["claims"] = claims
+
+        # Move display into credential_metadata per OID4VCI 1.0 Section 12.2.4
+        display = metadata.pop("display", None)
+        if display is not None:
+            credential_metadata = metadata.setdefault("credential_metadata", {})
+            credential_metadata["display"] = display
 
     def __init__(self, trust_store: Optional[Any] = None):
         """Initialize the processor."""

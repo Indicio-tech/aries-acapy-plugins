@@ -8,11 +8,11 @@ class TestMsoMdocCredProcessor(unittest.TestCase):
         self.processor = MsoMdocCredProcessor()
 
     def test_transform_issuer_metadata_converts_namespace_claims_to_array(self):
-        """mso_mdoc claims namespace dict is converted to path-array per OID4VCI spec.
+        """mso_mdoc claims are converted to path-array inside credential_metadata.
 
-        Per OID4VCI 1.0 Appendix A.2.2 and Appendix B.2, mso_mdoc claims
-        must be served as an array of {path: [namespace, claim_name], ...}
-        objects, not as a namespace-keyed dict.
+        Per OID4VCI 1.0 Appendix A.2.2, Section 12.2.4, and Appendix B.2,
+        mso_mdoc claims must be a path-array nested inside credential_metadata,
+        not a namespace-keyed dict at the top level.
         """
         metadata = {
             "claims": {
@@ -26,7 +26,11 @@ class TestMsoMdocCredProcessor(unittest.TestCase):
             }
         }
         self.processor.transform_issuer_metadata(metadata)
-        claims = metadata["claims"]
+        # claims must be removed from the top level
+        self.assertNotIn("claims", metadata)
+        # and placed inside credential_metadata
+        cred_meta = metadata.get("credential_metadata", {})
+        claims = cred_meta.get("claims", [])
         self.assertIsInstance(claims, list)
         self.assertEqual(len(claims), 2)
         paths = [c["path"] for c in claims]
@@ -47,11 +51,12 @@ class TestMsoMdocCredProcessor(unittest.TestCase):
         )
 
     def test_transform_issuer_metadata_noop_when_claims_already_list(self):
-        """Already-converted list claims are left unchanged (idempotent)."""
+        """Already-converted list claims are moved into credential_metadata (idempotent)."""
         original = [{"path": ["org.iso.18013.5.1", "given_name"], "mandatory": True}]
         metadata = {"claims": original}
         self.processor.transform_issuer_metadata(metadata)
-        self.assertEqual(metadata["claims"], original)
+        self.assertNotIn("claims", metadata)
+        self.assertEqual(metadata["credential_metadata"]["claims"], original)
 
     def test_prepare_payload_flattens_doctype(self):
         """Test that _prepare_payload flattens the dictionary if doctype is present as a key."""
