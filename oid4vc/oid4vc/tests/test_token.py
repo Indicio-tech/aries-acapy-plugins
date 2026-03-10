@@ -541,6 +541,43 @@ async def test_proof_with_cross_issuer_tenant_path_rejected(profile):
 
 
 @pytest.mark.asyncio
+async def test_proof_iss_fallback_when_no_key_in_header(profile):
+    """Wallets that omit jwk/kid/x5c but put their DID in iss must be resolved."""
+    nonce = "nonce-iss-fallback"
+    key = Key.generate(KeyAlg.P256)
+    public_jwk = json.loads(key.get_jwk_public())
+    # Header has NO jwk, kid, or x5c — only alg+typ
+    header = {"typ": "openid4vci-proof+jwt", "alg": "ES256"}
+    payload = {
+        "iss": "did:key:zDnaemDNiAWCCLFKP2ppPJuq52E2Gh9trydNgTqrWDkb5oiaQ",
+        "aud": "http://localhost:8020",
+        "iat": int(time.time()),
+        "exp": int(time.time()) + 600,
+        "nonce": nonce,
+    }
+    h_enc = _make_b64url(json.dumps(header).encode())
+    p_enc = _make_b64url(json.dumps(payload).encode())
+    sig = key.sign_message(f"{h_enc}.{p_enc}".encode(), sig_type="ES256")
+    jwt_str = f"{h_enc}.{p_enc}.{_make_b64url(sig)}"
+    proof = {"proof_type": "jwt", "jwt": jwt_str}
+
+    with (
+        patch(
+            "oid4vc.public_routes.token.Config.from_settings",
+            return_value=MagicMock(endpoint="http://localhost:8020"),
+        ),
+        patch(
+            "oid4vc.public_routes.token.key_material_for_kid",
+            new=AsyncMock(return_value=key),
+        ),
+    ):
+        result = await handle_proof_of_posession(profile, proof, nonce)
+
+    assert result.verified is True
+    assert result.holder_jwk is not None  # derived from iss-resolved key
+
+
+@pytest.mark.asyncio
 async def test_proof_without_aud_not_rejected_when_endpoint_unconfigured(profile):
     """C-4: When endpoint is not configured, a proof without aud is still accepted."""
     nonce = "nonce-noaud"

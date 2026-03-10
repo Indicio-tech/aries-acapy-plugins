@@ -328,15 +328,37 @@ async def handle_proof_of_posession(
                 content_type="application/json",
             ) from exc
     else:
-        raise web.HTTPBadRequest(
-            text=json.dumps(
-                {
-                    "error": "invalid_proof",
-                    "error_description": "no key material in proof header",
-                }
-            ),
-            content_type="application/json",
-        )
+        # No key material in the header. Some draft-era wallets (e.g. walt.id)
+        # omit jwk/kid/x5c from the proof header and instead put the DID in the
+        # payload `iss` claim. Decode the payload first and attempt resolution.
+        payload_for_iss = b64_to_dict(encoded_payload)
+        iss = payload_for_iss.get("iss")
+        if iss:
+            try:
+                key = await key_material_for_kid(profile, iss)
+                LOGGER.debug("Resolved proof key from payload iss: %s", iss)
+            except (ValueError, Exception) as exc:
+                LOGGER.debug("Could not resolve key from iss '%s': %s", iss, exc)
+                raise web.HTTPBadRequest(
+                    text=json.dumps(
+                        {
+                            "error": "invalid_proof",
+                            "error_description": "no key material in proof header and"
+                            " iss could not be resolved",
+                        }
+                    ),
+                    content_type="application/json",
+                ) from exc
+        else:
+            raise web.HTTPBadRequest(
+                text=json.dumps(
+                    {
+                        "error": "invalid_proof",
+                        "error_description": "no key material in proof header",
+                    }
+                ),
+                content_type="application/json",
+            )
 
     payload = b64_to_dict(encoded_payload)
 
@@ -421,11 +443,13 @@ async def handle_proof_of_posession(
     # JWK from the resolved key so credential processors that need the raw JWK
     # (e.g. mso_mdoc for holder key binding in DeviceKey) can access it.
     holder_jwk = headers.get("jwk")
-    if holder_jwk is None and "kid" in headers:
+    if holder_jwk is None and ("kid" in headers or not any(
+        k in headers for k in ("jwk", "kid", "x5c")
+    )):
         try:
             holder_jwk = json.loads(key.get_jwk_public())
         except Exception:
-            LOGGER.debug("Could not derive holder JWK from kid-resolved key")
+            LOGGER.debug("Could not derive holder JWK from resolved key")
 
     return PopResult(
         headers,
