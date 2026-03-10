@@ -17,13 +17,12 @@ import json
 import logging
 import os
 import re
-import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any, Dict, Optional
 
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.core.profile import Profile, ProfileSession
-from acapy_agent.storage.error import StorageError
+
 
 from oid4vc.cred_processor import CredProcessorError, CredVerifier, Issuer, PresVerifier
 from oid4vc.models.exchange import OID4VCIExchangeRecord
@@ -32,8 +31,6 @@ from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.pop_result import PopResult
 
 from .key_generation import (
-    generate_ec_key_pair,
-    generate_self_signed_certificate,
     pem_from_jwk,
     pem_to_jwk,
 )
@@ -133,53 +130,10 @@ async def resolve_signing_key_for_credential(
     if stored_key and stored_key.get("jwk"):
         return stored_key["jwk"]
 
-    # Generate a default key if none exists
-    private_key_pem, public_key_pem, jwk = generate_ec_key_pair()
-
-    # C-1: do NOT store private_key_pem; the JWK 'd' parameter is the
-    # single source of truth for the private scalar.
-    key_metadata = {
-        "jwk": jwk,
-        "public_key_pem": public_key_pem,
-        "key_id": "default",
-        "key_type": "EC",
-        "curve": "P-256",
-        "purpose": "signing",
-        "is_default": True,
-    }
-
-    try:
-        await storage_manager.store_signing_key(
-            session, key_id="default", key_metadata=key_metadata
-        )
-        # Register the generated key as the canonical default so that
-        # get_default_signing_key resolves it by config lookup (not by
-        # list order), which is reliable even when multiple keys exist.
-        await storage_manager.store_config(
-            session, "default_signing_key", {"key_id": "default"}
-        )
-        # Store a self-signed certificate alongside every newly generated key so
-        # that get_certificate_for_key always finds one and we never fall back to
-        # on-demand generation later.
-        certificate_pem = generate_self_signed_certificate(private_key_pem)
-        cert_id = f"mdoc-cert-{uuid.uuid4().hex[:8]}"
-        await storage_manager.store_certificate(
-            session,
-            cert_id=cert_id,
-            certificate_pem=certificate_pem,
-            key_id="default",
-            metadata={
-                "self_signed": True,
-                "purpose": "mdoc_issuing",
-                "valid_from": datetime.now(UTC).isoformat(),
-                "valid_to": (datetime.now(UTC) + timedelta(days=365)).isoformat(),
-            },
-        )
-        LOGGER.info("Stored self-signed certificate for default key")
-    except StorageError as e:
-        LOGGER.warning("Unable to persist default signing key: %s", e)
-
-    return jwk
+    raise CredProcessorError(
+        "No default signing key is configured. "
+        "Register a signing key via the mso_mdoc key management API before issuing."
+    )
 
 
 class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
@@ -473,20 +427,10 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             LOGGER.info("Using default signing key")
             return key_data
 
-        # Generate new default key if none exists.
-        # resolve_signing_key_for_credential is called for its side-effect
-        # (generate + store_signing_key + store_config).  Its return value is
-        # a raw JWK dict, not the full key_data structure this method must
-        # return, so we re-fetch via get_default_signing_key which now
-        # resolves reliably via the config record written above.
-        await resolve_signing_key_for_credential(context.profile, session)
-        LOGGER.info("Generated new default signing key")
-
-        key_data = await storage_manager.get_default_signing_key(session)
-        if key_data:
-            return key_data
-
-        raise CredProcessorError("Failed to resolve signing key")
+        raise CredProcessorError(
+            "No default signing key is configured. "
+            "Register a signing key via the mso_mdoc key management API before issuing."
+        )
 
     async def issue(
         self,

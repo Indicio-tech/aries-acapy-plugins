@@ -848,65 +848,58 @@ class TestM3GetDefaultSigningKeyReadOnly:
 
 
 # ===========================================================================
-# Bug: resolve_signing_key_for_credential does not persist default config
+# resolve_signing_key_for_credential raises when no key is registered
 # ===========================================================================
 
 
-class TestResolveSigningKeyPersistsDefaultConfig:
-    """Bug: when a default key is generated, store_config must be called so
-    get_default_signing_key can find it reliably without relying on list order.
-
-    Without the fix, get_default_signing_key falls back to list_keys()[0],
-    which breaks when other signing keys already exist in storage.
+class TestResolveSigningKeyRaisesWhenNoKeyRegistered:
+    """resolve_signing_key_for_credential must raise CredProcessorError
+    when no key is found rather than auto-generating one.  Auto-generation
+    is wrong because the generated key has no relationship to the operator's
+    DID document or trust chain.
     """
 
     @pytest.mark.asyncio
-    async def test_generates_key_and_registers_default_config(self):
-        """resolve_signing_key_for_credential must call store_config after storing key."""
+    async def test_no_default_key_raises(self):
+        """When no default key is stored, raise CredProcessorError."""
+        from oid4vc.cred_processor import CredProcessorError
         from ..cred_processor import resolve_signing_key_for_credential
 
         profile, session = make_mock_profile()
 
-        fake_jwk = {"kty": "EC", "crv": "P-256", "x": "x", "y": "y", "d": "d"}
-
-        with (
-            patch(
-                "mso_mdoc.cred_processor.MdocStorageManager"
-            ) as MockStorageMgr,
-            patch(
-                "mso_mdoc.cred_processor.generate_ec_key_pair",
-                return_value=("--pem--", "--pub--", fake_jwk),
-            ),
-            patch(
-                "mso_mdoc.cred_processor.generate_self_signed_certificate",
-                return_value="-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----",
-            ),
-        ):
+        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
             mock_mgr = MagicMock()
-            mock_mgr.get_signing_key = AsyncMock(return_value=None)
             mock_mgr.get_default_signing_key = AsyncMock(return_value=None)
-            mock_mgr.store_signing_key = AsyncMock()
-            mock_mgr.store_config = AsyncMock()
+            MockMgr.return_value = mock_mgr
+
+            with pytest.raises(CredProcessorError, match="No default signing key"):
+                await resolve_signing_key_for_credential(profile, session)
+
+    @pytest.mark.asyncio
+    async def test_existing_default_key_returned(self):
+        """When a default key is registered it is returned without touching storage."""
+        from ..cred_processor import resolve_signing_key_for_credential
+
+        profile, session = make_mock_profile()
+        existing_jwk = {"kty": "EC", "crv": "P-256", "x": "x", "y": "y", "d": "d"}
+
+        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+            mock_mgr = MagicMock()
+            mock_mgr.get_default_signing_key = AsyncMock(
+                return_value={"jwk": existing_jwk}
+            )
             mock_mgr.store_certificate = AsyncMock()
-            MockStorageMgr.return_value = mock_mgr
+            MockMgr.return_value = mock_mgr
 
             result = await resolve_signing_key_for_credential(profile, session)
 
-        # Returned value must be the generated JWK
-        assert result == fake_jwk
-
-        # Bug 1: store_config was NOT called before the fix
-        mock_mgr.store_config.assert_called_once_with(
-            session, "default_signing_key", {"key_id": "default"}
-        )
+        assert result == existing_jwk
+        mock_mgr.store_certificate.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_existing_keys_do_not_cause_wrong_default_after_generation(self):
-        """When a pre-existing key exists and a new default is generated,
-        get_default_signing_key must return the generated key, not the old one.
-
-        Before the fix, get_default_signing_key falls back to list_keys()[0]
-        which may be the pre-existing key, not the newly generated 'default'.
+    async def test_existing_keys_do_not_cause_wrong_default(self):
+        """When multiple keys exist, get_default_signing_key uses the config
+        record to return the right one, not list order.
         """
         from ..storage import MdocStorageManager
 
@@ -916,7 +909,6 @@ class TestResolveSigningKeyPersistsDefaultConfig:
         old_key = {"key_id": "old-key", "jwk": {"kty": "EC", "x": "old"}, "created_at": "2024-01-01"}
         new_default_key = {"key_id": "default", "jwk": {"kty": "EC", "x": "new"}, "created_at": "2024-06-01"}
 
-        # Simulate: config points to "default" (registered after generation)
         with (
             patch(
                 "mso_mdoc.storage.config.get_config",
@@ -924,90 +916,48 @@ class TestResolveSigningKeyPersistsDefaultConfig:
             ),
             patch(
                 "mso_mdoc.storage.keys.list_keys",
-                # old-key is first — without config lookup this would be returned
                 AsyncMock(return_value=[old_key, new_default_key]),
             ),
         ):
             result = await manager.get_default_signing_key(session)
 
-        # Must return the key registered in config, not list()[0]
         assert result == new_default_key
         assert result["key_id"] == "default"
 
-
-# ===========================================================================
-# Bug: _resolve_signing_key discards resolve_signing_key_for_credential result
-# ===========================================================================
-
-
-class TestResolveSigningKeyUsesGeneratedKey:
-    """Bug: _resolve_signing_key discards the return value of
-    resolve_signing_key_for_credential and re-fetches from storage.
-
-    If the second get_default_signing_key call returns None (e.g., because
-    store_config was never called and there are multiple keys), the method
-    raises CredProcessorError instead of returning the generated key.
-    """
-
     @pytest.mark.asyncio
-    async def test_resolve_does_not_raise_when_generation_succeeds(self):
-        """_resolve_signing_key must return key_data after key generation,
-        not raise CredProcessorError due to a failed re-fetch."""
-        from unittest.mock import call
-
+    async def test_resolve_signing_key_method_raises_when_no_default(self):
+        """_resolve_signing_key raises CredProcessorError when no default key
+        is in storage and no verification method is given.
+        """
         from oid4vc.cred_processor import CredProcessorError
 
         processor = MsoMdocCredProcessor()
         profile, session = make_mock_profile()
-
-        fake_jwk = {"kty": "EC", "crv": "P-256", "x": "x", "y": "y", "d": "d"}
-        generated_key_data = {
-            "key_id": "default",
-            "jwk": fake_jwk,
-            "purpose": "signing",
-            "created_at": "2026-01-01",
-            "metadata": {},
-        }
-
         context = MagicMock()
         context.profile = profile
 
         with (
-            patch(
-                "mso_mdoc.cred_processor.MdocStorageManager"
-            ) as MockStorageMgr,
-            patch(
-                "mso_mdoc.cred_processor.resolve_signing_key_for_credential",
-                new=AsyncMock(return_value=fake_jwk),
-            ),
+            patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr,
+            patch("mso_mdoc.cred_processor.os.getenv", return_value=None),
         ):
             mock_mgr = MagicMock()
-            # First call returns None (no key yet), second call returns the generated key
-            mock_mgr.get_default_signing_key = AsyncMock(
-                side_effect=[None, generated_key_data]
-            )
-            mock_mgr.get_signing_key = AsyncMock(return_value=None)
-            MockStorageMgr.return_value = mock_mgr
+            mock_mgr.get_default_signing_key = AsyncMock(return_value=None)
+            MockMgr.return_value = mock_mgr
 
-            result = await processor._resolve_signing_key(
-                context, session, verification_method=None
-            )
-
-        # Must not raise, must return the generated key_data
-        assert result == generated_key_data
-        assert result["key_id"] == "default"
+            with pytest.raises(CredProcessorError, match="No default signing key"):
+                await processor._resolve_signing_key(
+                    context, session, verification_method=None
+                )
 
 
 # ===========================================================================
-# Cert-at-generation invariant: resolve_signing_key_for_credential must store
-# a certificate whenever it generates and stores a new signing key.
+# resolve_signing_key_for_credential: edge cases and invariants
 # ===========================================================================
 
 
-class TestResolveSigningKeyStoresCertOnGeneration:
-    """resolve_signing_key_for_credential must store a certificate alongside
-    every newly generated key so that get_certificate_for_key always succeeds
-    and the on-demand fallback is never needed.
+class TestResolveSigningKeyEdgeCases:
+    """Verifies key-resolution edge cases: missing keys raise errors;
+    existing keys are returned without side effects.
     """
 
     def _make_mock_profile_with_session(self):
@@ -1021,8 +971,12 @@ class TestResolveSigningKeyStoresCertOnGeneration:
         return profile, session
 
     @pytest.mark.asyncio
-    async def test_default_key_generation_stores_certificate(self):
-        """When no default key exists, a certificate is stored alongside the key."""
+    async def test_no_default_key_raises(self):
+        """When no default key is configured, CredProcessorError is raised.
+        The old behaviour (silent key generation) is gone; operators must
+        register keys explicitly via the key management API.
+        """
+        from oid4vc.cred_processor import CredProcessorError
         from ..cred_processor import resolve_signing_key_for_credential
 
         profile, session = self._make_mock_profile_with_session()
@@ -1031,20 +985,14 @@ class TestResolveSigningKeyStoresCertOnGeneration:
             mock_mgr = MagicMock()
             mock_mgr.get_default_signing_key = AsyncMock(return_value=None)
             mock_mgr.store_signing_key = AsyncMock()
-            mock_mgr.store_config = AsyncMock()
             mock_mgr.store_certificate = AsyncMock()
             MockMgr.return_value = mock_mgr
 
-            result = await resolve_signing_key_for_credential(profile, session)
+            with pytest.raises(CredProcessorError, match="No default signing key"):
+                await resolve_signing_key_for_credential(profile, session)
 
-        # A certificate must have been stored
-        mock_mgr.store_certificate.assert_called_once()
-        call_kwargs = mock_mgr.store_certificate.call_args
-        assert call_kwargs.kwargs["key_id"] == "default"
-        assert "BEGIN CERTIFICATE" in call_kwargs.kwargs["certificate_pem"]
-        # The returned JWK must be valid EC P-256
-        assert result["kty"] == "EC"
-        assert result["crv"] == "P-256"
+        mock_mgr.store_signing_key.assert_not_called()
+        mock_mgr.store_certificate.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_unknown_verification_method_raises(self):
