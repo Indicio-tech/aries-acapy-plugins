@@ -28,7 +28,9 @@ from oid4vc.pop_result import PopResult
 
 from .key_generation import pem_from_jwk, pem_to_jwk
 from .mdoc.issuer import isomdl_mdoc_sign
-from .mdoc.verifier import MsoMdocCredVerifier, MsoMdocPresVerifier, WalletTrustStore
+from .mdoc.cred_verifier import MsoMdocCredVerifier
+from .mdoc.pres_verifier import MsoMdocPresVerifier
+from .mdoc.trust_store import WalletTrustStore
 from .payload import normalize_mdoc_result, prepare_mdoc_payload
 from .signing_key import (
     check_certificate_not_expired,
@@ -198,7 +200,6 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
         )
 
         if isinstance(device_candidate, dict):
-            # M-4: strip private key material before serialising.
             # The device key embedded in the mDoc MSO must contain ONLY public
             # parameters; passing 'd' to the Rust isomdl library would leak
             # the holder's private key into the issued credential.
@@ -403,8 +404,7 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                     context, session, verification_method
                 )
                 key_id = key_data.get("key_id")
-                # C-1: private_key_pem is no longer persisted in metadata.
-                # Reconstruct it on-demand from the JWK 'd' parameter.
+                # Reconstruct private_key_pem on-demand from the JWK 'd' parameter.
                 private_key_pem = key_data.get("metadata", {}).get("private_key_pem")
                 if not private_key_pem:
                     signing_jwk = key_data.get("jwk", {})

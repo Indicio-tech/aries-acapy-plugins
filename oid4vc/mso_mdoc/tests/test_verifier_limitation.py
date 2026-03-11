@@ -12,7 +12,7 @@ sys.modules["acapy_agent.core"] = MagicMock()
 sys.modules["acapy_agent.core.profile"] = MagicMock()
 sys.modules["isomdl_uniffi"] = MagicMock()
 
-from ..mdoc.verifier import MsoMdocCredVerifier  # noqa: E402
+from ..mdoc.cred_verifier import MsoMdocCredVerifier  # noqa: E402
 
 
 # Helper to create a mock Mdoc with JSON-serializable return values

@@ -176,7 +176,7 @@ async def mdoc_sign(request: web.BaseRequest):
             private_key_pem = key_data.get("metadata", {}).get("private_key_pem")
 
             if not private_key_pem:
-                # C-1: reconstruct PEM from the JWK 'd' parameter instead of
+                # Reconstruct PEM from the JWK 'd' parameter instead of
                 # relying on a redundant PEM blob stored in metadata.
                 signing_jwk = key_data.get("jwk", {})
                 if signing_jwk.get("d"):
@@ -202,9 +202,6 @@ async def mdoc_sign(request: web.BaseRequest):
     except ValueError as err:
         raise web.HTTPBadRequest(reason=str(err)) from err
     except Exception as err:
-        # M-6: catch all errors from signing (StorageError, CredProcessorError,
-        # isomdl_uniffi exceptions, etc.) so callers always get a structured
-        # HTTP error instead of a 500 with an unformatted traceback.
         LOGGER.exception("mdoc_sign failed: %s", err)
         raise web.HTTPInternalServerError(reason=f"mDoc signing failed: {err}") from err
 

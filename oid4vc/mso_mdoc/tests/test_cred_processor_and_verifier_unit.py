@@ -50,12 +50,9 @@ from acapy_agent.storage.error import StorageDuplicateError, StorageError  # noq
 # ---------------------------------------------------------------------------
 # Now import the modules under test.
 # ---------------------------------------------------------------------------
-from ..mdoc.verifier import (  # noqa: E402
-    MsoMdocCredVerifier,
-    MsoMdocPresVerifier,
-    WalletTrustStore,
-    _parse_string_credential,
-)
+from ..mdoc.cred_verifier import MsoMdocCredVerifier, _parse_string_credential  # noqa: E402
+from ..mdoc.pres_verifier import MsoMdocPresVerifier  # noqa: E402
+from ..mdoc.trust_store import WalletTrustStore  # noqa: E402
 from ..cred_processor import MsoMdocCredProcessor  # noqa: E402
 
 
@@ -553,16 +550,16 @@ class TestCrit3NoUnreachableReturn:
 
 
 # ===========================================================================
-# C-5 fix — PreverifiedMdocClaims typed sentinel
+# PreverifiedMdocClaims typed sentinel
 # ===========================================================================
 
 
-class TestC5PreverifiedClaimsSentinel:
-    """C-5: _is_preverified_claims_dict must only match the typed sentinel."""
+class TestPreverifiedClaimsSentinel:
+    """_is_preverified_claims_dict must only match the typed sentinel."""
 
     def test_plain_dict_with_iso_key_not_matched(self):
         """A plain dict with an org.iso.* key must NOT be treated as pre-verified."""
-        from ..mdoc.verifier import _is_preverified_claims_dict
+        from ..mdoc.cred_verifier import _is_preverified_claims_dict
 
         # Previously this would have returned True — now it must return False.
         spoofed = {"org.iso.18013.5.1": {"given_name": "Attacker"}}
@@ -570,14 +567,14 @@ class TestC5PreverifiedClaimsSentinel:
 
     def test_status_key_dict_not_matched(self):
         """A plain dict with a 'status' key must NOT be treated as pre-verified."""
-        from ..mdoc.verifier import _is_preverified_claims_dict
+        from ..mdoc.cred_verifier import _is_preverified_claims_dict
 
         spoofed = {"status": "verified", "org.iso.18013.5.1": {}}
         assert _is_preverified_claims_dict(spoofed) is False
 
     def test_sentinel_instance_is_matched(self):
         """Only a PreverifiedMdocClaims instance must return True."""
-        from ..mdoc.verifier import PreverifiedMdocClaims, _is_preverified_claims_dict
+        from ..mdoc.cred_verifier import PreverifiedMdocClaims, _is_preverified_claims_dict
 
         sentinel = PreverifiedMdocClaims(
             claims={"org.iso.18013.5.1": {"given_name": "Alice"}}
@@ -586,7 +583,7 @@ class TestC5PreverifiedClaimsSentinel:
 
     def test_verify_credential_returns_sentinel_claims_as_payload(self):
         """verify_credential with a PreverifiedMdocClaims returns sentinel.claims."""
-        from ..mdoc.verifier import MsoMdocCredVerifier, PreverifiedMdocClaims
+        from ..mdoc.cred_verifier import MsoMdocCredVerifier, PreverifiedMdocClaims
 
         verifier = MsoMdocCredVerifier(trust_store=None)
         profile, _ = make_mock_profile()
@@ -603,12 +600,12 @@ class TestC5PreverifiedClaimsSentinel:
 
 
 # ===========================================================================
-# C-2 fix — _normalize_mdoc_result no longer calls codecs.decode(unicode_escape)
+# _normalize_mdoc_result must not interpret escape sequences
 # ===========================================================================
 
 
-class TestC2NormalizeNoUnicodeEscape:
-    """C-2: _normalize_mdoc_result must not interpret escape sequences."""
+class TestNormalizeNoUnicodeEscape:
+    """_normalize_mdoc_result must not interpret escape sequences."""
 
     def test_backslash_n_not_decoded(self):
         """A b'...' string containing \\n must return it literally, not as a newline."""
@@ -634,12 +631,12 @@ class TestC2NormalizeNoUnicodeEscape:
 
 
 # ===========================================================================
-# M-4 fix — _extract_device_key strips private key material ('d') from holder JWK
+# _extract_device_key strips private key material ('d') from holder JWK
 # ===========================================================================
 
 
-class TestM4StripPrivateKeyFromDeviceJWK:
-    """M-4: _extract_device_key must remove 'd' before serialising to mDoc."""
+class TestStripPrivateKeyFromDeviceJWK:
+    """_extract_device_key must remove 'd' before serialising to mDoc."""
 
     def test_d_parameter_stripped_from_jwk(self):
         """If the holder presents a JWK containing 'd', it must be stripped."""
@@ -683,12 +680,12 @@ class TestM4StripPrivateKeyFromDeviceJWK:
 
 
 # ===========================================================================
-# M-1 fix — pem_to_jwk detects actual EC curve, plus pem_from_jwk round-trip
+# pem_to_jwk detects actual EC curve, plus pem_from_jwk round-trip
 # ===========================================================================
 
 
-class TestM1PemToJwkCurveDetection:
-    """M-1: pem_to_jwk must use the actual curve, not hard-code P-256."""
+class TestPemToJwkCurveDetection:
+    """pem_to_jwk must use the actual curve, not hard-code P-256."""
 
     def test_p256_curve_detected(self):
         from cryptography.hazmat.primitives.asymmetric import ec
@@ -735,7 +732,7 @@ class TestM1PemToJwkCurveDetection:
         ).decode()
         jwk = pem_to_jwk(pem)
 
-        # Strip 'd' to simulate the stored-without-PEM scenario (C-1 fix)
+        # Strip 'd' to simulate the stored-without-PEM scenario
         public_jwk = {k: v for k, v in jwk.items() if k != "d"}
         jwk_with_d = {**public_jwk, "d": jwk["d"]}
 
@@ -754,12 +751,12 @@ class TestM1PemToJwkCurveDetection:
 
 
 # ===========================================================================
-# M-2 fix — get_certificate_for_key returns most recently created cert
+# get_certificate_for_key returns most recently created cert
 # ===========================================================================
 
 
-class TestM2CertOrdering:
-    """M-2: get_certificate_for_key must return the most recently created cert."""
+class TestCertOrdering:
+    """get_certificate_for_key must return the most recently created cert."""
 
     @pytest.mark.asyncio
     async def test_returns_most_recent_cert(self):
@@ -818,12 +815,12 @@ class TestM2CertOrdering:
 
 
 # ===========================================================================
-# M-3 (storage) fix — get_default_signing_key does NOT write to store
+# get_default_signing_key does NOT write to store
 # ===========================================================================
 
 
-class TestM3GetDefaultSigningKeyReadOnly:
-    """M-3: get_default_signing_key must not call store_config as a side-effect."""
+class TestGetDefaultSigningKeyReadOnly:
+    """get_default_signing_key must not call store_config as a side-effect."""
 
     @pytest.mark.asyncio
     async def test_no_store_config_called_on_auto_select(self):

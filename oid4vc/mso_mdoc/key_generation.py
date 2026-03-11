@@ -100,8 +100,6 @@ def generate_ec_key_pair() -> Tuple[str, str, Dict[str, Any]]:
 def pem_to_jwk(private_key_pem: str) -> Dict[str, Any]:
     """Derive JWK from a PEM-encoded EC private key.
 
-    M-1 fix: detect the actual curve instead of hard-coding "P-256".
-
     Args:
         private_key_pem: PEM-encoded private key string
 
@@ -141,9 +139,6 @@ def pem_to_jwk(private_key_pem: str) -> Dict[str, Any]:
 
 def pem_from_jwk(jwk: Dict[str, Any]) -> str:
     """Reconstruct a PEM-encoded EC private key from a JWK containing a 'd' parameter.
-
-    C-1 fix: allows callers to avoid persisting raw PEM blobs — the JWK ``d``
-    parameter is the single source of truth for the private scalar.
 
     Args:
         jwk: JSON Web Key dictionary containing at least kty, crv, x, y, d.
@@ -346,7 +341,6 @@ def generate_self_signed_certificate(
     )
 
     # 4. CRLDistributionPoints - HTTP URI (required per Annex B)
-    # M-7: configurable via OID4VC_MDOC_CRL_URI; default is a placeholder.
     crl_uri = os.getenv("OID4VC_MDOC_CRL_URI", "http://example.com/crl")
     cert_builder = cert_builder.add_extension(
         x509.CRLDistributionPoints(
@@ -366,7 +360,6 @@ def generate_self_signed_certificate(
     #    URI is used here instead of RFC822Name because the x509_cert Rust crate
     #    used by isomdl_uniffi has been observed to reject certs with RFC822Name
     #    in IssuerAlternativeName when parsing via Certificate::from_pem.
-    # M-7: configurable via OID4VC_MDOC_ISSUER_URI; default is a placeholder.
     issuer_uri = os.getenv("OID4VC_MDOC_ISSUER_URI", "https://example.com")
     cert_builder = cert_builder.add_extension(
         x509.IssuerAlternativeName(
@@ -419,8 +412,7 @@ async def generate_default_keys_and_certs(
     private_pem, public_pem, jwk = generate_ec_key_pair()
     key_id = f"mdoc-key-{uuid.uuid4().hex[:8]}"
 
-    # Store the key
-    # C-1: do NOT store private_key_pem; the JWK 'd' parameter is the
+    # Store the key — do NOT store private_key_pem; the JWK 'd' parameter is the
     # single source of truth for the private scalar.
     await storage_manager.store_key(
         session,

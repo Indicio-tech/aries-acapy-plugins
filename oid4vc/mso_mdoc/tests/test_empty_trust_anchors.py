@@ -34,12 +34,10 @@ _iso_stub.AuthenticationStatus.INVALID = "INVALID"
 _iso_stub.MdocVerificationError = type("MdocVerificationError", (Exception,), {})
 sys.modules.setdefault("isomdl_uniffi", _iso_stub)
 
-from ..mdoc.verifier import (  # noqa: E402
-    MsoMdocCredVerifier,
-    MsoMdocPresVerifier,
-    WalletTrustStore,
-    mdoc_verify,
-)
+from ..mdoc.cred_verifier import MsoMdocCredVerifier  # noqa: E402
+from ..mdoc.pres_verifier import MsoMdocPresVerifier  # noqa: E402
+from ..mdoc.trust_store import WalletTrustStore  # noqa: E402
+from ..mdoc.mdoc_verify import mdoc_verify  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +239,7 @@ class TestMdocVerifyEmptyTrustAnchors:
         """
         mock_mdoc = _make_mock_mdoc(verified=True)
 
-        with patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_iso, patch(
+        with patch("mso_mdoc.mdoc.mdoc_verify.isomdl_uniffi") as mock_iso, patch(
             "mso_mdoc.mdoc.cred_verifier.isomdl_uniffi"
         ) as mock_iso_cred:
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
@@ -260,7 +258,7 @@ class TestMdocVerifyEmptyTrustAnchors:
         """mdoc_verify(mso_mdoc, trust_anchors=[]) must return verified=False."""
         mock_mdoc = _make_mock_mdoc(verified=True)
 
-        with patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_iso, patch(
+        with patch("mso_mdoc.mdoc.mdoc_verify.isomdl_uniffi") as mock_iso, patch(
             "mso_mdoc.mdoc.cred_verifier.isomdl_uniffi"
         ) as mock_iso_cred:
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
@@ -289,7 +287,7 @@ class TestMdocVerifyEmptyTrustAnchors:
         )
         mock_mdoc = _make_mock_mdoc(verified=True, common_name="My CA")
 
-        with patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_iso, patch(
+        with patch("mso_mdoc.mdoc.mdoc_verify.isomdl_uniffi") as mock_iso, patch(
             "mso_mdoc.mdoc.cred_verifier.isomdl_uniffi"
         ) as mock_iso_cred:
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
@@ -304,7 +302,7 @@ class TestMdocVerifyEmptyTrustAnchors:
 
     def test_mdoc_verify_parse_failure_returns_not_verified(self):
         """Parsing failure always returns verified=False regardless of trust anchors."""
-        with patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_iso, patch(
+        with patch("mso_mdoc.mdoc.mdoc_verify.isomdl_uniffi") as mock_iso, patch(
             "mso_mdoc.mdoc.cred_verifier.isomdl_uniffi"
         ) as mock_iso_cred:
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError

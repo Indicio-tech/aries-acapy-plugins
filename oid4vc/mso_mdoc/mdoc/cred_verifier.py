@@ -20,8 +20,6 @@ LOGGER = logging.getLogger(__name__)
 class PreverifiedMdocClaims:
     """Typed sentinel wrapping namespaced claims already verified by verify_presentation.
 
-    C-5 fix: replaces a heuristic ``dict`` key-prefix check that could be
-    bypassed by any caller-controlled dict containing an ``org.iso.*`` key.
     Only ``MsoMdocPresVerifier.verify_presentation`` (trusted code) should
     construct instances of this class; external callers cannot spoof it.
     """
@@ -30,19 +28,15 @@ class PreverifiedMdocClaims:
 
 
 def _is_preverified_claims_dict(credential: Any) -> bool:
-    """Return True only when *credential* is a typed :class:`PreverifiedMdocClaims`.
-
-    C-5 fix: the previous heuristic — checking for ``org.iso.*`` key prefixes —
-    was bypassable by any external caller whose dict happened to contain such a
-    key.  Using a typed sentinel makes the check unforgeable.
-    """
+    """Return True only when *credential* is a typed :class:`PreverifiedMdocClaims`."""
     return isinstance(credential, PreverifiedMdocClaims)
 
 
 def _parse_string_credential(credential: str) -> tuple[Optional[Any], Optional[str]]:
     """Parse a string credential into an Mdoc object.
 
-    Tries multiple formats: hex, base64url IssuerSigned, base64url DeviceResponse.
+    Tries three formats: hex CBOR DeviceResponse, base64url IssuerSigned,
+    then base64url-encoded DeviceResponse (wallet-compatible format).
 
     Args:
         credential: String credential to parse
@@ -50,15 +44,12 @@ def _parse_string_credential(credential: str) -> tuple[Optional[Any], Optional[s
     Returns:
         Tuple of (Parsed Mdoc object or None if parsing fails, error message if any)
     """
-    last_error = None
-
     # Try hex first (full DeviceResponse)
     try:
         if all(c in "0123456789abcdefABCDEF" for c in credential):
             LOGGER.debug("Trying to parse credential as hex DeviceResponse")
             return isomdl_uniffi.Mdoc.from_string(credential), None
     except Exception as hex_err:
-        last_error = str(hex_err)
         LOGGER.debug("Hex parsing failed: %s", hex_err)
 
     # Try base64url-encoded IssuerSigned
@@ -69,10 +60,9 @@ def _parse_string_credential(credential: str) -> tuple[Optional[Any], Optional[s
         )
         return mdoc, None
     except Exception as issuer_signed_err:
-        last_error = str(issuer_signed_err)
         LOGGER.debug("IssuerSigned parsing failed: %s", issuer_signed_err)
 
-    # Try base64url decoding to hex, then DeviceResponse parsing
+    # Try base64url-encoded DeviceResponse (wallet-compatible format)
     try:
         LOGGER.debug("Trying to parse credential as base64url DeviceResponse")
         padded = (
@@ -84,15 +74,8 @@ def _parse_string_credential(credential: str) -> tuple[Optional[Any], Optional[s
         decoded_bytes = base64.b64decode(standard_b64)
         return isomdl_uniffi.Mdoc.from_string(decoded_bytes.hex()), None
     except Exception as b64_err:
-        last_error = str(b64_err)
-        LOGGER.debug("Base64 parsing failed: %s", b64_err)
-
-    # Last resort: try direct string parsing
-    try:
-        return isomdl_uniffi.Mdoc.from_string(credential), None
-    except Exception as final_err:
-        last_error = str(final_err)
-        return None, last_error
+        LOGGER.debug("Base64 DeviceResponse parsing failed: %s", b64_err)
+        return None, str(b64_err)
 
 
 def _extract_mdoc_claims(mdoc: Any) -> dict:

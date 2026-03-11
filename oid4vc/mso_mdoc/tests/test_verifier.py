@@ -8,12 +8,9 @@ import pytest
 
 from oid4vc.models.presentation import OID4VPPresentation
 
-from ..mdoc.verifier import (
-    MsoMdocCredVerifier,
-    MsoMdocPresVerifier,
-    PreverifiedMdocClaims,
-    VerifyResult,
-)
+from ..mdoc.cred_verifier import MsoMdocCredVerifier, PreverifiedMdocClaims
+from ..mdoc.pres_verifier import MsoMdocPresVerifier
+from oid4vc.cred_processor import VerifyResult
 
 # Mock acapy_agent and dependencies before importing module under test
 sys.modules["pydid"] = MagicMock()

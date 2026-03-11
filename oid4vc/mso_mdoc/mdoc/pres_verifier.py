@@ -1,6 +1,5 @@
-"""mso_mdoc presentation verifier, OID4VP helpers, and standalone mdoc_verify."""
+"""mso_mdoc OID4VP presentation verifier."""
 
-import base64
 import json
 import logging
 from typing import Any, List, Optional
@@ -10,7 +9,7 @@ from acapy_agent.core.profile import Profile
 from cryptography import x509 as _x509
 
 from oid4vc.config import Config
-from oid4vc.cred_processor import PresVerifier, PresVerifierError, VerifyResult
+from oid4vc.cred_processor import PresVerifier, VerifyResult
 from oid4vc.did_utils import retrieve_or_create_did_jwk
 from oid4vc.models.presentation import OID4VPPresentation
 
@@ -18,110 +17,13 @@ from ..storage import MdocStorageManager
 from .trust_store import TrustStore, WalletTrustStore
 from .utils import flatten_trust_anchors
 from .cred_verifier import PreverifiedMdocClaims
+from .mdoc_item import (
+    _decode_presentation_bytes,
+    _normalize_presentation_input,
+    extract_verified_claims,
+)
 
 LOGGER = logging.getLogger(__name__)
-
-
-def extract_mdoc_item_value(item: Any) -> Any:
-    """Extract the actual value from an MDocItem enum variant.
-
-    MDocItem is a Rust enum exposed via UniFFI with variants:
-    - TEXT(str)
-    - BOOL(bool)
-    - INTEGER(int)
-    - ARRAY(List[MDocItem])
-    - ITEM_MAP(Dict[str, MDocItem])
-
-    Each variant stores its value in _values[0].
-    """
-    if item is None:
-        return None
-
-    # Check if it's an MDocItem variant by checking for _values attribute
-    if hasattr(item, "_values") and item._values:
-        inner_value = item._values[0]
-
-        # Handle nested structures recursively
-        if isinstance(inner_value, dict):
-            return {k: extract_mdoc_item_value(v) for k, v in inner_value.items()}
-        elif isinstance(inner_value, list):
-            return [extract_mdoc_item_value(v) for v in inner_value]
-        else:
-            return inner_value
-
-    # Already a plain value
-    return item
-
-
-def extract_verified_claims(verified_response: dict) -> dict:
-    """Extract claims from MdlReaderVerifiedData.verified_response.
-
-    The verified_response is structured as:
-    dict[str, dict[str, MDocItem]]
-    e.g. {"org.iso.18013.5.1": {"given_name": MDocItem.TEXT("Alice"), ...}}
-
-    This function converts it to:
-    {"org.iso.18013.5.1": {"given_name": "Alice", ...}}
-    """
-    claims = {}
-    for namespace, elements in verified_response.items():
-        ns_claims = {}
-        for element_name, mdoc_item in elements.items():
-            ns_claims[element_name] = extract_mdoc_item_value(mdoc_item)
-        claims[namespace] = ns_claims
-    return claims
-
-
-def _normalize_presentation_input(presentation: Any) -> tuple[list, bool]:
-    """Normalize presentation input to a list.
-
-    Args:
-        presentation: The presentation data
-
-    Returns:
-        Tuple of (list of presentations, is_list_input flag)
-    """
-    if isinstance(presentation, str):
-        try:
-            parsed = json.loads(presentation)
-            if isinstance(parsed, list):
-                return parsed, True
-        except json.JSONDecodeError:
-            pass
-        return [presentation], False
-    elif isinstance(presentation, list):
-        return presentation, True
-    return [presentation], False
-
-
-def _decode_presentation_bytes(pres_item: Any) -> bytes:
-    """Decode presentation item to bytes.
-
-    Args:
-        pres_item: The presentation item (string or bytes)
-
-    Returns:
-        Decoded bytes
-
-    Raises:
-        PresVerifierError: If unable to decode to bytes
-    """
-    if isinstance(pres_item, bytes):
-        return pres_item
-
-    if isinstance(pres_item, str):
-        # Try base64url decode
-        try:
-            return base64.urlsafe_b64decode(pres_item + "=" * (-len(pres_item) % 4))
-        except (ValueError, TypeError):
-            pass
-        # Try hex decode
-        try:
-            return bytes.fromhex(pres_item)
-        except (ValueError, TypeError):
-            pass
-
-    raise PresVerifierError("Presentation must be bytes or base64/hex string")
 
 
 async def _get_oid4vp_verification_params(
@@ -432,97 +334,3 @@ class MsoMdocPresVerifier(PresVerifier):
             LOGGER.exception("Error verifying mdoc presentation")
             return VerifyResult(verified=False, payload={"error": str(e)})
 
-
-class MdocVerifyResult:
-    """Result of mdoc verification."""
-
-    def __init__(
-        self,
-        verified: bool,
-        payload: Optional[dict] = None,
-        error: Optional[str] = None,
-    ):
-        """Initialize the verification result."""
-        self.verified = verified
-        self.payload = payload
-        self.error = error
-
-    def serialize(self):
-        """Serialize the result to a dictionary."""
-        return {
-            "verified": self.verified,
-            "payload": self.payload,
-            "error": self.error,
-        }
-
-
-def mdoc_verify(
-    mso_mdoc: str, trust_anchors: Optional[List[str]] = None
-) -> MdocVerifyResult:
-    """Verify an mso_mdoc credential.
-
-    Accepts mDOC strings in any format understood by ``_parse_string_credential``:
-    hex-encoded DeviceResponse, base64url IssuerSigned, or raw base64.
-
-    Args:
-        mso_mdoc: The mDOC string (hex, base64url, or base64).
-        trust_anchors: Optional list of PEM-encoded trust anchor certificates.
-            Each element may contain a single cert or a concatenated PEM chain;
-            chains are automatically split before being passed to Rust.
-
-    Returns:
-        MdocVerifyResult: The verification result.
-    """
-    from .cred_verifier import _parse_string_credential
-
-    try:
-        # Parse the mdoc — try all supported formats
-        mdoc, parse_error = _parse_string_credential(mso_mdoc)
-        if not mdoc:
-            return MdocVerifyResult(
-                verified=False,
-                error=f"Failed to parse mDOC: {parse_error or 'unknown format'}",
-            )
-
-        # Flatten concatenated PEM chains so Rust receives one cert per list
-        # entry (isomdl_uniffi only reads the first PEM block in a string).
-        if trust_anchors:
-            trust_anchors = flatten_trust_anchors(trust_anchors)
-
-        # Fail-closed guard: refuse to verify without at least one trust anchor.
-        if not trust_anchors:
-            return MdocVerifyResult(
-                verified=False,
-                error="No trust anchors configured; mDOC verification requires "
-                "at least one trust anchor.",
-            )
-
-        # Verify issuer signature
-        try:
-            # Enable intermediate certificate chaining by default
-            verification_result = mdoc.verify_issuer_signature(trust_anchors, True)
-
-            if verification_result.verified:
-                return MdocVerifyResult(
-                    verified=True,
-                    payload={
-                        "status": "verified",
-                        "doctype": mdoc.doctype(),
-                        "issuer_common_name": verification_result.common_name,
-                    },
-                )
-            else:
-                return MdocVerifyResult(
-                    verified=False,
-                    payload={"doctype": mdoc.doctype()},
-                    error=verification_result.error or "Signature verification failed",
-                )
-        except isomdl_uniffi.MdocVerificationError as e:
-            return MdocVerifyResult(
-                verified=False,
-                payload={"doctype": mdoc.doctype()},
-                error=str(e),
-            )
-
-    except Exception as e:
-        return MdocVerifyResult(verified=False, error=str(e))
