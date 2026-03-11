@@ -199,15 +199,7 @@ class MdocStorageManager:
     async def get_default_signing_key(
         self, session: ProfileSession
     ) -> Optional[Dict[str, Any]]:
-        """Get the default signing key.
-
-        M-3 fix: this method is now read-only.  The previous implementation
-        silently persisted a config record as a side-effect of the first read,
-        which made it impossible to call the getter safely inside a read-only
-        transaction.  Auto-promotion of the first available key is now done
-        without touching the config store — callers that want to persist the
-        default must call ``store_config`` explicitly.
-        """
+        """Get the default signing key."""
         cfg = await config.get_config(session, "default_signing_key")
         if not cfg:
             # No default configured — return the first available signing key

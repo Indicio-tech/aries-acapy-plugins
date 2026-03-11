@@ -200,15 +200,18 @@ test.describe('OID4VC mDOC Demo', () => {
     // ── Create credential offer ──
     const credentialSubject = {
       'org.iso.18013.5.1': {
-        given_name:         'Alice',
-        family_name:        'Holder',
-        birth_date:         '1990-06-15',
-        issuing_country:    'US',
-        issuing_authority:  'Demo DMV',
-        document_number:    'DL-DEMO-001',
-        issue_date:         new Date().toISOString().split('T')[0],
-        expiry_date:        new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
-                              .toISOString().split('T')[0],
+        given_name:              'Alice',
+        family_name:             'Holder',
+        birth_date:              '1990-06-15',
+        issuing_country:         'US',
+        issuing_authority:       'Demo DMV',
+        document_number:         'DL-DEMO-001',
+        issue_date:              new Date().toISOString().split('T')[0],
+        expiry_date:             new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+                                   .toISOString().split('T')[0],
+        // portrait and un_distinguishing_sign are required by ISO 18013-5.1
+        portrait:                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        un_distinguishing_sign:  'USA',
         driving_privileges: [
           { vehicle_category_code: 'C', issue_date: '2020-01-01', expiry_date: '2030-01-01' },
         ],

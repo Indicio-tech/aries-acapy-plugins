@@ -6,6 +6,7 @@ import json
 import time
 from datetime import UTC
 from typing import Any, Dict
+from urllib.parse import urlparse
 
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.core.profile import Profile
@@ -327,15 +328,40 @@ async def handle_proof_of_posession(
                 content_type="application/json",
             ) from exc
     else:
-        raise web.HTTPBadRequest(
-            text=json.dumps(
-                {
-                    "error": "invalid_proof",
-                    "error_description": "no key material in proof header",
-                }
-            ),
-            content_type="application/json",
-        )
+        # No key material in the header. Some draft-era wallets (e.g. walt.id)
+        # omit jwk/kid/x5c from the proof header and instead put the DID in the
+        # payload `iss` claim. Decode the payload first and attempt resolution.
+        payload_for_iss = b64_to_dict(encoded_payload)
+        iss = payload_for_iss.get("iss")
+        if iss:
+            # key_material_for_kid expects a DID URL (with fragment), not a bare
+            # DID.  For did:jwk and did:key the first verification method is #0.
+            kid_url = iss if "#" in iss else f"{iss}#0"
+            try:
+                key = await key_material_for_kid(profile, kid_url)
+                LOGGER.debug("Resolved proof key from payload iss: %s", iss)
+            except (ValueError, Exception) as exc:
+                LOGGER.debug("Could not resolve key from iss '%s': %s", iss, exc)
+                raise web.HTTPBadRequest(
+                    text=json.dumps(
+                        {
+                            "error": "invalid_proof",
+                            "error_description": "no key material in proof header and"
+                            " iss could not be resolved",
+                        }
+                    ),
+                    content_type="application/json",
+                ) from exc
+        else:
+            raise web.HTTPBadRequest(
+                text=json.dumps(
+                    {
+                        "error": "invalid_proof",
+                        "error_description": "no key material in proof header",
+                    }
+                ),
+                content_type="application/json",
+            )
 
     payload = b64_to_dict(encoded_payload)
 
@@ -347,8 +373,24 @@ async def handle_proof_of_posession(
         issuer_endpoint = Config.from_settings(profile.settings).endpoint
         # aud may be a string or a list of strings (per RFC 7519 § 4.1.3)
         aud_values = [aud] if isinstance(aud, str) else list(aud)
+
+        def _strip_default_port(url: str) -> str:
+            """Remove explicit default ports (https:443, http:80) for comparison."""
+            try:
+                p = urlparse(url)
+                if (p.scheme == "https" and p.port == 443) or (
+                    p.scheme == "http" and p.port == 80
+                ):
+                    netloc = p.hostname or ""
+                    return p._replace(netloc=netloc).geturl()
+            except Exception:
+                pass
+            return url
+
+        norm_endpoint = _strip_default_port(issuer_endpoint) if issuer_endpoint else ""
         if issuer_endpoint and not any(
-            av == issuer_endpoint or av.startswith(issuer_endpoint + "/tenant/")
+            _strip_default_port(av) == norm_endpoint
+            or _strip_default_port(av).startswith(norm_endpoint + "/tenant/")
             for av in aud_values
         ):
             raise web.HTTPBadRequest(
@@ -404,11 +446,13 @@ async def handle_proof_of_posession(
     # JWK from the resolved key so credential processors that need the raw JWK
     # (e.g. mso_mdoc for holder key binding in DeviceKey) can access it.
     holder_jwk = headers.get("jwk")
-    if holder_jwk is None and "kid" in headers:
+    if holder_jwk is None and (
+        "kid" in headers or not any(k in headers for k in ("jwk", "kid", "x5c"))
+    ):
         try:
             holder_jwk = json.loads(key.get_jwk_public())
         except Exception:
-            LOGGER.debug("Could not derive holder JWK from kid-resolved key")
+            LOGGER.debug("Could not derive holder JWK from resolved key")
 
     return PopResult(
         headers,

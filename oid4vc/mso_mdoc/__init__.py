@@ -1,7 +1,6 @@
 """MSO_MDOC Credential Handler Plugin."""
 
 import logging
-from typing import Optional
 
 from acapy_agent.config.injection_context import InjectionContext
 from acapy_agent.core.event_bus import EventBus
@@ -15,9 +14,6 @@ from oid4vc.cred_processor import CredProcessors
 from . import routes as routes
 
 LOGGER = logging.getLogger(__name__)
-
-# Store reference to processor for startup initialization
-_mso_mdoc_processor: Optional[MsoMdocCredProcessor] = None
 
 
 async def on_startup(profile: Profile, event: object):
@@ -56,8 +52,6 @@ async def on_startup(profile: Profile, event: object):
 
 async def setup(context: InjectionContext):
     """Setup the plugin."""
-    global _mso_mdoc_processor
-
     LOGGER.info("Setting up MSO_MDOC plugin")
 
     # Trust anchors are always wallet-scoped.  A fresh WalletTrustStore is
