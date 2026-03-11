@@ -9,6 +9,7 @@ import pytest
 
 from tests.conftest import safely_get_first_credential, wait_for_presentation_valid
 from tests.helpers import MDOC_AVAILABLE  # noqa: F401
+from tests.helpers.constants import MDL_MANDATORY_FIELDS
 
 # =============================================================================
 # mDOC Cross-Wallet Tests
@@ -61,6 +62,7 @@ async def test_mdoc_issue_to_credo_verify_with_sphereon_patterns(
                 "org.iso.18013.5.1": {
                     "given_name": "Cross",
                     "family_name": "Wallet",
+                    **MDL_MANDATORY_FIELDS,
                 }
             },
         },
@@ -191,6 +193,7 @@ async def test_mdoc_issue_to_sphereon_verify_with_credo_patterns(
                 "org.iso.18013.5.1": {
                     "given_name": "Sphereon",
                     "family_name": "Test",
+                    **MDL_MANDATORY_FIELDS,
                 }
             },
             "verification_method": issuer_did + "#0",

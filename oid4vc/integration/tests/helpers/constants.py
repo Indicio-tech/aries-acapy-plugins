@@ -104,3 +104,16 @@ class ENDPOINTS:
 DEFAULT_TIMEOUT: Final[int] = 30
 VALIDATION_POLL_INTERVAL: Final[float] = 0.5
 VALIDATION_MAX_ATTEMPTS: Final[int] = 20
+
+# ISO 18013-5 mDL mandatory fields required by create_and_sign_mdl
+# portrait and driving_privileges are mandatory per ISO 18013-5 mDL profile
+MDL_PORTRAIT: Final[str] = "SGVsbG8gV29ybGQ="  # base64("Hello World") placeholder
+MDL_DRIVING_PRIVILEGES: Final[list] = []
+MDL_UN_DISTINGUISHING_SIGN: Final[str] = "USA"
+
+# Merge these into any mDL credential_subject["org.iso.18013.5.1"] dict
+MDL_MANDATORY_FIELDS: Final[dict] = {
+    "portrait": MDL_PORTRAIT,
+    "driving_privileges": MDL_DRIVING_PRIVILEGES,
+    "un_distinguishing_sign": MDL_UN_DISTINGUISHING_SIGN,
+}

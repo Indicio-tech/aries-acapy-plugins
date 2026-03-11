@@ -15,7 +15,7 @@ import uuid
 import pytest
 
 from tests.base import BaseMdocTest
-from tests.helpers import Doctype, wait_for_presentation_state
+from tests.helpers import Doctype, MDL_MANDATORY_FIELDS, wait_for_presentation_state
 
 pytestmark = [pytest.mark.mdoc, pytest.mark.interop]
 
@@ -79,6 +79,7 @@ class TestCredoMdocInterop(BaseMdocTest):
                 "given_name": "Jane",
                 "birth_date": "1990-05-15",
                 "age_over_18": True,
+                **MDL_MANDATORY_FIELDS,
             }
         }
 
@@ -155,6 +156,7 @@ class TestCredoMdocInterop(BaseMdocTest):
                         "family_name": "Doe",
                         "given_name": "Jane",
                         "age_over_18": True,
+                        **MDL_MANDATORY_FIELDS,
                     }
                 },
                 "did": issuer_p256_did,
@@ -268,6 +270,7 @@ class TestCredoMdocInterop(BaseMdocTest):
                     Doctype.MDL_NAMESPACE: {
                         "birth_date": "1990-05-15",  # In credential...
                         "age_over_18": True,
+                        **MDL_MANDATORY_FIELDS,
                     }
                 },
                 "did": issuer_p256_did,

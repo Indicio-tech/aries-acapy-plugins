@@ -19,6 +19,8 @@ import pytest_asyncio
 
 from credo_wrapper import CredoWrapper
 
+from tests.helpers.constants import MDL_MANDATORY_FIELDS
+
 # Import shared fixtures from parent conftest
 # Note: setup_all_trust_anchors is defined in tests/conftest.py
 
@@ -172,6 +174,7 @@ async def mdoc_offer_did_based(
             "issuing_country": "US",
             "issuing_authority": "State DMV",
             "document_number": "DL123456789",
+            **MDL_MANDATORY_FIELDS,
         }
     }
 
@@ -223,6 +226,7 @@ async def mdoc_offer_verification_method(
             "issuing_country": "US",
             "issuing_authority": "State DMV",
             "document_number": "DL987654321",
+            **MDL_MANDATORY_FIELDS,
         }
     }
 
