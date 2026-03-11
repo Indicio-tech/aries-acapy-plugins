@@ -47,6 +47,14 @@ class Nonce(BaseRecord):
         return self._id
 
     @property
+    def tags(self) -> dict:
+        """Return tags dict with bool values stringified for Askar compatibility."""
+        result = super().tags
+        if "used" in result:
+            result["used"] = str(result["used"])
+        return result
+
+    @property
     def record_value(self) -> dict:
         """Return dict representation of the nonce record for storage."""
         return {

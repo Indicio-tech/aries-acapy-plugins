@@ -2,19 +2,15 @@
 
 import sys
 from contextlib import asynccontextmanager
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from oid4vc.models.presentation import OID4VPPresentation
 
-from ..mdoc.verifier import (
-    FileTrustStore,
-    MsoMdocCredVerifier,
-    MsoMdocPresVerifier,
-    PreverifiedMdocClaims,
-    VerifyResult,
-)
+from ..mdoc.cred_verifier import MsoMdocCredVerifier, PreverifiedMdocClaims
+from ..mdoc.pres_verifier import MsoMdocPresVerifier
+from oid4vc.cred_processor import VerifyResult
 
 # Mock acapy_agent and dependencies before importing module under test
 sys.modules["pydid"] = MagicMock()
@@ -48,122 +44,6 @@ def create_mock_profile_with_session():
     return profile, mock_session
 
 
-class TestFileTrustStore:
-    """Test FileTrustStore functionality."""
-
-    def test_init_stores_path(self):
-        """Test that initialization stores the path correctly."""
-        store = FileTrustStore("/some/path")
-        assert store.path == "/some/path"
-
-    def test_get_trust_anchors_success(self):
-        """Test retrieving trust anchors successfully."""
-        with (
-            patch("os.path.isdir", return_value=True),
-            patch("os.listdir", return_value=["cert1.pem", "cert2.crt", "ignore.txt"]),
-            patch("builtins.open", mock_open(read_data="CERT_CONTENT")),
-        ):
-            store = FileTrustStore("/path/to/certs")
-            anchors = store.get_trust_anchors()
-
-            assert len(anchors) == 2
-            assert anchors == ["CERT_CONTENT", "CERT_CONTENT"]
-
-    def test_get_trust_anchors_no_dir(self):
-        """Test handling of missing directory."""
-        with patch("os.path.isdir", return_value=False):
-            store = FileTrustStore("/invalid/path")
-            anchors = store.get_trust_anchors()
-            assert anchors == []
-
-    def test_get_trust_anchors_read_error(self):
-        """Test handling of file read errors."""
-        with (
-            patch("os.path.isdir", return_value=True),
-            patch("os.listdir", return_value=["cert1.pem"]),
-            patch("builtins.open", side_effect=Exception("Read error")),
-        ):
-            store = FileTrustStore("/path/to/certs")
-            anchors = store.get_trust_anchors()
-            assert anchors == []
-
-    def test_get_trust_anchors_empty_directory(self):
-        """Test handling of empty directory with no certificate files."""
-        with (
-            patch("os.path.isdir", return_value=True),
-            patch("os.listdir", return_value=[]),
-        ):
-            store = FileTrustStore("/path/to/empty")
-            anchors = store.get_trust_anchors()
-            assert anchors == []
-
-    def test_get_trust_anchors_only_non_cert_files(self):
-        """Test directory with only non-certificate files."""
-        with (
-            patch("os.path.isdir", return_value=True),
-            patch("os.listdir", return_value=["readme.txt", "config.json", "script.sh"]),
-        ):
-            store = FileTrustStore("/path/to/certs")
-            anchors = store.get_trust_anchors()
-            assert anchors == []
-
-    def test_get_trust_anchors_partial_read_failure(self):
-        """Test that successful reads continue after a failed read."""
-
-        def mock_open_side_effect(path, mode="r"):
-            if "fail" in path:
-                raise Exception("Read error")
-            return mock_open(read_data="CERT_CONTENT")()
-
-        with (
-            patch("os.path.isdir", return_value=True),
-            patch("os.listdir", return_value=["good1.pem", "fail.pem", "good2.crt"]),
-            patch("builtins.open", side_effect=mock_open_side_effect),
-        ):
-            store = FileTrustStore("/path/to/certs")
-            anchors = store.get_trust_anchors()
-
-            # Should have 2 successful reads despite 1 failure
-            assert len(anchors) == 2
-            assert all(a == "CERT_CONTENT" for a in anchors)
-
-    def test_get_trust_anchors_case_sensitive_extensions(self):
-        """Test that file extension matching is case-sensitive."""
-        with (
-            patch("os.path.isdir", return_value=True),
-            patch("os.listdir", return_value=["cert1.PEM", "cert2.CRT", "cert3.pem"]),
-            patch("builtins.open", mock_open(read_data="CERT_CONTENT")),
-        ):
-            store = FileTrustStore("/path/to/certs")
-            anchors = store.get_trust_anchors()
-
-            # Only .pem (lowercase) should be matched, not .PEM or .CRT
-            assert len(anchors) == 1
-
-    def test_get_trust_anchors_reads_different_content(self):
-        """Test that different certificate files have different content."""
-        file_contents = {
-            "/path/to/certs/cert1.pem": "CERT_ONE",
-            "/path/to/certs/cert2.crt": "CERT_TWO",
-        }
-
-        def mock_open_with_content(path, mode="r"):
-            content = file_contents.get(path, "UNKNOWN")
-            return mock_open(read_data=content)()
-
-        with (
-            patch("os.path.isdir", return_value=True),
-            patch("os.listdir", return_value=["cert1.pem", "cert2.crt"]),
-            patch("builtins.open", side_effect=mock_open_with_content),
-        ):
-            store = FileTrustStore("/path/to/certs")
-            anchors = store.get_trust_anchors()
-
-            assert len(anchors) == 2
-            assert "CERT_ONE" in anchors
-            assert "CERT_TWO" in anchors
-
-
 class TestMsoMdocCredVerifier:
     """Test MsoMdocCredVerifier functionality."""
 
@@ -186,7 +66,7 @@ class TestMsoMdocCredVerifier:
         profile = MagicMock()
 
         # Patch isomdl_uniffi in the verifier module
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl:
+        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_isomdl:
             # Create a real exception class for MdocVerificationError
             class MockMdocVerificationError(Exception):
                 pass
@@ -268,9 +148,11 @@ class TestMsoMdocPresVerifier:
         presentation_data = "mock_presentation_data"
 
         with (
-            patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl,
-            patch("mso_mdoc.mdoc.verifier.Config") as mock_config,
-            patch("mso_mdoc.mdoc.verifier.retrieve_or_create_did_jwk") as mock_did_jwk,
+            patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_isomdl,
+            patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
+            patch(
+                "mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk"
+            ) as mock_did_jwk,
         ):
             mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
 
@@ -312,9 +194,11 @@ class TestMsoMdocPresVerifier:
         presentation_data = "mock_presentation_data"
 
         with (
-            patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl,
-            patch("mso_mdoc.mdoc.verifier.Config") as mock_config,
-            patch("mso_mdoc.mdoc.verifier.retrieve_or_create_did_jwk") as mock_did_jwk,
+            patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_isomdl,
+            patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
+            patch(
+                "mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk"
+            ) as mock_did_jwk,
         ):
             mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
 
@@ -351,9 +235,11 @@ class TestMsoMdocPresVerifier:
         presentation_data = "mock_presentation_data"
 
         with (
-            patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl,
-            patch("mso_mdoc.mdoc.verifier.Config") as mock_config,
-            patch("mso_mdoc.mdoc.verifier.retrieve_or_create_did_jwk") as mock_did_jwk,
+            patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_isomdl,
+            patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
+            patch(
+                "mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk"
+            ) as mock_did_jwk,
         ):
             mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
 

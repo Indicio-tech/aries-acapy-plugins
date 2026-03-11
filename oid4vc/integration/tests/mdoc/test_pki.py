@@ -41,9 +41,9 @@ async def test_mdoc_pki_trust_chain(
     doctype = "org.iso.18013.5.1.mDL"
     namespaces = {
         "org.iso.18013.5.1": {
-            "given_name": cbor2.dumps("Alice"),
-            "family_name": cbor2.dumps("Smith"),
-            "birth_date": cbor2.dumps("1990-01-01"),
+            "given_name": json.dumps("Alice"),
+            "family_name": json.dumps("Smith"),
+            "birth_date": json.dumps("1990-01-01"),
         }
     }
 

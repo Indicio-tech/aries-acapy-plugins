@@ -1,18 +1,15 @@
 """MDoc module."""
 
-from .issuer import mso_mdoc_sign, mdoc_sign
-from .verifier import mso_mdoc_verify, mdoc_verify, MdocVerifyResult
-from .exceptions import MissingPrivateKey, MissingIssuerAuth
-from .exceptions import NoDocumentTypeProvided, NoSignedDocumentProvided
+from .issuer import isomdl_mdoc_sign, parse_mdoc
+from .mdoc_verify import MdocVerifyResult, mdoc_verify
+from .utils import extract_signing_cert, flatten_trust_anchors, split_pem_chain
 
 __all__ = [
-    "mso_mdoc_sign",
-    "mdoc_sign",
-    "mso_mdoc_verify",
+    "isomdl_mdoc_sign",
+    "parse_mdoc",
     "mdoc_verify",
     "MdocVerifyResult",
-    "MissingPrivateKey",
-    "MissingIssuerAuth",
-    "NoDocumentTypeProvided",
-    "NoSignedDocumentProvided",
+    "split_pem_chain",
+    "extract_signing_cert",
+    "flatten_trust_anchors",
 ]

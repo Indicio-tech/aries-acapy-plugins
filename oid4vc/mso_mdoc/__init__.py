@@ -1,31 +1,64 @@
-"""MSO_MDOC Crendential Handler Plugin."""
+"""MSO_MDOC Credential Handler Plugin."""
 
-from importlib.util import find_spec
+import logging
 
-from acapy_agent.admin.base_server import BaseAdminServer
 from acapy_agent.config.injection_context import InjectionContext
+from acapy_agent.core.event_bus import EventBus
+from acapy_agent.core.profile import Profile
+from acapy_agent.core.util import STARTUP_EVENT_PATTERN
 
 from mso_mdoc.cred_processor import MsoMdocCredProcessor
+from mso_mdoc.storage import MdocStorageManager
 from oid4vc.cred_processor import CredProcessors
-from . import routes
+from . import routes as routes
 
-cwt = find_spec("cwt")
-pycose = find_spec("pycose")
-cbor2 = find_spec("cbor2")
-cbor_diag = find_spec("cbor_diag")
-if not all((cwt, pycose, cbor2, cbor_diag)):
-    raise ImportError("`mso_mdoc` extra required")
+LOGGER = logging.getLogger(__name__)
+
+
+async def on_startup(profile: Profile, event: object):
+    """Handle startup event to initialize profile-dependent resources.
+
+    Trust anchors are always wallet-scoped; a fresh WalletTrustStore is
+    constructed per-request in verify_credential / verify_presentation so
+    each tenant's Askar partition is queried automatically.
+    """
+    LOGGER.info("MSO_MDOC plugin startup - initializing profile-dependent resources")
+
+    # Initialize storage and generate default keys/certs if needed
+    storage_manager = MdocStorageManager(profile)
+
+    # Use a session for storage operations
+    async with profile.session() as session:
+        # Check if default keys exist
+        default_key = await storage_manager.get_default_signing_key(session)
+        if not default_key:
+            LOGGER.warning(
+                "WARNING: No mDoc signing key found. mDoc credential issuance "
+                "will fail until a key is provisioned. Use the admin API "
+                "POST /mso_mdoc/keys/generate to provision a signing key."
+            )
+        else:
+            LOGGER.info(
+                "Using existing default mDoc key: %s",
+                default_key["key_id"],
+            )
 
 
 async def setup(context: InjectionContext):
     """Setup the plugin."""
-    processors = context.inject_or(CredProcessors)
-    if not processors:
-        processors = CredProcessors()
-        context.injector.bind_instance(CredProcessors, processors)
-    mso_mdoc = MsoMdocCredProcessor()
-    processors.register_issuer("mso_mdoc", mso_mdoc)
+    LOGGER.info("Setting up MSO_MDOC plugin")
 
-    admin_server = context.inject_or(BaseAdminServer)
-    if admin_server:
-        await routes.register(admin_server.app)
+    # Trust anchors are always wallet-scoped.  A fresh WalletTrustStore is
+    # constructed per-request inside verify_credential / verify_presentation
+    # so each tenant's Askar partition is used automatically.
+    # Register credential processor
+    processors = context.inject(CredProcessors)
+    _mso_mdoc_processor = MsoMdocCredProcessor()
+    processors.register_issuer("mso_mdoc", _mso_mdoc_processor)
+    processors.register_cred_verifier("mso_mdoc", _mso_mdoc_processor)
+    processors.register_pres_verifier("mso_mdoc", _mso_mdoc_processor)
+
+    # Register startup event handler for storage initialization
+    event_bus = context.inject(EventBus)
+    event_bus.subscribe(STARTUP_EVENT_PATTERN, on_startup)
+    LOGGER.info("MSO_MDOC plugin registered startup handler")

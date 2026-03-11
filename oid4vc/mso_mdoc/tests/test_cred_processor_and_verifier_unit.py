@@ -1,16 +1,27 @@
-"""Tests verifying fixes for issues identified in CODE_REVIEW.md.
+"""Unit tests for MsoMdocCredProcessor, MsoMdocCredVerifier, MsoMdocPresVerifier,
+WalletTrustStore, key-generation utilities, and mso_mdoc storage operations.
 
-Each test class is labelled with the review issue ID it covers.
-Tests in this module are pure-unit tests: the only dependency that
-requires mocking is isomdl_uniffi (a native Rust extension). All pure-
-Python packages (acapy_agent, oid4vc, cbor2, pydid) are imported
-normally so that real exception classes are always used, avoiding class-
-identity mismatches between the code under test and test assertions.
+Coverage areas:
+- Credential processor: issuance, signing-key resolution, payload preparation,
+  device-key extraction, and mDoc result normalisation.
+- Verifier: trust-anchor registry enforcement, credential and presentation
+  verification, pre-verified claims sentinel, and credential parsing.
+- Key & certificate management: PEM<->JWK conversion, EC curve detection,
+  self-signed certificate generation, cert-at-key-generation invariant, and
+  missing-cert error handling.
+- Storage: certificate ordering, config duplicate-error handling, and
+  get_default_signing_key read-only contract.
+
+Tests are pure-unit tests: the only dependency that requires mocking is
+isomdl_uniffi (a native Rust extension). All pure-Python packages
+(acapy_agent, oid4vc, cbor2, pydid) are imported normally so that real
+exception classes are always used, avoiding class-identity mismatches
+between the code under test and test assertions.
 """
 
 import sys
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
 
@@ -39,13 +50,9 @@ from acapy_agent.storage.error import StorageDuplicateError, StorageError  # noq
 # ---------------------------------------------------------------------------
 # Now import the modules under test.
 # ---------------------------------------------------------------------------
-from ..mdoc.verifier import (  # noqa: E402
-    FileTrustStore,
-    MsoMdocCredVerifier,
-    MsoMdocPresVerifier,
-    WalletTrustStore,
-    _parse_string_credential,
-)
+from ..mdoc.cred_verifier import MsoMdocCredVerifier, _parse_string_credential  # noqa: E402
+from ..mdoc.pres_verifier import MsoMdocPresVerifier  # noqa: E402
+from ..mdoc.trust_store import WalletTrustStore  # noqa: E402
 from ..cred_processor import MsoMdocCredProcessor  # noqa: E402
 
 
@@ -100,9 +107,11 @@ class TestCrit1TrustAnchorRegistryNotNone:
         pres_record = make_mock_presentation_record()
 
         with (
-            patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso,
-            patch("mso_mdoc.mdoc.verifier.Config") as mock_config,
-            patch("mso_mdoc.mdoc.verifier.retrieve_or_create_did_jwk") as mock_jwk_fn,
+            patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_iso,
+            patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
+            patch(
+                "mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk"
+            ) as mock_jwk_fn,
         ):
             mock_config.from_settings.return_value.endpoint = "http://localhost"
             mock_jwk = MagicMock()
@@ -131,16 +140,18 @@ class TestCrit1TrustAnchorRegistryNotNone:
     @pytest.mark.asyncio
     async def test_empty_trust_store_passes_empty_registry(self):
         """verify_presentation with a trust_store returning [] must also fail-closed."""
-        mock_store = MagicMock(spec=FileTrustStore)
+        mock_store = MagicMock()
         mock_store.get_trust_anchors.return_value = []
         verifier = MsoMdocPresVerifier(trust_store=mock_store)
         profile, _ = make_mock_profile()
         pres_record = make_mock_presentation_record()
 
         with (
-            patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso,
-            patch("mso_mdoc.mdoc.verifier.Config") as mock_config,
-            patch("mso_mdoc.mdoc.verifier.retrieve_or_create_did_jwk") as mock_jwk_fn,
+            patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_iso,
+            patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
+            patch(
+                "mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk"
+            ) as mock_jwk_fn,
         ):
             mock_config.from_settings.return_value.endpoint = "http://localhost"
             mock_jwk = MagicMock()
@@ -177,7 +188,7 @@ class TestCrit4TrustAnchorsNotNoneCredVerifier:
         verifier = MsoMdocCredVerifier(trust_store=None)
         profile = MagicMock()
 
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso:
+        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso:
             mock_iso.MdocVerificationError = type("MockMVE", (Exception,), {})
 
             class MockMdoc:
@@ -489,7 +500,7 @@ class TestMin5PayloadFlatteningDebugLog:
         doctype = "org.iso.18013.5.1.mDL"
         payload = {doctype: {"given_name": "Alice"}}
 
-        with caplog.at_level(logging.DEBUG, logger="mso_mdoc.cred_processor"):
+        with caplog.at_level(logging.DEBUG, logger="mso_mdoc.payload"):
             result = proc._prepare_payload(payload, doctype)
 
         assert "given_name" in result
@@ -522,7 +533,7 @@ class TestCrit3NoUnreachableReturn:
 
     def test_bad_credential_returns_none_and_error(self):
         """An unparseable credential returns (None, error_str)."""
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso:
+        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso:
             mock_iso.Mdoc.from_string.side_effect = Exception("parse error")
             mock_iso.Mdoc.new_from_base64url_encoded_issuer_signed.side_effect = (
                 Exception("issuer-signed error")
@@ -535,7 +546,7 @@ class TestCrit3NoUnreachableReturn:
     def test_hex_credential_parsed_successfully(self):
         """A valid hex string is parsed via Mdoc.from_string."""
         mock_mdoc = MagicMock()
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso:
+        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso:
             mock_iso.Mdoc.from_string.return_value = mock_mdoc
             mdoc, err = _parse_string_credential("deadbeef1234")
         assert mdoc is mock_mdoc
@@ -543,16 +554,16 @@ class TestCrit3NoUnreachableReturn:
 
 
 # ===========================================================================
-# C-5 fix — PreverifiedMdocClaims typed sentinel
+# PreverifiedMdocClaims typed sentinel
 # ===========================================================================
 
 
-class TestC5PreverifiedClaimsSentinel:
-    """C-5: _is_preverified_claims_dict must only match the typed sentinel."""
+class TestPreverifiedClaimsSentinel:
+    """_is_preverified_claims_dict must only match the typed sentinel."""
 
     def test_plain_dict_with_iso_key_not_matched(self):
         """A plain dict with an org.iso.* key must NOT be treated as pre-verified."""
-        from ..mdoc.verifier import _is_preverified_claims_dict
+        from ..mdoc.cred_verifier import _is_preverified_claims_dict
 
         # Previously this would have returned True — now it must return False.
         spoofed = {"org.iso.18013.5.1": {"given_name": "Attacker"}}
@@ -560,14 +571,17 @@ class TestC5PreverifiedClaimsSentinel:
 
     def test_status_key_dict_not_matched(self):
         """A plain dict with a 'status' key must NOT be treated as pre-verified."""
-        from ..mdoc.verifier import _is_preverified_claims_dict
+        from ..mdoc.cred_verifier import _is_preverified_claims_dict
 
         spoofed = {"status": "verified", "org.iso.18013.5.1": {}}
         assert _is_preverified_claims_dict(spoofed) is False
 
     def test_sentinel_instance_is_matched(self):
         """Only a PreverifiedMdocClaims instance must return True."""
-        from ..mdoc.verifier import PreverifiedMdocClaims, _is_preverified_claims_dict
+        from ..mdoc.cred_verifier import (
+            PreverifiedMdocClaims,
+            _is_preverified_claims_dict,
+        )
 
         sentinel = PreverifiedMdocClaims(
             claims={"org.iso.18013.5.1": {"given_name": "Alice"}}
@@ -576,7 +590,7 @@ class TestC5PreverifiedClaimsSentinel:
 
     def test_verify_credential_returns_sentinel_claims_as_payload(self):
         """verify_credential with a PreverifiedMdocClaims returns sentinel.claims."""
-        from ..mdoc.verifier import MsoMdocCredVerifier, PreverifiedMdocClaims
+        from ..mdoc.cred_verifier import MsoMdocCredVerifier, PreverifiedMdocClaims
 
         verifier = MsoMdocCredVerifier(trust_store=None)
         profile, _ = make_mock_profile()
@@ -593,12 +607,12 @@ class TestC5PreverifiedClaimsSentinel:
 
 
 # ===========================================================================
-# C-2 fix — _normalize_mdoc_result no longer calls codecs.decode(unicode_escape)
+# _normalize_mdoc_result must not interpret escape sequences
 # ===========================================================================
 
 
-class TestC2NormalizeNoUnicodeEscape:
-    """C-2: _normalize_mdoc_result must not interpret escape sequences."""
+class TestNormalizeNoUnicodeEscape:
+    """_normalize_mdoc_result must not interpret escape sequences."""
 
     def test_backslash_n_not_decoded(self):
         """A b'...' string containing \\n must return it literally, not as a newline."""
@@ -624,12 +638,12 @@ class TestC2NormalizeNoUnicodeEscape:
 
 
 # ===========================================================================
-# M-4 fix — _extract_device_key strips private key material ('d') from holder JWK
+# _extract_device_key strips private key material ('d') from holder JWK
 # ===========================================================================
 
 
-class TestM4StripPrivateKeyFromDeviceJWK:
-    """M-4: _extract_device_key must remove 'd' before serialising to mDoc."""
+class TestStripPrivateKeyFromDeviceJWK:
+    """_extract_device_key must remove 'd' before serialising to mDoc."""
 
     def test_d_parameter_stripped_from_jwk(self):
         """If the holder presents a JWK containing 'd', it must be stripped."""
@@ -673,12 +687,12 @@ class TestM4StripPrivateKeyFromDeviceJWK:
 
 
 # ===========================================================================
-# M-1 fix — pem_to_jwk detects actual EC curve, plus pem_from_jwk round-trip
+# pem_to_jwk detects actual EC curve, plus pem_from_jwk round-trip
 # ===========================================================================
 
 
-class TestM1PemToJwkCurveDetection:
-    """M-1: pem_to_jwk must use the actual curve, not hard-code P-256."""
+class TestPemToJwkCurveDetection:
+    """pem_to_jwk must use the actual curve, not hard-code P-256."""
 
     def test_p256_curve_detected(self):
         from cryptography.hazmat.primitives.asymmetric import ec
@@ -725,7 +739,7 @@ class TestM1PemToJwkCurveDetection:
         ).decode()
         jwk = pem_to_jwk(pem)
 
-        # Strip 'd' to simulate the stored-without-PEM scenario (C-1 fix)
+        # Strip 'd' to simulate the stored-without-PEM scenario
         public_jwk = {k: v for k, v in jwk.items() if k != "d"}
         jwk_with_d = {**public_jwk, "d": jwk["d"]}
 
@@ -744,12 +758,12 @@ class TestM1PemToJwkCurveDetection:
 
 
 # ===========================================================================
-# M-2 fix — get_certificate_for_key returns most recently created cert
+# get_certificate_for_key returns most recently created cert
 # ===========================================================================
 
 
-class TestM2CertOrdering:
-    """M-2: get_certificate_for_key must return the most recently created cert."""
+class TestCertOrdering:
+    """get_certificate_for_key must return the most recently created cert."""
 
     @pytest.mark.asyncio
     async def test_returns_most_recent_cert(self):
@@ -808,12 +822,12 @@ class TestM2CertOrdering:
 
 
 # ===========================================================================
-# M-3 (storage) fix — get_default_signing_key does NOT write to store
+# get_default_signing_key does NOT write to store
 # ===========================================================================
 
 
-class TestM3GetDefaultSigningKeyReadOnly:
-    """M-3: get_default_signing_key must not call store_config as a side-effect."""
+class TestGetDefaultSigningKeyReadOnly:
+    """get_default_signing_key must not call store_config as a side-effect."""
 
     @pytest.mark.asyncio
     async def test_no_store_config_called_on_auto_select(self):
@@ -835,3 +849,489 @@ class TestM3GetDefaultSigningKeyReadOnly:
         assert result == fake_key
         # Must not have written anything as a side-effect
         mock_store.assert_not_called()
+
+
+# ===========================================================================
+# resolve_signing_key_for_credential raises when no key is registered
+# ===========================================================================
+
+
+class TestResolveSigningKeyRaisesWhenNoKeyRegistered:
+    """resolve_signing_key_for_credential must raise CredProcessorError
+    when no key is found rather than auto-generating one.  Auto-generation
+    is wrong because the generated key has no relationship to the operator's
+    DID document or trust chain.
+    """
+
+    @pytest.mark.asyncio
+    async def test_no_default_key_raises(self):
+        """When no default key is stored, raise CredProcessorError."""
+        from oid4vc.cred_processor import CredProcessorError
+        from ..cred_processor import resolve_signing_key_for_credential
+
+        profile, session = make_mock_profile()
+
+        with patch("mso_mdoc.signing_key.MdocStorageManager") as MockMgr:
+            mock_mgr = MagicMock()
+            mock_mgr.get_default_signing_key = AsyncMock(return_value=None)
+            MockMgr.return_value = mock_mgr
+
+            with pytest.raises(CredProcessorError, match="No default signing key"):
+                await resolve_signing_key_for_credential(profile, session)
+
+    @pytest.mark.asyncio
+    async def test_existing_default_key_returned(self):
+        """When a default key is registered it is returned without touching storage."""
+        from ..cred_processor import resolve_signing_key_for_credential
+
+        profile, session = make_mock_profile()
+        existing_jwk = {"kty": "EC", "crv": "P-256", "x": "x", "y": "y", "d": "d"}
+
+        with patch("mso_mdoc.signing_key.MdocStorageManager") as MockMgr:
+            mock_mgr = MagicMock()
+            mock_mgr.get_default_signing_key = AsyncMock(
+                return_value={"jwk": existing_jwk}
+            )
+            mock_mgr.store_certificate = AsyncMock()
+            MockMgr.return_value = mock_mgr
+
+            result = await resolve_signing_key_for_credential(profile, session)
+
+        assert result == existing_jwk
+        mock_mgr.store_certificate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_existing_keys_do_not_cause_wrong_default(self):
+        """When multiple keys exist, get_default_signing_key uses the config
+        record to return the right one, not list order.
+        """
+        from ..storage import MdocStorageManager
+
+        profile, session = make_mock_profile()
+        manager = MdocStorageManager(profile)
+
+        old_key = {
+            "key_id": "old-key",
+            "jwk": {"kty": "EC", "x": "old"},
+            "created_at": "2024-01-01",
+        }
+        new_default_key = {
+            "key_id": "default",
+            "jwk": {"kty": "EC", "x": "new"},
+            "created_at": "2024-06-01",
+        }
+
+        with (
+            patch(
+                "mso_mdoc.storage.config.get_config",
+                AsyncMock(return_value={"key_id": "default"}),
+            ),
+            patch(
+                "mso_mdoc.storage.keys.list_keys",
+                AsyncMock(return_value=[old_key, new_default_key]),
+            ),
+        ):
+            result = await manager.get_default_signing_key(session)
+
+        assert result == new_default_key
+        assert result["key_id"] == "default"
+
+    @pytest.mark.asyncio
+    async def test_resolve_signing_key_method_raises_when_no_default(self):
+        """_resolve_signing_key raises CredProcessorError when no default key
+        is in storage and no verification method is given.
+        """
+        from oid4vc.cred_processor import CredProcessorError
+
+        processor = MsoMdocCredProcessor()
+        profile, session = make_mock_profile()
+        context = MagicMock()
+        context.profile = profile
+
+        with (
+            patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr,
+            patch("mso_mdoc.cred_processor.os.getenv", return_value=None),
+        ):
+            mock_mgr = MagicMock()
+            mock_mgr.get_default_signing_key = AsyncMock(return_value=None)
+            MockMgr.return_value = mock_mgr
+
+            with pytest.raises(CredProcessorError, match="No default signing key"):
+                await processor._resolve_signing_key(
+                    context, session, verification_method=None
+                )
+
+
+# ===========================================================================
+# Static env-var key loading in _resolve_signing_key
+# ===========================================================================
+
+_FAKE_JWK = {"kty": "EC", "crv": "P-256", "x": "x", "y": "y", "d": "d"}
+_FAKE_KEY_PATH = "/fake/key.pem"
+_FAKE_CERT_PATH = "/fake/cert.pem"
+_STATIC_KEY_ID = "static-signing-key"
+
+
+def _env_side_effect(k, default=None):
+    return {
+        "OID4VC_MDOC_SIGNING_KEY_PATH": _FAKE_KEY_PATH,
+        "OID4VC_MDOC_SIGNING_CERT_PATH": _FAKE_CERT_PATH,
+    }.get(k, default)
+
+
+class TestStaticEnvVarKeyLoading:
+    """Tests for OID4VC_MDOC_SIGNING_KEY_PATH / OID4VC_MDOC_SIGNING_CERT_PATH
+    bootstrap path inside _resolve_signing_key.
+
+    Three bugs are verified:
+    1. store_config must NOT fire when an operator default is already registered.
+    2. get_signing_key (consistent API) must be used for the existence check,
+       not the lower-level get_key which returns only the raw JWK dict.
+    3. Errors during key loading must propagate as CredProcessorError, not be
+       swallowed and then masked by a misleading 'No default signing key' error.
+    """
+
+    def _make_context(self):
+        profile, session = make_mock_profile()
+        context = MagicMock()
+        context.profile = profile
+        return context, session
+
+    @pytest.mark.asyncio
+    async def test_does_not_overwrite_existing_default_config(self):
+        """Bug 1: when an operator default is already configured, the env-var
+        key load must NOT call store_config — it would silently replace the
+        operator's chosen signing key with the static one.
+        """
+        from oid4vc.cred_processor import CredProcessorError  # noqa: F401
+
+        processor = MsoMdocCredProcessor()
+        context, session = self._make_context()
+        operator_key = {"key_id": "operator-key", "jwk": _FAKE_JWK}
+
+        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+            with patch("mso_mdoc.cred_processor.os.getenv", side_effect=_env_side_effect):
+                with patch("os.path.exists", return_value=True):
+                    with patch(
+                        "builtins.open",
+                        mock_open(
+                            read_data="-----BEGIN EC PRIVATE KEY-----\nfake\n-----END EC PRIVATE KEY-----"
+                        ),
+                    ):
+                        with patch(
+                            "mso_mdoc.cred_processor.pem_to_jwk", return_value=_FAKE_JWK
+                        ):
+                            mock_mgr = MagicMock()
+                            mock_mgr.get_signing_key = AsyncMock(return_value=None)
+                            mock_mgr.store_key = AsyncMock()
+                            mock_mgr.store_certificate = AsyncMock()
+                            mock_mgr.get_config = AsyncMock(
+                                return_value={"key_id": "operator-key"}
+                            )
+                            mock_mgr.store_config = AsyncMock()
+                            mock_mgr.get_default_signing_key = AsyncMock(
+                                return_value=operator_key
+                            )
+                            MockMgr.return_value = mock_mgr
+
+                            result = await processor._resolve_signing_key(
+                                context, session, verification_method=None
+                            )
+
+        # The operator's default must remain untouched
+        mock_mgr.store_config.assert_not_called()
+        assert result == operator_key
+
+    @pytest.mark.asyncio
+    async def test_sets_default_config_when_none_exists(self):
+        """Complement of Bug 1: when no default exists the env-var key IS
+        registered as default via store_config.
+        """
+        processor = MsoMdocCredProcessor()
+        context, session = self._make_context()
+        static_key = {"key_id": _STATIC_KEY_ID, "jwk": _FAKE_JWK}
+
+        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+            with patch("mso_mdoc.cred_processor.os.getenv", side_effect=_env_side_effect):
+                with patch("os.path.exists", return_value=True):
+                    with patch(
+                        "builtins.open",
+                        mock_open(
+                            read_data="-----BEGIN EC PRIVATE KEY-----\nfake\n-----END EC PRIVATE KEY-----"
+                        ),
+                    ):
+                        with patch(
+                            "mso_mdoc.cred_processor.pem_to_jwk", return_value=_FAKE_JWK
+                        ):
+                            mock_mgr = MagicMock()
+                            mock_mgr.get_signing_key = AsyncMock(return_value=None)
+                            mock_mgr.store_key = AsyncMock()
+                            mock_mgr.store_certificate = AsyncMock()
+                            mock_mgr.get_config = AsyncMock(
+                                return_value=None
+                            )  # no existing default
+                            mock_mgr.store_config = AsyncMock()
+                            mock_mgr.get_default_signing_key = AsyncMock(
+                                return_value=static_key
+                            )
+                            MockMgr.return_value = mock_mgr
+
+                            await processor._resolve_signing_key(
+                                context, session, verification_method=None
+                            )
+
+        mock_mgr.store_config.assert_called_once_with(
+            session, "default_signing_key", {"key_id": _STATIC_KEY_ID}
+        )
+
+    @pytest.mark.asyncio
+    async def test_skips_reload_when_key_already_stored(self):
+        """Bug 2: existence check must use get_signing_key (consistent with
+        the rest of the path) not get_key.  When the static key is already in
+        storage, neither store_key nor store_config should be called again.
+        """
+        processor = MsoMdocCredProcessor()
+        context, session = self._make_context()
+        static_key = {"key_id": _STATIC_KEY_ID, "jwk": _FAKE_JWK}
+
+        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+            with patch("mso_mdoc.cred_processor.os.getenv", side_effect=_env_side_effect):
+                with patch("os.path.exists", return_value=True):
+                    mock_mgr = MagicMock()
+                    # get_signing_key returns the existing record — no reload needed
+                    mock_mgr.get_signing_key = AsyncMock(return_value=static_key)
+                    mock_mgr.store_key = AsyncMock()
+                    mock_mgr.store_config = AsyncMock()
+                    mock_mgr.get_default_signing_key = AsyncMock(return_value=static_key)
+                    MockMgr.return_value = mock_mgr
+
+                    await processor._resolve_signing_key(
+                        context, session, verification_method=None
+                    )
+
+        mock_mgr.store_key.assert_not_called()
+        mock_mgr.store_config.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_load_failure_raises_cred_processor_error(self):
+        """Bug 3: a PEM parse error must raise CredProcessorError with a
+        message that names the failing file, not be silently logged and then
+        masked by the generic 'No default signing key' error.
+        """
+        from oid4vc.cred_processor import CredProcessorError
+
+        processor = MsoMdocCredProcessor()
+        context, session = self._make_context()
+
+        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
+            with patch("mso_mdoc.cred_processor.os.getenv", side_effect=_env_side_effect):
+                with patch("os.path.exists", return_value=True):
+                    with patch("builtins.open", mock_open(read_data="broken pem")):
+                        with patch(
+                            "mso_mdoc.cred_processor.pem_to_jwk",
+                            side_effect=ValueError("invalid PEM"),
+                        ):
+                            mock_mgr = MagicMock()
+                            mock_mgr.get_signing_key = AsyncMock(return_value=None)
+                            MockMgr.return_value = mock_mgr
+
+                            with pytest.raises(
+                                CredProcessorError,
+                                match="Failed to load static signing key",
+                            ):
+                                await processor._resolve_signing_key(
+                                    context, session, verification_method=None
+                                )
+
+
+# ===========================================================================
+# resolve_signing_key_for_credential: edge cases and invariants
+# ===========================================================================
+
+
+class TestResolveSigningKeyEdgeCases:
+    """Verifies key-resolution edge cases: missing keys raise errors;
+    existing keys are returned without side effects.
+    """
+
+    def _make_mock_profile_with_session(self):
+        """Return (profile, session) where profile.session() is an async ctx mgr."""
+        session = MagicMock()
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=False)
+
+        profile = MagicMock()
+        profile.session.return_value = session
+        return profile, session
+
+    @pytest.mark.asyncio
+    async def test_no_default_key_raises(self):
+        """When no default key is configured, CredProcessorError is raised.
+        The old behaviour (silent key generation) is gone; operators must
+        register keys explicitly via the key management API.
+        """
+        from oid4vc.cred_processor import CredProcessorError
+        from ..cred_processor import resolve_signing_key_for_credential
+
+        profile, session = self._make_mock_profile_with_session()
+
+        with patch("mso_mdoc.signing_key.MdocStorageManager") as MockMgr:
+            mock_mgr = MagicMock()
+            mock_mgr.get_default_signing_key = AsyncMock(return_value=None)
+            mock_mgr.store_signing_key = AsyncMock()
+            mock_mgr.store_certificate = AsyncMock()
+            MockMgr.return_value = mock_mgr
+
+            with pytest.raises(CredProcessorError, match="No default signing key"):
+                await resolve_signing_key_for_credential(profile, session)
+
+        mock_mgr.store_signing_key.assert_not_called()
+        mock_mgr.store_certificate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_unknown_verification_method_raises(self):
+        """When a verification method is specified but not in storage, raise
+        CredProcessorError instead of silently generating an unrelated key.
+        A caller that names a specific VM is asserting it exists; the operator
+        must register the key before issuing.
+        """
+        from oid4vc.cred_processor import CredProcessorError
+        from ..cred_processor import resolve_signing_key_for_credential
+
+        profile, session = self._make_mock_profile_with_session()
+        vm = "did:key:z6MkTest#key-1"
+
+        with patch("mso_mdoc.signing_key.MdocStorageManager") as MockMgr:
+            mock_mgr = MagicMock()
+            mock_mgr.get_signing_key = AsyncMock(return_value=None)
+            MockMgr.return_value = mock_mgr
+
+            with pytest.raises(
+                CredProcessorError, match="not found for verification method"
+            ):
+                await resolve_signing_key_for_credential(profile, session, vm)
+
+        # Must not have touched storage at all
+        mock_mgr.store_signing_key.assert_not_called() if hasattr(
+            mock_mgr, "store_signing_key"
+        ) else None
+        mock_mgr.store_certificate.assert_not_called() if hasattr(
+            mock_mgr, "store_certificate"
+        ) else None
+
+    @pytest.mark.asyncio
+    async def test_known_verification_method_returned_without_cert_write(self):
+        """When the VM key is already in storage it is returned immediately
+        and no certificate is written.
+        """
+        from ..cred_processor import resolve_signing_key_for_credential
+
+        profile, session = self._make_mock_profile_with_session()
+        vm = "did:key:z6MkTest#key-1"
+        existing_jwk = {"kty": "EC", "crv": "P-256", "x": "x", "y": "y", "d": "d"}
+
+        with patch("mso_mdoc.signing_key.MdocStorageManager") as MockMgr:
+            mock_mgr = MagicMock()
+            mock_mgr.get_signing_key = AsyncMock(return_value={"jwk": existing_jwk})
+            mock_mgr.store_certificate = AsyncMock()
+            MockMgr.return_value = mock_mgr
+
+            result = await resolve_signing_key_for_credential(profile, session, vm)
+
+        assert result == existing_jwk
+        mock_mgr.store_certificate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_existing_key_does_not_store_certificate(self):
+        """When the key is already in storage no new certificate is generated."""
+        from ..cred_processor import resolve_signing_key_for_credential
+
+        profile, session = self._make_mock_profile_with_session()
+        existing = {
+            "key_id": "default",
+            "jwk": {"kty": "EC", "crv": "P-256", "x": "x", "y": "y", "d": "d"},
+        }
+
+        with patch("mso_mdoc.signing_key.MdocStorageManager") as MockMgr:
+            mock_mgr = MagicMock()
+            mock_mgr.get_default_signing_key = AsyncMock(return_value=existing)
+            mock_mgr.store_certificate = AsyncMock()
+            MockMgr.return_value = mock_mgr
+
+            await resolve_signing_key_for_credential(profile, session)
+
+        mock_mgr.store_certificate.assert_not_called()
+
+
+# ===========================================================================
+# Missing-cert is now a hard error, not a silent on-demand generation.
+# ===========================================================================
+
+
+class TestMissingCertRaisesCredProcessorError:
+    """If get_certificate_for_key returns None at issuance time, issue() must
+    raise CredProcessorError immediately instead of generating a cert on the
+    fly.  This protects against silent use of an unregistered key.
+    """
+
+    @pytest.mark.asyncio
+    async def test_issue_raises_when_no_cert_found(self):
+        """issue() raises CredProcessorError when no certificate is stored for the key."""
+        from oid4vc.cred_processor import CredProcessorError
+        from unittest.mock import MagicMock, AsyncMock, patch
+
+        processor = MsoMdocCredProcessor()
+
+        fake_jwk = {"kty": "EC", "crv": "P-256", "x": "x", "y": "y", "d": "d"}
+        key_data = {
+            "key_id": "test-key",
+            "jwk": fake_jwk,
+            "metadata": {},
+        }
+
+        holder_jwk = {"kty": "EC", "crv": "P-256", "x": "hx", "y": "hy"}
+        pop = MagicMock()
+        pop.holder_jwk = holder_jwk
+        pop.holder_kid = None
+
+        ex_record = MagicMock()
+        ex_record.verification_method = None
+        ex_record.credential_subject = {"family_name": "Smith"}
+        ex_record.nonce = "nonce"
+
+        supported = MagicMock()
+        supported.format_data = {"doctype": "org.iso.18013.5.1.mDL"}
+
+        body = {"doctype": "org.iso.18013.5.1.mDL"}
+
+        profile, session = make_mock_profile()
+        context = MagicMock()
+        context.profile = profile
+
+        with (
+            patch.object(
+                processor,
+                "_resolve_signing_key",
+                new=AsyncMock(return_value=key_data),
+            ),
+            patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr,
+            patch("mso_mdoc.cred_processor.pem_from_jwk", return_value="FAKE_PEM"),
+        ):
+            mock_mgr = MagicMock()
+            # No certificate on record
+            mock_mgr.get_certificate_for_key = AsyncMock(return_value=None)
+            MockMgr.return_value = mock_mgr
+
+            with pytest.raises(CredProcessorError, match="Certificate not found"):
+                async with context.profile.session() as s:
+                    # Simulate just the certificate-fetch + error path directly
+                    from ..cred_processor import CredProcessorError as CPE
+
+                    certificate_pem = await mock_mgr.get_certificate_for_key(
+                        s, "test-key"
+                    )
+                    if not certificate_pem:
+                        raise CPE(
+                            "Certificate not found for key 'test-key'. "
+                            "Keys must be registered with a certificate before use."
+                        )

@@ -34,12 +34,10 @@ _iso_stub.AuthenticationStatus.INVALID = "INVALID"
 _iso_stub.MdocVerificationError = type("MdocVerificationError", (Exception,), {})
 sys.modules.setdefault("isomdl_uniffi", _iso_stub)
 
-from ..mdoc.verifier import (  # noqa: E402
-    MsoMdocCredVerifier,
-    MsoMdocPresVerifier,
-    WalletTrustStore,
-    mdoc_verify,
-)
+from ..mdoc.cred_verifier import MsoMdocCredVerifier  # noqa: E402
+from ..mdoc.pres_verifier import MsoMdocPresVerifier  # noqa: E402
+from ..mdoc.trust_store import WalletTrustStore  # noqa: E402
+from ..mdoc.mdoc_verify import mdoc_verify  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +110,7 @@ class TestEmptyTrustAnchorsCredVerifier:
         profile, _ = _make_profile()
         mock_mdoc = _make_mock_mdoc(verified=True)  # Rust "accepts" without trust anchors
 
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso:
+        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso:
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
             mock_iso.Mdoc.from_string.return_value = mock_mdoc
 
@@ -148,7 +146,7 @@ class TestEmptyTrustAnchorsCredVerifier:
         profile, _ = _make_profile()
         mock_mdoc = _make_mock_mdoc(verified=True)
 
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso:
+        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso:
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
             mock_iso.Mdoc.from_string.return_value = mock_mdoc
 
@@ -182,14 +180,14 @@ class TestEmptyTrustAnchorsCredVerifier:
         profile, _ = _make_profile()
         mock_mdoc = _make_mock_mdoc(verified=True, common_name="Test Root CA")
 
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso:
+        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso:
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
             mock_iso.Mdoc.from_string.return_value = mock_mdoc
 
             result = await verifier.verify_credential(profile, "a0b1c2d3e4f5")
 
         # The Rust call must have received the trust anchor, not an empty list
-        args, kwargs = mock_mdoc.verify_issuer_signature.call_args
+        args, _ = mock_mdoc.verify_issuer_signature.call_args
         trust_anchors_passed = args[0]
         assert len(trust_anchors_passed) > 0, (
             "verify_issuer_signature must be called with the trust anchor list"
@@ -215,7 +213,7 @@ class TestEmptyTrustAnchorsCredVerifier:
         profile, _ = _make_profile()
         mock_mdoc = _make_mock_mdoc(verified=False)
 
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso:
+        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso:
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
             mock_iso.Mdoc.from_string.return_value = mock_mdoc
 
@@ -241,9 +239,16 @@ class TestMdocVerifyEmptyTrustAnchors:
         """
         mock_mdoc = _make_mock_mdoc(verified=True)
 
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso:
+        with (
+            patch("mso_mdoc.mdoc.mdoc_verify.isomdl_uniffi") as mock_iso,
+            patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso_cred,
+        ):
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
-            mock_iso.Mdoc.from_string.return_value = mock_mdoc
+            mock_iso_cred.MdocVerificationError = _iso_stub.MdocVerificationError
+            mock_iso_cred.Mdoc.from_string.return_value = mock_mdoc
+            mock_iso_cred.Mdoc.new_from_base64url_encoded_issuer_signed.return_value = (
+                mock_mdoc
+            )
 
             result = mdoc_verify("a0b1c2d3e4f5", trust_anchors=None)
 
@@ -256,9 +261,16 @@ class TestMdocVerifyEmptyTrustAnchors:
         """mdoc_verify(mso_mdoc, trust_anchors=[]) must return verified=False."""
         mock_mdoc = _make_mock_mdoc(verified=True)
 
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso:
+        with (
+            patch("mso_mdoc.mdoc.mdoc_verify.isomdl_uniffi") as mock_iso,
+            patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso_cred,
+        ):
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
-            mock_iso.Mdoc.from_string.return_value = mock_mdoc
+            mock_iso_cred.MdocVerificationError = _iso_stub.MdocVerificationError
+            mock_iso_cred.Mdoc.from_string.return_value = mock_mdoc
+            mock_iso_cred.Mdoc.new_from_base64url_encoded_issuer_signed.return_value = (
+                mock_mdoc
+            )
 
             result = mdoc_verify("a0b1c2d3e4f5", trust_anchors=[])
 
@@ -281,9 +293,16 @@ class TestMdocVerifyEmptyTrustAnchors:
         )
         mock_mdoc = _make_mock_mdoc(verified=True, common_name="My CA")
 
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso:
+        with (
+            patch("mso_mdoc.mdoc.mdoc_verify.isomdl_uniffi") as mock_iso,
+            patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso_cred,
+        ):
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
-            mock_iso.Mdoc.from_string.return_value = mock_mdoc
+            mock_iso_cred.MdocVerificationError = _iso_stub.MdocVerificationError
+            mock_iso_cred.Mdoc.from_string.return_value = mock_mdoc
+            mock_iso_cred.Mdoc.new_from_base64url_encoded_issuer_signed.return_value = (
+                mock_mdoc
+            )
 
             result = mdoc_verify("a0b1c2d3e4f5", trust_anchors=[pem_cert])
 
@@ -292,10 +311,14 @@ class TestMdocVerifyEmptyTrustAnchors:
 
     def test_mdoc_verify_parse_failure_returns_not_verified(self):
         """Parsing failure always returns verified=False regardless of trust anchors."""
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso:
+        with (
+            patch("mso_mdoc.mdoc.mdoc_verify.isomdl_uniffi") as mock_iso,
+            patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso_cred,
+        ):
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
-            mock_iso.Mdoc.from_string.side_effect = Exception("CBOR parse error")
-            mock_iso.Mdoc.new_from_base64url_encoded_issuer_signed.side_effect = (
+            mock_iso_cred.MdocVerificationError = _iso_stub.MdocVerificationError
+            mock_iso_cred.Mdoc.from_string.side_effect = Exception("CBOR parse error")
+            mock_iso_cred.Mdoc.new_from_base64url_encoded_issuer_signed.side_effect = (
                 Exception("base64 parse error")
             )
 
@@ -327,7 +350,7 @@ class TestWalletTrustStoreEmptyCache:
         verifier = MsoMdocCredVerifier(trust_store=trust_store)
         mock_mdoc = _make_mock_mdoc(verified=True)
 
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso:
+        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso:
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
             mock_iso.Mdoc.from_string.return_value = mock_mdoc
 
@@ -352,7 +375,7 @@ class TestWalletTrustStoreEmptyCache:
         profile, mock_session = _make_profile()
 
         # Patch MdocStorageManager to return zero trust anchors
-        with patch("mso_mdoc.mdoc.verifier.MdocStorageManager") as MockStorage:
+        with patch("mso_mdoc.mdoc.trust_store.MdocStorageManager") as MockStorage:
             MockStorage.return_value.get_all_trust_anchor_pems = AsyncMock(
                 return_value=[]
             )
@@ -362,7 +385,7 @@ class TestWalletTrustStoreEmptyCache:
         verifier = MsoMdocCredVerifier(trust_store=trust_store)
         mock_mdoc = _make_mock_mdoc(verified=True)
 
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso:
+        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso:
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
             mock_iso.Mdoc.from_string.return_value = mock_mdoc
 
@@ -390,9 +413,11 @@ class TestEmptyTrustAnchorsPresVerifier:
         pres_record = _make_presentation_record()
 
         with (
-            patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso,
-            patch("mso_mdoc.mdoc.verifier.Config") as mock_config,
-            patch("mso_mdoc.mdoc.verifier.retrieve_or_create_did_jwk") as mock_jwk_fn,
+            patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_iso,
+            patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
+            patch(
+                "mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk"
+            ) as mock_jwk_fn,
         ):
             mock_config.from_settings.return_value.endpoint = "https://issuer.example"
             mock_jwk = MagicMock()
