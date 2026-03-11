@@ -156,6 +156,7 @@ class TestCredoMdocInterop(BaseMdocTest):
                     Doctype.MDL_NAMESPACE: {
                         "family_name": "Doe",
                         "given_name": "Jane",
+                        "birth_date": "1990-01-01",
                         "age_over_18": True,
                         **MDL_MANDATORY_FIELDS,
                     }
@@ -269,6 +270,8 @@ class TestCredoMdocInterop(BaseMdocTest):
                 "supported_cred_id": config["supported_cred_id"],
                 "credential_subject": {
                     Doctype.MDL_NAMESPACE: {
+                        "family_name": "Doe",
+                        "given_name": "Jane",
                         "birth_date": "1990-05-15",  # In credential...
                         "age_over_18": True,
                         **MDL_MANDATORY_FIELDS,

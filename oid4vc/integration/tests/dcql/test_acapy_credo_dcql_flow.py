@@ -563,6 +563,7 @@ class TestDCQLMdocFlow:
                     "org.iso.18013.5.1": {
                         "given_name": "Carol",
                         "family_name": "Davis",
+                        "birth_date": "1990-01-01",
                         **MDL_MANDATORY_FIELDS,
                     }
                 },

@@ -155,6 +155,7 @@ class TestMdocAgePredicates(BaseMdocTest):
             },
             credential_subject={
                 Doctype.MDL_NAMESPACE: {
+                    "family_name": "Smith",
                     "given_name": "Alice",
                     "birth_date": "1990-01-01",
                     "age_over_18": True,
