@@ -69,7 +69,7 @@ class TestMsoMdocCredVerifier:
         profile = MagicMock()
 
         # Patch isomdl_uniffi in the verifier module
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl:
+        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_isomdl:
             # Create a real exception class for MdocVerificationError
             class MockMdocVerificationError(Exception):
                 pass
@@ -151,9 +151,9 @@ class TestMsoMdocPresVerifier:
         presentation_data = "mock_presentation_data"
 
         with (
-            patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl,
-            patch("mso_mdoc.mdoc.verifier.Config") as mock_config,
-            patch("mso_mdoc.mdoc.verifier.retrieve_or_create_did_jwk") as mock_did_jwk,
+            patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_isomdl,
+            patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
+            patch("mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk") as mock_did_jwk,
         ):
             mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
 
@@ -195,9 +195,9 @@ class TestMsoMdocPresVerifier:
         presentation_data = "mock_presentation_data"
 
         with (
-            patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl,
-            patch("mso_mdoc.mdoc.verifier.Config") as mock_config,
-            patch("mso_mdoc.mdoc.verifier.retrieve_or_create_did_jwk") as mock_did_jwk,
+            patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_isomdl,
+            patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
+            patch("mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk") as mock_did_jwk,
         ):
             mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
 
@@ -234,9 +234,9 @@ class TestMsoMdocPresVerifier:
         presentation_data = "mock_presentation_data"
 
         with (
-            patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl,
-            patch("mso_mdoc.mdoc.verifier.Config") as mock_config,
-            patch("mso_mdoc.mdoc.verifier.retrieve_or_create_did_jwk") as mock_did_jwk,
+            patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_isomdl,
+            patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
+            patch("mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk") as mock_did_jwk,
         ):
             mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
 

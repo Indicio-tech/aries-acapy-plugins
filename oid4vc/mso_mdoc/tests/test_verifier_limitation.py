@@ -61,7 +61,7 @@ class TestMsoMdocVerifierSignature:
         profile = MagicMock()
 
         # Mock isomdl_uniffi to simulate successful parsing and verification
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl:
+        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_isomdl:
             # Create a proper exception class for MdocVerificationError
             class MockMdocVerificationError(Exception):
                 pass
@@ -107,7 +107,7 @@ class TestMsoMdocVerifierSignature:
         verifier = MsoMdocCredVerifier(trust_store=_TrustStore())
         profile = MagicMock()
 
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl:
+        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_isomdl:
             # Create a proper exception class for MdocVerificationError
             class MockMdocVerificationError(Exception):
                 pass
@@ -149,7 +149,7 @@ class TestMsoMdocVerifierSignature:
         verifier = MsoMdocCredVerifier(trust_store=_TrustStore())
         profile = MagicMock()
 
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl:
+        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_isomdl:
             # Create a proper exception class for MdocVerificationError
             class MockMdocVerificationError(Exception):
                 pass
@@ -188,7 +188,7 @@ class TestMsoMdocVerifierSignature:
         verifier = MsoMdocCredVerifier()
         profile = MagicMock()
 
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_isomdl:
+        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_isomdl:
             # Create a proper exception class for MdocVerificationError
             class MockMdocVerificationError(Exception):
                 pass

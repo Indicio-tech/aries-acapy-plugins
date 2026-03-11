@@ -110,9 +110,9 @@ class TestCrit1TrustAnchorRegistryNotNone:
         pres_record = make_mock_presentation_record()
 
         with (
-            patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso,
-            patch("mso_mdoc.mdoc.verifier.Config") as mock_config,
-            patch("mso_mdoc.mdoc.verifier.retrieve_or_create_did_jwk") as mock_jwk_fn,
+            patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_iso,
+            patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
+            patch("mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk") as mock_jwk_fn,
         ):
             mock_config.from_settings.return_value.endpoint = "http://localhost"
             mock_jwk = MagicMock()
@@ -148,9 +148,9 @@ class TestCrit1TrustAnchorRegistryNotNone:
         pres_record = make_mock_presentation_record()
 
         with (
-            patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso,
-            patch("mso_mdoc.mdoc.verifier.Config") as mock_config,
-            patch("mso_mdoc.mdoc.verifier.retrieve_or_create_did_jwk") as mock_jwk_fn,
+            patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_iso,
+            patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
+            patch("mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk") as mock_jwk_fn,
         ):
             mock_config.from_settings.return_value.endpoint = "http://localhost"
             mock_jwk = MagicMock()
@@ -187,7 +187,7 @@ class TestCrit4TrustAnchorsNotNoneCredVerifier:
         verifier = MsoMdocCredVerifier(trust_store=None)
         profile = MagicMock()
 
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso:
+        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso:
             mock_iso.MdocVerificationError = type("MockMVE", (Exception,), {})
 
             class MockMdoc:
@@ -532,7 +532,7 @@ class TestCrit3NoUnreachableReturn:
 
     def test_bad_credential_returns_none_and_error(self):
         """An unparseable credential returns (None, error_str)."""
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso:
+        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso:
             mock_iso.Mdoc.from_string.side_effect = Exception("parse error")
             mock_iso.Mdoc.new_from_base64url_encoded_issuer_signed.side_effect = (
                 Exception("issuer-signed error")
@@ -545,7 +545,7 @@ class TestCrit3NoUnreachableReturn:
     def test_hex_credential_parsed_successfully(self):
         """A valid hex string is parsed via Mdoc.from_string."""
         mock_mdoc = MagicMock()
-        with patch("mso_mdoc.mdoc.verifier.isomdl_uniffi") as mock_iso:
+        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso:
             mock_iso.Mdoc.from_string.return_value = mock_mdoc
             mdoc, err = _parse_string_credential("deadbeef1234")
         assert mdoc is mock_mdoc
