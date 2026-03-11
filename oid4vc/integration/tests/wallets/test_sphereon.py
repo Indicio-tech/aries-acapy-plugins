@@ -85,7 +85,9 @@ async def test_sphereon_accept_credential_offer(acapy_issuer_admin, sphereon_cli
 @pytest.mark.skipif(not MDOC_AVAILABLE, reason="isomdl_uniffi not available")
 @pytest.mark.asyncio
 async def test_sphereon_accept_mdoc_credential_offer(
-    acapy_issuer_admin, sphereon_client
+    acapy_issuer_admin,
+    sphereon_client,
+    setup_issuer_certs,  # noqa: ARG001 - ensures default signing key exists
 ):
     """Test Sphereon accepting an mdoc credential offer from ACA-Py."""
 

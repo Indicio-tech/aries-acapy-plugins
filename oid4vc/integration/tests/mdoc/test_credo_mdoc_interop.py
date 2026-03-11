@@ -37,6 +37,7 @@ class TestCredoMdocInterop(BaseMdocTest):
         acapy_issuer_admin,
         credo,  # From conftest.py
         issuer_p256_did,  # From BaseMdocTest
+        setup_issuer_certs,  # noqa: ARG002 - ensures default signing key exists
     ):
         """Test Credo accepting mDOC credential with DID-based signing.
 

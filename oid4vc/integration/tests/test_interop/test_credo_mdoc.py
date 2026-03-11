@@ -156,6 +156,7 @@ async def mdoc_issuer_key(acapy_issuer: httpx.AsyncClient) -> dict[str, Any]:
 async def mdoc_offer_did_based(
     acapy_issuer: httpx.AsyncClient,
     mdoc_credential_config: dict[str, Any],
+    setup_issuer_certs,  # noqa: ARG001 - ensures default signing key exists
 ) -> str:
     """Create an mDOC credential offer using DID-based signing.
 

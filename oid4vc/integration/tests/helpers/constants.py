@@ -106,13 +106,20 @@ VALIDATION_POLL_INTERVAL: Final[float] = 0.5
 VALIDATION_MAX_ATTEMPTS: Final[int] = 20
 
 # ISO 18013-5 mDL mandatory fields required by create_and_sign_mdl
-# portrait and driving_privileges are mandatory per ISO 18013-5 mDL profile
+# All mandatory fields per ISO 18013-5 OrgIso1801351 struct:
+# family_name, given_name, birth_date are provided by each test individually.
+# The remaining 8 mandatory fields are collected here.
 MDL_PORTRAIT: Final[str] = "SGVsbG8gV29ybGQ="  # base64("Hello World") placeholder
 MDL_DRIVING_PRIVILEGES: Final[list] = []
 MDL_UN_DISTINGUISHING_SIGN: Final[str] = "USA"
 
 # Merge these into any mDL credential_subject["org.iso.18013.5.1"] dict
 MDL_MANDATORY_FIELDS: Final[dict] = {
+    "issue_date": "2024-01-01",
+    "expiry_date": "2029-01-01",
+    "issuing_country": "US",
+    "issuing_authority": "DMV",
+    "document_number": "123456789",
     "portrait": MDL_PORTRAIT,
     "driving_privileges": MDL_DRIVING_PRIVILEGES,
     "un_distinguishing_sign": MDL_UN_DISTINGUISHING_SIGN,
