@@ -15,7 +15,7 @@ import uuid
 import pytest
 
 from tests.base import BaseMdocTest
-from tests.helpers import Doctype, MDL_MANDATORY_FIELDS, wait_for_presentation_state
+from tests.helpers import MDL_MANDATORY_FIELDS, Doctype, wait_for_presentation_state
 
 pytestmark = [pytest.mark.mdoc, pytest.mark.interop]
 

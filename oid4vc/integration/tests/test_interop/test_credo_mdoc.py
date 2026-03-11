@@ -18,7 +18,6 @@ import pytest
 import pytest_asyncio
 
 from credo_wrapper import CredoWrapper
-
 from tests.helpers.constants import MDL_MANDATORY_FIELDS
 
 # Import shared fixtures from parent conftest

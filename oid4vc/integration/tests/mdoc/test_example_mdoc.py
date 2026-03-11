@@ -7,7 +7,7 @@ Use this as a template when migrating or writing mDOC tests.
 import pytest
 
 from tests.base import BaseMdocTest
-from tests.helpers import Doctype, MDL_MANDATORY_FIELDS, assert_presentation_successful
+from tests.helpers import MDL_MANDATORY_FIELDS, Doctype, assert_presentation_successful
 
 
 class TestMdocFlow(BaseMdocTest):
@@ -59,7 +59,7 @@ class TestMdocFlow(BaseMdocTest):
                     "document_number": "D1234567",
                     **MDL_MANDATORY_FIELDS,
                 }
-            }
+            },
             issuer_did=issuer_did,
         )
 
