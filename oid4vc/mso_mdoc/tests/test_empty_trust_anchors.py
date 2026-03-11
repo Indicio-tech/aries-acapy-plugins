@@ -187,7 +187,7 @@ class TestEmptyTrustAnchorsCredVerifier:
             result = await verifier.verify_credential(profile, "a0b1c2d3e4f5")
 
         # The Rust call must have received the trust anchor, not an empty list
-        args, kwargs = mock_mdoc.verify_issuer_signature.call_args
+        args, _ = mock_mdoc.verify_issuer_signature.call_args
         trust_anchors_passed = args[0]
         assert len(trust_anchors_passed) > 0, (
             "verify_issuer_signature must be called with the trust anchor list"
