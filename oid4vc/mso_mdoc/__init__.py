@@ -8,7 +8,6 @@ from acapy_agent.core.profile import Profile
 from acapy_agent.core.util import STARTUP_EVENT_PATTERN
 
 from mso_mdoc.cred_processor import MsoMdocCredProcessor
-from mso_mdoc.key_generation import generate_default_keys_and_certs
 from mso_mdoc.storage import MdocStorageManager
 from oid4vc.cred_processor import CredProcessors
 from . import routes as routes
@@ -24,30 +23,24 @@ async def on_startup(profile: Profile, event: object):
     each tenant's Askar partition is queried automatically.
     """
     LOGGER.info("MSO_MDOC plugin startup - initializing profile-dependent resources")
-
     # Initialize storage and generate default keys/certs if needed
-    try:
-        storage_manager = MdocStorageManager(profile)
+    storage_manager = MdocStorageManager(profile)
 
-        # Use a session for storage operations
-        async with profile.session() as session:
-            # Check if default keys exist
-            default_key = await storage_manager.get_default_signing_key(session)
-            if not default_key:
-                LOGGER.info("No default mDoc keys found, generating new ones...")
-                generated = await generate_default_keys_and_certs(
-                    storage_manager, session
-                )
-                LOGGER.info("Generated default mDoc key: %s", generated["key_id"])
-            else:
-                LOGGER.info(
-                    "Using existing default mDoc key: %s",
-                    default_key["key_id"],
-                )
-
-    except Exception as e:
-        LOGGER.error("Failed to initialize mDoc storage: %s", e)
-        # Don't fail plugin startup, but log the error
+    # Use a session for storage operations
+    async with profile.session() as session:
+        # Check if default keys exist
+        default_key = await storage_manager.get_default_signing_key(session)
+        if not default_key:
+            LOGGER.warning(
+                "WARNING: No mDoc signing key found. mDoc credential issuance "
+                "will fail until a key is provisioned. Use the admin API "
+                "POST /mso_mdoc/keys/generate to provision a signing key."
+            )
+        else:
+            LOGGER.info(
+                "Using existing default mDoc key: %s",
+                default_key["key_id"],
+            )
 
 
 async def setup(context: InjectionContext):
