@@ -18,7 +18,7 @@ import re
 from typing import Any, Dict, Optional
 
 from acapy_agent.admin.request_context import AdminRequestContext
-from acapy_agent.core.profile import Profile, ProfileSession
+from acapy_agent.core.profile import Profile
 
 from oid4vc.cred_processor import CredProcessorError, CredVerifier, Issuer, PresVerifier
 from oid4vc.models.exchange import OID4VCIExchangeRecord

@@ -17,7 +17,6 @@ class TrustStore(Protocol):
     @abstractmethod
     def get_trust_anchors(self) -> List[str]:
         """Retrieve trust anchors as PEM strings."""
-        ...
 
 
 class WalletTrustStore:

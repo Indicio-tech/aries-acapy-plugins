@@ -11,7 +11,6 @@ Provides two module-level helpers consumed by ``MsoMdocCredProcessor.issue``:
 """
 
 import base64
-import json
 import logging
 from typing import Any, Dict, Optional
 
