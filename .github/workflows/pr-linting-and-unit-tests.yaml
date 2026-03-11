@@ -81,7 +81,7 @@ jobs:
         if: contains(steps.changed-plugins.outputs.changed-plugins, 'oid4vc')
         run: |
           cd oid4vc
-          poetry run pip install --force-reinstall https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test9/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+          poetry run pip install --force-reinstall https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test11/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
           cd ..
       #----------------------------------------------
       #       Lint plugins
