@@ -26,7 +26,7 @@ from oid4vc.models.presentation import OID4VPPresentation
 from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.pop_result import PopResult
 
-from .key_generation import pem_from_jwk, pem_to_jwk
+from .key_generation import generate_self_signed_certificate, pem_from_jwk, pem_to_jwk  # noqa: F401
 from .mdoc.issuer import isomdl_mdoc_sign
 from .mdoc.cred_verifier import MsoMdocCredVerifier
 from .mdoc.pres_verifier import MsoMdocPresVerifier
