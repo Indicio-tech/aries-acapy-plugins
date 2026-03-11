@@ -109,7 +109,9 @@ class TestCrit1TrustAnchorRegistryNotNone:
         with (
             patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_iso,
             patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
-            patch("mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk") as mock_jwk_fn,
+            patch(
+                "mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk"
+            ) as mock_jwk_fn,
         ):
             mock_config.from_settings.return_value.endpoint = "http://localhost"
             mock_jwk = MagicMock()
@@ -147,7 +149,9 @@ class TestCrit1TrustAnchorRegistryNotNone:
         with (
             patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_iso,
             patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
-            patch("mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk") as mock_jwk_fn,
+            patch(
+                "mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk"
+            ) as mock_jwk_fn,
         ):
             mock_config.from_settings.return_value.endpoint = "http://localhost"
             mock_jwk = MagicMock()
@@ -574,7 +578,10 @@ class TestPreverifiedClaimsSentinel:
 
     def test_sentinel_instance_is_matched(self):
         """Only a PreverifiedMdocClaims instance must return True."""
-        from ..mdoc.cred_verifier import PreverifiedMdocClaims, _is_preverified_claims_dict
+        from ..mdoc.cred_verifier import (
+            PreverifiedMdocClaims,
+            _is_preverified_claims_dict,
+        )
 
         sentinel = PreverifiedMdocClaims(
             claims={"org.iso.18013.5.1": {"given_name": "Alice"}}
@@ -903,8 +910,16 @@ class TestResolveSigningKeyRaisesWhenNoKeyRegistered:
         profile, session = make_mock_profile()
         manager = MdocStorageManager(profile)
 
-        old_key = {"key_id": "old-key", "jwk": {"kty": "EC", "x": "old"}, "created_at": "2024-01-01"}
-        new_default_key = {"key_id": "default", "jwk": {"kty": "EC", "x": "new"}, "created_at": "2024-06-01"}
+        old_key = {
+            "key_id": "old-key",
+            "jwk": {"kty": "EC", "x": "old"},
+            "created_at": "2024-01-01",
+        }
+        new_default_key = {
+            "key_id": "default",
+            "jwk": {"kty": "EC", "x": "new"},
+            "created_at": "2024-06-01",
+        }
 
         with (
             patch(
@@ -997,15 +1012,26 @@ class TestStaticEnvVarKeyLoading:
         with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
             with patch("mso_mdoc.cred_processor.os.getenv", side_effect=_env_side_effect):
                 with patch("os.path.exists", return_value=True):
-                    with patch("builtins.open", mock_open(read_data="-----BEGIN EC PRIVATE KEY-----\nfake\n-----END EC PRIVATE KEY-----")):
-                        with patch("mso_mdoc.cred_processor.pem_to_jwk", return_value=_FAKE_JWK):
+                    with patch(
+                        "builtins.open",
+                        mock_open(
+                            read_data="-----BEGIN EC PRIVATE KEY-----\nfake\n-----END EC PRIVATE KEY-----"
+                        ),
+                    ):
+                        with patch(
+                            "mso_mdoc.cred_processor.pem_to_jwk", return_value=_FAKE_JWK
+                        ):
                             mock_mgr = MagicMock()
                             mock_mgr.get_signing_key = AsyncMock(return_value=None)
                             mock_mgr.store_key = AsyncMock()
                             mock_mgr.store_certificate = AsyncMock()
-                            mock_mgr.get_config = AsyncMock(return_value={"key_id": "operator-key"})
+                            mock_mgr.get_config = AsyncMock(
+                                return_value={"key_id": "operator-key"}
+                            )
                             mock_mgr.store_config = AsyncMock()
-                            mock_mgr.get_default_signing_key = AsyncMock(return_value=operator_key)
+                            mock_mgr.get_default_signing_key = AsyncMock(
+                                return_value=operator_key
+                            )
                             MockMgr.return_value = mock_mgr
 
                             result = await processor._resolve_signing_key(
@@ -1028,15 +1054,26 @@ class TestStaticEnvVarKeyLoading:
         with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockMgr:
             with patch("mso_mdoc.cred_processor.os.getenv", side_effect=_env_side_effect):
                 with patch("os.path.exists", return_value=True):
-                    with patch("builtins.open", mock_open(read_data="-----BEGIN EC PRIVATE KEY-----\nfake\n-----END EC PRIVATE KEY-----")):
-                        with patch("mso_mdoc.cred_processor.pem_to_jwk", return_value=_FAKE_JWK):
+                    with patch(
+                        "builtins.open",
+                        mock_open(
+                            read_data="-----BEGIN EC PRIVATE KEY-----\nfake\n-----END EC PRIVATE KEY-----"
+                        ),
+                    ):
+                        with patch(
+                            "mso_mdoc.cred_processor.pem_to_jwk", return_value=_FAKE_JWK
+                        ):
                             mock_mgr = MagicMock()
                             mock_mgr.get_signing_key = AsyncMock(return_value=None)
                             mock_mgr.store_key = AsyncMock()
                             mock_mgr.store_certificate = AsyncMock()
-                            mock_mgr.get_config = AsyncMock(return_value=None)  # no existing default
+                            mock_mgr.get_config = AsyncMock(
+                                return_value=None
+                            )  # no existing default
                             mock_mgr.store_config = AsyncMock()
-                            mock_mgr.get_default_signing_key = AsyncMock(return_value=static_key)
+                            mock_mgr.get_default_signing_key = AsyncMock(
+                                return_value=static_key
+                            )
                             MockMgr.return_value = mock_mgr
 
                             await processor._resolve_signing_key(
@@ -1090,18 +1127,21 @@ class TestStaticEnvVarKeyLoading:
             with patch("mso_mdoc.cred_processor.os.getenv", side_effect=_env_side_effect):
                 with patch("os.path.exists", return_value=True):
                     with patch("builtins.open", mock_open(read_data="broken pem")):
-                        with patch("mso_mdoc.cred_processor.pem_to_jwk", side_effect=ValueError("invalid PEM")):
+                        with patch(
+                            "mso_mdoc.cred_processor.pem_to_jwk",
+                            side_effect=ValueError("invalid PEM"),
+                        ):
                             mock_mgr = MagicMock()
                             mock_mgr.get_signing_key = AsyncMock(return_value=None)
                             MockMgr.return_value = mock_mgr
 
                             with pytest.raises(
-                                CredProcessorError, match="Failed to load static signing key"
+                                CredProcessorError,
+                                match="Failed to load static signing key",
                             ):
                                 await processor._resolve_signing_key(
                                     context, session, verification_method=None
                                 )
-
 
 
 # ===========================================================================
@@ -1166,12 +1206,18 @@ class TestResolveSigningKeyEdgeCases:
             mock_mgr.get_signing_key = AsyncMock(return_value=None)
             MockMgr.return_value = mock_mgr
 
-            with pytest.raises(CredProcessorError, match="not found for verification method"):
+            with pytest.raises(
+                CredProcessorError, match="not found for verification method"
+            ):
                 await resolve_signing_key_for_credential(profile, session, vm)
 
         # Must not have touched storage at all
-        mock_mgr.store_signing_key.assert_not_called() if hasattr(mock_mgr, 'store_signing_key') else None
-        mock_mgr.store_certificate.assert_not_called() if hasattr(mock_mgr, 'store_certificate') else None
+        mock_mgr.store_signing_key.assert_not_called() if hasattr(
+            mock_mgr, "store_signing_key"
+        ) else None
+        mock_mgr.store_certificate.assert_not_called() if hasattr(
+            mock_mgr, "store_certificate"
+        ) else None
 
     @pytest.mark.asyncio
     async def test_known_verification_method_returned_without_cert_write(self):

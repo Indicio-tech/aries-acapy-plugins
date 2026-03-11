@@ -13,7 +13,6 @@ from oid4vc.cred_processor import PresVerifier, VerifyResult
 from oid4vc.did_utils import retrieve_or_create_did_jwk
 from oid4vc.models.presentation import OID4VPPresentation
 
-from ..storage import MdocStorageManager
 from .trust_store import TrustStore, WalletTrustStore
 from .utils import flatten_trust_anchors
 from .cred_verifier import PreverifiedMdocClaims
@@ -333,4 +332,3 @@ class MsoMdocPresVerifier(PresVerifier):
         except Exception as e:
             LOGGER.exception("Error verifying mdoc presentation")
             return VerifyResult(verified=False, payload={"error": str(e)})
-

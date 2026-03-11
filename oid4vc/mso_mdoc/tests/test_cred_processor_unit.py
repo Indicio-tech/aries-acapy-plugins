@@ -46,9 +46,7 @@ class TestMsoMdocCredProcessor(unittest.TestCase):
         """Algorithm strings are converted to COSE integer identifiers."""
         metadata = {"credential_signing_alg_values_supported": ["ES256", "ES384"]}
         self.processor.transform_issuer_metadata(metadata)
-        self.assertEqual(
-            metadata["credential_signing_alg_values_supported"], [-7, -35]
-        )
+        self.assertEqual(metadata["credential_signing_alg_values_supported"], [-7, -35])
 
     def test_transform_issuer_metadata_noop_when_claims_already_list(self):
         """Already-converted list claims are moved into credential_metadata (idempotent)."""

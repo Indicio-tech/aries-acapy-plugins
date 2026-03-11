@@ -96,6 +96,7 @@ async def _set_db_version(storage: BaseStorage, ver: _VersionTuple) -> None:
 # Transformations — 0.1.0
 # ---------------------------------------------------------------------------
 
+
 async def _to_0_1_0_dcql_record_type(profile: Profile) -> int:
     """Forward: DCQLQuery RECORD_TYPE "oid4vp" → "oid4vp-dcql".
 
@@ -129,8 +130,10 @@ async def _to_0_1_0_dcql_record_type(profile: Profile) -> int:
             )
             migrated += 1
             LOGGER.info(
-                "DCQLQuery %s: type %r → %r", record.id,
-                _DCQL_OLD_RECORD_TYPE, _DCQL_NEW_RECORD_TYPE,
+                "DCQLQuery %s: type %r → %r",
+                record.id,
+                _DCQL_OLD_RECORD_TYPE,
+                _DCQL_NEW_RECORD_TYPE,
             )
 
         return migrated
@@ -159,8 +162,10 @@ async def _from_0_1_0_dcql_record_type(profile: Profile) -> int:
             )
             migrated += 1
             LOGGER.info(
-                "DCQLQuery %s: type %r → %r", record.id,
-                _DCQL_NEW_RECORD_TYPE, _DCQL_OLD_RECORD_TYPE,
+                "DCQLQuery %s: type %r → %r",
+                record.id,
+                _DCQL_NEW_RECORD_TYPE,
+                _DCQL_OLD_RECORD_TYPE,
             )
 
         return migrated
@@ -205,6 +210,7 @@ _STEPS: list[_Step] = [
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 async def run_migrations(profile: Profile) -> None:
     """Transform the database schema to match the installed package version.
 
@@ -231,7 +237,9 @@ async def run_migrations(profile: Profile) -> None:
         steps = [s for s in _STEPS if stored < s.version <= current]
         LOGGER.info(
             "Migrating DB %s → %s (%d step(s)).",
-            _fmt(stored), _fmt(current), len(steps),
+            _fmt(stored),
+            _fmt(current),
+            len(steps),
         )
         for step in steps:
             LOGGER.info("Applying step %s …", _fmt(step.version))
@@ -247,7 +255,9 @@ async def run_migrations(profile: Profile) -> None:
         steps = [s for s in reversed(_STEPS) if current < s.version <= stored]
         LOGGER.info(
             "Rolling back DB %s → %s (%d step(s)).",
-            _fmt(stored), _fmt(current), len(steps),
+            _fmt(stored),
+            _fmt(current),
+            len(steps),
         )
         for step in steps:
             LOGGER.info("Reversing step %s …", _fmt(step.version))

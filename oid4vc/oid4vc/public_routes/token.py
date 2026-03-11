@@ -446,9 +446,9 @@ async def handle_proof_of_posession(
     # JWK from the resolved key so credential processors that need the raw JWK
     # (e.g. mso_mdoc for holder key binding in DeviceKey) can access it.
     holder_jwk = headers.get("jwk")
-    if holder_jwk is None and ("kid" in headers or not any(
-        k in headers for k in ("jwk", "kid", "x5c")
-    )):
+    if holder_jwk is None and (
+        "kid" in headers or not any(k in headers for k in ("jwk", "kid", "x5c"))
+    ):
         try:
             holder_jwk = json.loads(key.get_jwk_public())
         except Exception:

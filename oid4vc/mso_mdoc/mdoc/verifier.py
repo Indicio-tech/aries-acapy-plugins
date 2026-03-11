@@ -33,4 +33,3 @@ __all__ = [
     "extract_verified_claims",
     "mdoc_verify",
 ]
-

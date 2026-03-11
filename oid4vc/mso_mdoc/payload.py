@@ -95,8 +95,7 @@ def normalize_mdoc_result(result: Any) -> str:
     """
     if result is None:
         raise CredProcessorError(
-            "mDoc signing returned None result. "
-            "Check key material and payload format."
+            "mDoc signing returned None result. Check key material and payload format."
         )
 
     if isinstance(result, bytes):

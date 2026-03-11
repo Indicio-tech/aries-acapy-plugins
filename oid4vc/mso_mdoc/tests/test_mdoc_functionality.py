@@ -213,7 +213,9 @@ class TestMdocFunctionality:
         headers = {"doctype": "org.iso.18013.5.1.mDL", "alg": "ES256"}
 
         try:
-            result = isomdl_mdoc_sign(jwk, headers, sample_mdoc_claims, cert_pem, private_pem)
+            result = isomdl_mdoc_sign(
+                jwk, headers, sample_mdoc_claims, cert_pem, private_pem
+            )
         except Exception:
             pytest.skip("mdoc signing not available in this environment")
             return

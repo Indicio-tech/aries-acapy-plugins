@@ -239,13 +239,16 @@ class TestMdocVerifyEmptyTrustAnchors:
         """
         mock_mdoc = _make_mock_mdoc(verified=True)
 
-        with patch("mso_mdoc.mdoc.mdoc_verify.isomdl_uniffi") as mock_iso, patch(
-            "mso_mdoc.mdoc.cred_verifier.isomdl_uniffi"
-        ) as mock_iso_cred:
+        with (
+            patch("mso_mdoc.mdoc.mdoc_verify.isomdl_uniffi") as mock_iso,
+            patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso_cred,
+        ):
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
             mock_iso_cred.MdocVerificationError = _iso_stub.MdocVerificationError
             mock_iso_cred.Mdoc.from_string.return_value = mock_mdoc
-            mock_iso_cred.Mdoc.new_from_base64url_encoded_issuer_signed.return_value = mock_mdoc
+            mock_iso_cred.Mdoc.new_from_base64url_encoded_issuer_signed.return_value = (
+                mock_mdoc
+            )
 
             result = mdoc_verify("a0b1c2d3e4f5", trust_anchors=None)
 
@@ -258,13 +261,16 @@ class TestMdocVerifyEmptyTrustAnchors:
         """mdoc_verify(mso_mdoc, trust_anchors=[]) must return verified=False."""
         mock_mdoc = _make_mock_mdoc(verified=True)
 
-        with patch("mso_mdoc.mdoc.mdoc_verify.isomdl_uniffi") as mock_iso, patch(
-            "mso_mdoc.mdoc.cred_verifier.isomdl_uniffi"
-        ) as mock_iso_cred:
+        with (
+            patch("mso_mdoc.mdoc.mdoc_verify.isomdl_uniffi") as mock_iso,
+            patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso_cred,
+        ):
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
             mock_iso_cred.MdocVerificationError = _iso_stub.MdocVerificationError
             mock_iso_cred.Mdoc.from_string.return_value = mock_mdoc
-            mock_iso_cred.Mdoc.new_from_base64url_encoded_issuer_signed.return_value = mock_mdoc
+            mock_iso_cred.Mdoc.new_from_base64url_encoded_issuer_signed.return_value = (
+                mock_mdoc
+            )
 
             result = mdoc_verify("a0b1c2d3e4f5", trust_anchors=[])
 
@@ -287,13 +293,16 @@ class TestMdocVerifyEmptyTrustAnchors:
         )
         mock_mdoc = _make_mock_mdoc(verified=True, common_name="My CA")
 
-        with patch("mso_mdoc.mdoc.mdoc_verify.isomdl_uniffi") as mock_iso, patch(
-            "mso_mdoc.mdoc.cred_verifier.isomdl_uniffi"
-        ) as mock_iso_cred:
+        with (
+            patch("mso_mdoc.mdoc.mdoc_verify.isomdl_uniffi") as mock_iso,
+            patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso_cred,
+        ):
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
             mock_iso_cred.MdocVerificationError = _iso_stub.MdocVerificationError
             mock_iso_cred.Mdoc.from_string.return_value = mock_mdoc
-            mock_iso_cred.Mdoc.new_from_base64url_encoded_issuer_signed.return_value = mock_mdoc
+            mock_iso_cred.Mdoc.new_from_base64url_encoded_issuer_signed.return_value = (
+                mock_mdoc
+            )
 
             result = mdoc_verify("a0b1c2d3e4f5", trust_anchors=[pem_cert])
 
@@ -302,9 +311,10 @@ class TestMdocVerifyEmptyTrustAnchors:
 
     def test_mdoc_verify_parse_failure_returns_not_verified(self):
         """Parsing failure always returns verified=False regardless of trust anchors."""
-        with patch("mso_mdoc.mdoc.mdoc_verify.isomdl_uniffi") as mock_iso, patch(
-            "mso_mdoc.mdoc.cred_verifier.isomdl_uniffi"
-        ) as mock_iso_cred:
+        with (
+            patch("mso_mdoc.mdoc.mdoc_verify.isomdl_uniffi") as mock_iso,
+            patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso_cred,
+        ):
             mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
             mock_iso_cred.MdocVerificationError = _iso_stub.MdocVerificationError
             mock_iso_cred.Mdoc.from_string.side_effect = Exception("CBOR parse error")
@@ -405,7 +415,9 @@ class TestEmptyTrustAnchorsPresVerifier:
         with (
             patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_iso,
             patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
-            patch("mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk") as mock_jwk_fn,
+            patch(
+                "mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk"
+            ) as mock_jwk_fn,
         ):
             mock_config.from_settings.return_value.endpoint = "https://issuer.example"
             mock_jwk = MagicMock()

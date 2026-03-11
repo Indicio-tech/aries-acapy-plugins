@@ -12,6 +12,7 @@ from acapy_agent.core.profile import Profile
 from oid4vc.cred_processor import CredVerifier, VerifyResult
 
 from .trust_store import TrustStore, WalletTrustStore
+from .utils import flatten_trust_anchors
 
 LOGGER = logging.getLogger(__name__)
 
@@ -170,8 +171,6 @@ class MsoMdocCredVerifier(CredVerifier):
             # PEM string; passing a chain as one element silently drops all
             # certs after the first, breaking trust-anchor validation.
             if trust_anchors:
-                from .utils import flatten_trust_anchors
-
                 trust_anchors = flatten_trust_anchors(trust_anchors)
 
             # Fail-closed guard: refuse to verify without at least one trust
