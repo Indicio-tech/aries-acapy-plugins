@@ -564,9 +564,7 @@ class ConformanceSuiteClient:
                     entry_msg = entry.get("msg", "")
                     entry_src = entry.get("src", "")
                     if entry_result in ("FAILURE", "WARNING"):
-                        logger.error(
-                            f"  [{entry_result}] {entry_src}: {entry_msg}"
-                        )
+                        logger.error(f"  [{entry_result}] {entry_src}: {entry_msg}")
 
             results.append(
                 TestResult(
