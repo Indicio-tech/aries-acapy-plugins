@@ -647,6 +647,10 @@ async def create_mdl_dcql_query(
 
     The OID4VP Final (1.0) spec requires DCQL for requests that use
     credential_format=iso_mdl in the oid4vp-1final-verifier-test-plan.
+
+    For mso_mdoc credentials, DCQL claims use path notation where the path
+    is [namespace, claim_name] per the OID4VP Final spec and the conformance
+    suite's DCQL validator.
     """
     payload = {
         "credentials": [
@@ -655,9 +659,9 @@ async def create_mdl_dcql_query(
                 "format": "mso_mdoc",
                 "meta": {"doctype_value": "org.iso.18013.5.1.mDL"},
                 "claims": [
-                    {"namespace": "org.iso.18013.5.1", "claim_name": "given_name"},
-                    {"namespace": "org.iso.18013.5.1", "claim_name": "family_name"},
-                    {"namespace": "org.iso.18013.5.1", "claim_name": "birth_date"},
+                    {"path": ["org.iso.18013.5.1", "given_name"]},
+                    {"path": ["org.iso.18013.5.1", "family_name"]},
+                    {"path": ["org.iso.18013.5.1", "birth_date"]},
                 ],
             }
         ]
