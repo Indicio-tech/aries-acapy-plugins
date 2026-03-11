@@ -40,7 +40,7 @@ RUN pip install -e ./status_list
 
 # Install isomdl-uniffi from pre-built wheel (Linux x86_64, manylinux2014)
 # Updating this ARG invalidates the Docker layer cache for this step.
-ARG ISOMDL_WHEEL_URL=https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test11/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+ARG ISOMDL_WHEEL_URL=https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test12/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
 RUN pip install --no-cache-dir "${ISOMDL_WHEEL_URL}"
 
 # Install the plugin with extras for mso_mdoc and sd_jwt_vc
