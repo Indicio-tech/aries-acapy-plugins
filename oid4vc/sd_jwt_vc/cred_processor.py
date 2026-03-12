@@ -339,6 +339,7 @@ def _parse_claim_metadata(raw) -> ClaimMetadata:
     return ClaimMetadata(**{k: v for k, v in raw.items() if k in _CLAIM_METADATA_FIELDS})
 
 
+class SDJWTIssuerACAPy(SDJWTIssuer):
     """SDJWTIssuer class for ACA-Py implementation."""
 
     def __init__(

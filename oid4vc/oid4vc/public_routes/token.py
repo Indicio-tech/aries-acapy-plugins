@@ -15,7 +15,11 @@ from acapy_agent.core.profile import Profile
 from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
 from acapy_agent.storage.base import BaseStorage, StorageRecord
-from acapy_agent.storage.error import StorageDuplicateError, StorageError, StorageNotFoundError
+from acapy_agent.storage.error import (
+    StorageDuplicateError,
+    StorageError,
+    StorageNotFoundError,
+)
 from acapy_agent.wallet.base import WalletError
 from acapy_agent.wallet.error import WalletNotFoundError
 from acapy_agent.wallet.jwt import b64_to_dict

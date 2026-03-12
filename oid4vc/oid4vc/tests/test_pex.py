@@ -235,8 +235,6 @@ async def test_verify_pres_def_presentation_supports_multi_descriptor(
     """
     from unittest.mock import patch
 
-    from aiohttp import web
-
     from oid4vc.models.presentation import OID4VPPresentation
     from oid4vc.models.presentation_definition import OID4VPPresDef
     from oid4vc.public_routes.verification import verify_pres_def_presentation

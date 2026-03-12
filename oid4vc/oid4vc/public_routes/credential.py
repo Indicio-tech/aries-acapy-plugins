@@ -321,7 +321,9 @@ async def _issue_cred_inner(context, token_result, refresh_id, req_body):
             credential = await processor.issue(
                 req_body, supported, ex_record, pop, context
             )
-            issued_credentials.append({"format": supported.format, "credential": credential})
+            issued_credentials.append(
+                {"format": supported.format, "credential": credential}
+            )
     except CredProcessorError as e:
         raise _vc_error(400, "invalid_credential_request", e.message)
 
