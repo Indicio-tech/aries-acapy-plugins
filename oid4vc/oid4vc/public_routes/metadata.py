@@ -22,6 +22,10 @@ from ..utils import get_tenant_subpath
 
 LOGGER = logging.getLogger(__name__)
 
+# Maximum number of SupportedCredential records returned per metadata request.
+# Prevents unbounded memory use when many credential types are configured.
+SUPPORTED_CRED_QUERY_LIMIT = 500
+
 
 class BatchCredentialIssuanceSchema(OpenAPISchema):
     """Batch credential issuance schema."""
@@ -76,8 +80,9 @@ async def credential_issuer_metadata(request: web.Request):
     public_url = config.endpoint
 
     async with context.session() as session:
-        # TODO If there's a lot, this will be a problem
-        credentials_supported = await SupportedCredential.query(session)
+        credentials_supported = (await SupportedCredential.query(session))[
+            :SUPPORTED_CRED_QUERY_LIMIT
+        ]
 
         wallet_id = request.match_info.get("wallet_id")
         subpath = f"/tenant/{wallet_id}" if wallet_id else ""
@@ -178,8 +183,9 @@ async def openid_configuration(request: web.Request):
     public_url = config.endpoint
 
     async with context.session() as session:
-        # TODO If there's a lot, this will be a problem
-        credentials_supported = await SupportedCredential.query(session)
+        credentials_supported = (await SupportedCredential.query(session))[
+            :SUPPORTED_CRED_QUERY_LIMIT
+        ]
 
         wallet_id = request.match_info.get("wallet_id")
         subpath = f"/tenant/{wallet_id}" if wallet_id else ""

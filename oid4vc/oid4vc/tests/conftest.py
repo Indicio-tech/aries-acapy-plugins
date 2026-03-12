@@ -78,6 +78,8 @@ def dummy_request(context):
             self.headers = headers or {"Authorization": "Bearer testtoken"}
             self.path = path
             self.match_info = match_info or {}
+            self.method = "POST"
+            self.url = f"http://localhost:8020{path}"
 
         async def json(self):
             return self._json

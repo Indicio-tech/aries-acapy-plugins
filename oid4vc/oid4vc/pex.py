@@ -24,6 +24,7 @@ from jsonschema import Draft7Validator, ValidationError
 from marshmallow import EXCLUDE, fields
 
 from oid4vc.cred_processor import CredProcessors
+from oid4vc.jwt import jwt_verify
 
 
 # TODO Update ACA-Py's InputDescriptorMapping model to match this
@@ -291,7 +292,19 @@ class PresentationExchangeEvaluator:
         descriptor_id_to_fields = {}
         descriptors_list = list(self._id_to_descriptor.values())
         for idx, item in enumerate(submission.descriptor_maps or []):
-            # TODO Check JWT VP generally, if format is jwt_vp
+            # JWT VP outer wrapper: when the submission descriptor format is
+            # jwt_vp, the presentation is a raw JWT string that wraps VCs inside
+            # a "vp" claim.  Decode and verify the outer envelope first, then
+            # use the decoded VP payload dict for JSONPath evaluation below.
+            vp_payload = presentation
+            if item.fmt == "jwt_vp" and isinstance(vp_payload, str):
+                vp_result = await jwt_verify(profile, vp_payload)
+                if not vp_result.verified:
+                    return PexVerifyResult(
+                        details="JWT VP outer wrapper signature verification failed"
+                    )
+                vp_payload = vp_result.payload
+
             evaluator = self._id_to_descriptor.get(item.id) if item.id else None
             if not evaluator and item.id is None and idx < len(descriptors_list):
                 # Deliberate interoperability relaxation: PEX 2.0 §5.1.1
@@ -311,7 +324,7 @@ class PresentationExchangeEvaluator:
             if item.path_nested:
                 assert item.path_nested.path
                 path = jsonpath.parse(item.path_nested.path)
-                values = path.find(presentation)
+                values = path.find(vp_payload)
                 if len(values) != 1:
                     return PexVerifyResult(
                         details="More than one value found for path "
@@ -321,7 +334,7 @@ class PresentationExchangeEvaluator:
                 vc = values[0].value
                 processor = processors.cred_verifier_for_format(item.path_nested.fmt)
             else:
-                vc = presentation
+                vc = vp_payload
                 processor = processors.cred_verifier_for_format(item.fmt)
 
             result = await processor.verify_credential(profile, vc)
