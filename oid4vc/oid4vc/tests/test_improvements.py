@@ -189,9 +189,7 @@ class TestVerifyDpopProof:
         """DPoP proof with iat far in the past must be rejected."""
         profile, _, _ = _make_mock_profile_with_storage()
         old_iat = int(time.time()) - 3600  # 1 hour ago
-        proof = _make_dpop_proof(
-            key, "ES256", iat=old_iat, access_token=access_token
-        )
+        proof = _make_dpop_proof(key, "ES256", iat=old_iat, access_token=access_token)
         with pytest.raises(web.HTTPUnauthorized, match="iat"):
             await _verify_dpop_proof(
                 profile,
@@ -222,9 +220,7 @@ class TestVerifyDpopProof:
     async def test_wrong_typ_rejected(self, key, access_token):
         """DPoP proof with typ != 'dpop+jwt' must be rejected."""
         profile, _, _ = _make_mock_profile_with_storage()
-        proof = _make_dpop_proof(
-            key, "ES256", typ="JWT", access_token=access_token
-        )
+        proof = _make_dpop_proof(key, "ES256", typ="JWT", access_token=access_token)
         with pytest.raises(web.HTTPUnauthorized, match="typ"):
             await _verify_dpop_proof(
                 profile,
@@ -423,7 +419,9 @@ class TestDidConfiguration:
         mock_did_info.did = "did:jwk:test123"
 
         request = MagicMock()
-        request.__getitem__ = lambda _, k: context if k == "context" else (_ for _ in ()).throw(KeyError(k))
+        request.__getitem__ = (
+            lambda _, k: context if k == "context" else (_ for _ in ()).throw(KeyError(k))
+        )
         request.match_info = {}
 
         with (
@@ -458,7 +456,9 @@ class TestDidConfiguration:
         mock_did_info.did = "did:jwk:test123"
 
         request = MagicMock()
-        request.__getitem__ = lambda _, k: context if k == "context" else (_ for _ in ()).throw(KeyError(k))
+        request.__getitem__ = (
+            lambda _, k: context if k == "context" else (_ for _ in ()).throw(KeyError(k))
+        )
         request.match_info = {}
 
         with (
@@ -486,9 +486,7 @@ class TestDidConfiguration:
         context_mock = MagicMock()
         await register(app, multitenant=False, context=context_mock)
 
-        routes = [
-            resource.canonical for resource in app.router.resources()
-        ]
+        routes = [resource.canonical for resource in app.router.resources()]
         assert "/.well-known/did-configuration.json" in routes, (
             "/.well-known/did-configuration.json route must be registered"
         )
@@ -675,7 +673,9 @@ class TestSupportedCredQueryLimit:
         ]
 
         request = MagicMock()
-        request.__getitem__ = lambda _, k: context if k == "context" else (_ for _ in ()).throw(KeyError(k))
+        request.__getitem__ = (
+            lambda _, k: context if k == "context" else (_ for _ in ()).throw(KeyError(k))
+        )
         request.match_info = {"wallet_id": "test-wallet"}
         request.headers = MagicMock()
         request.headers.get = MagicMock(return_value="")

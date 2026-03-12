@@ -260,9 +260,7 @@ async def test_verify_pres_def_presentation_supports_multi_descriptor(
             {"id": "desc-0", "constraints": {"fields": [{"path": ["$.type"]}]}},
             {
                 "id": "desc-1",
-                "constraints": {
-                    "fields": [{"path": ["$.credentialSubject.age"]}]
-                },
+                "constraints": {"fields": [{"path": ["$.credentialSubject.age"]}]},
             },
         ],
     }
@@ -290,7 +288,11 @@ async def test_verify_pres_def_presentation_supports_multi_descriptor(
         # Before fix: raises HTTPBadRequest("not supported at this time")
         # After fix: returns a PexVerifyResult without raising
         result = await verify_pres_def_presentation(
-            profile, submission, "fake.jwt.token", "4a1b2c3d-0000-4000-8000-000000000099", presentation_record
+            profile,
+            submission,
+            "fake.jwt.token",
+            "4a1b2c3d-0000-4000-8000-000000000099",
+            presentation_record,
         )
 
     assert result.verified is True, (

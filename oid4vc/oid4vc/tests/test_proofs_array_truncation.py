@@ -146,9 +146,7 @@ class TestBatchCredentialIssuanceSucceeds:
         assert response.status == 200
         body = json.loads(response.body)
         creds = body.get("credentials", [])
-        assert len(creds) == 2, (
-            f"Expected 2 credentials for 2 proofs, got {len(creds)}"
-        )
+        assert len(creds) == 2, f"Expected 2 credentials for 2 proofs, got {len(creds)}"
         assert mock_processor.issue.call_count == 2
 
     @pytest.mark.asyncio

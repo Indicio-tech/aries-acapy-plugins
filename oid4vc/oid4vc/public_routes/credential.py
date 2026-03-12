@@ -293,9 +293,7 @@ async def _issue_cred_inner(context, token_result, refresh_id, req_body):
             async with context.profile.session() as session:
                 redeemed = await Nonce.redeem_by_value(session, first_nonce)
             if not redeemed:
-                raise _vc_error(
-                    400, "invalid_nonce", "invalid or already-used nonce"
-                )
+                raise _vc_error(400, "invalid_nonce", "invalid or already-used nonce")
             batch_nonce = first_nonce
 
         all_pops = []

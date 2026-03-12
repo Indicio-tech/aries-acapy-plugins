@@ -118,9 +118,7 @@ class TestValidateCredentialSubject:
 
         subject = {"given_name": "John"}  # Missing family_name
 
-        with pytest.raises(
-            CredProcessorError, match="mandatory"
-        ):
+        with pytest.raises(CredProcessorError, match="mandatory"):
             processor.validate_credential_subject(supported, subject)
 
     def test_missing_mandatory_non_sd_claim(self):
@@ -138,9 +136,7 @@ class TestValidateCredentialSubject:
 
         subject = {"family_name": "Doe"}  # Missing mandatory given_name
 
-        with pytest.raises(
-            CredProcessorError, match="mandatory"
-        ):
+        with pytest.raises(CredProcessorError, match="mandatory"):
             processor.validate_credential_subject(supported, subject)
 
     def test_optional_claims_can_be_missing(self):
@@ -281,9 +277,7 @@ class TestValidateCredentialSubject:
 
         # Missing SD mandatory claim
         subject_missing_sd = {"family_name": "Doe"}
-        with pytest.raises(
-            CredProcessorError, match="mandatory"
-        ):
+        with pytest.raises(CredProcessorError, match="mandatory"):
             processor.validate_credential_subject(supported, subject_missing_sd)
 
         # Missing non-SD mandatory claim must raise after the fix

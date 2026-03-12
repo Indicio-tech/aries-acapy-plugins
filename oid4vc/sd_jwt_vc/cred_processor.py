@@ -244,8 +244,7 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
 
         if missing:
             raise CredProcessorError(
-                "Invalid credential subject; mandatory claim is missing:"
-                f" {missing}"
+                f"Invalid credential subject; mandatory claim is missing: {missing}"
             )
         if type_errors:
             raise CredProcessorError(

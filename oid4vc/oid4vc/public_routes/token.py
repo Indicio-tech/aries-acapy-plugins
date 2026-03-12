@@ -235,9 +235,7 @@ async def _verify_dpop_proof(
     # --- 2. typ MUST be "dpop+jwt" (RFC 9449 §4.2) ---
     if dpop_headers.get("typ", "").lower() != "dpop+jwt":
         raise web.HTTPUnauthorized(
-            reason=(
-                f"DPoP proof typ must be 'dpop+jwt', got {dpop_headers.get('typ')!r}"
-            )
+            reason=(f"DPoP proof typ must be 'dpop+jwt', got {dpop_headers.get('typ')!r}")
         )
 
     # --- 3. alg MUST be an asymmetric algorithm (not 'none') ---
@@ -271,9 +269,7 @@ async def _verify_dpop_proof(
     except Exception:
         signature_ok = False
     if not signature_ok:
-        raise web.HTTPUnauthorized(
-            reason="DPoP proof signature verification failed"
-        )
+        raise web.HTTPUnauthorized(reason="DPoP proof signature verification failed")
 
     # --- 6. htm MUST match the request HTTP method (RFC 9449 §4.3) ---
     htm = dpop_payload.get("htm", "")
@@ -288,8 +284,12 @@ async def _verify_dpop_proof(
         htu_parsed = urlparse(htu)
         url_parsed = urlparse(url)
         # RFC 9449 §4.3: compare without query string or fragment
-        htu_base = f"{htu_parsed.scheme}://{htu_parsed.netloc}{htu_parsed.path}".rstrip("/")
-        url_base = f"{url_parsed.scheme}://{url_parsed.netloc}{url_parsed.path}".rstrip("/")
+        htu_base = f"{htu_parsed.scheme}://{htu_parsed.netloc}{htu_parsed.path}".rstrip(
+            "/"
+        )
+        url_base = f"{url_parsed.scheme}://{url_parsed.netloc}{url_parsed.path}".rstrip(
+            "/"
+        )
     except Exception:
         raise web.HTTPUnauthorized(reason="DPoP proof htu claim is invalid")
     if htu_base != url_base:
