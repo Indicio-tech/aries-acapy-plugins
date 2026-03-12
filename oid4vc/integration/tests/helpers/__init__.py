@@ -18,6 +18,7 @@ from .assertions import (
 )
 from .constants import (
     ALGORITHMS,
+    MDL_MANDATORY_FIELDS,
     MDOC_AVAILABLE,
     TEST_CONFIG,
     VCT,
@@ -36,6 +37,7 @@ __all__ = [
     # Constants
     "CredentialFormat",
     "Doctype",
+    "MDL_MANDATORY_FIELDS",
     "VCT",
     "ALGORITHMS",
     "MDOC_AVAILABLE",

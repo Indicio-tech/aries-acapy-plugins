@@ -15,7 +15,7 @@ import uuid
 import pytest
 
 from tests.base import BaseMdocTest
-from tests.helpers import Doctype, wait_for_presentation_state
+from tests.helpers import MDL_MANDATORY_FIELDS, Doctype, wait_for_presentation_state
 
 pytestmark = [pytest.mark.mdoc, pytest.mark.interop]
 
@@ -37,6 +37,7 @@ class TestCredoMdocInterop(BaseMdocTest):
         acapy_issuer_admin,
         credo,  # From conftest.py
         issuer_p256_did,  # From BaseMdocTest
+        setup_issuer_certs,  # noqa: ARG002 - ensures default signing key exists
     ):
         """Test Credo accepting mDOC credential with DID-based signing.
 
@@ -79,6 +80,7 @@ class TestCredoMdocInterop(BaseMdocTest):
                 "given_name": "Jane",
                 "birth_date": "1990-05-15",
                 "age_over_18": True,
+                **MDL_MANDATORY_FIELDS,
             }
         }
 
@@ -154,7 +156,9 @@ class TestCredoMdocInterop(BaseMdocTest):
                     Doctype.MDL_NAMESPACE: {
                         "family_name": "Doe",
                         "given_name": "Jane",
+                        "birth_date": "1990-01-01",
                         "age_over_18": True,
+                        **MDL_MANDATORY_FIELDS,
                     }
                 },
                 "did": issuer_p256_did,
@@ -266,8 +270,11 @@ class TestCredoMdocInterop(BaseMdocTest):
                 "supported_cred_id": config["supported_cred_id"],
                 "credential_subject": {
                     Doctype.MDL_NAMESPACE: {
+                        "family_name": "Doe",
+                        "given_name": "Jane",
                         "birth_date": "1990-05-15",  # In credential...
                         "age_over_18": True,
+                        **MDL_MANDATORY_FIELDS,
                     }
                 },
                 "did": issuer_p256_did,

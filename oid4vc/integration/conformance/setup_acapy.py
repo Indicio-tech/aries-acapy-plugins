@@ -50,6 +50,31 @@ OUTPUT_FILE = os.environ.get("CONFORMANCE_SETUP_OUTPUT", "/tmp/conformance-setup
 POLL_INTERVAL = 2.0
 POLL_MAX_ATTEMPTS = 60
 
+# The conformance suite's hardcoded document signer certificate (from
+# TestAppUtils.kt / VciMdocUtils.kt in openid/conformance-suite). When the
+# suite acts as an mDL wallet (VP verifier tests), it signs mDL IssuerAuth
+# with this key/cert regardless of any `credential.signing_jwk` config.
+# The ACA-Py verifier must trust this cert so it can validate presented mDLs.
+CONFORMANCE_SUITE_MDL_DS_CERT_PEM = b"""\
+-----BEGIN CERTIFICATE-----
+MIICqTCCAlCgAwIBAgIUEmctHgzxSGqk6Z8Eb+0s97VZdpowCgYIKoZIzj0EAwIw
+gYcxCzAJBgNVBAYTAlVTMRgwFgYDVQQIDA9TdGF0ZSBvZiBVdG9waWExEjAQBgNV
+BAcMCVNhbiBSYW1vbjEaMBgGA1UECgwRT3BlbklEIEZvdW5kYXRpb24xCzAJBgNV
+BAsMAklUMSEwHwYDVQQDDBhjZXJ0aWZpY2F0aW9uLm9wZW5pZC5uZXQwHhcNMjUw
+NzMwMDc0NzIyWhcNMjYwNzMwMDc0NzIyWjCBhzELMAkGA1UEBhMCVVMxGDAWBgNV
+BAgMD1N0YXRlIG9mIFV0b3BpYTESMBAGA1UEBwwJU2FuIFJhbW9uMRowGAYDVQQK
+DBFPcGVuSUQgRm91bmRhdGlvbjELMAkGA1UECwwCSVQxITAfBgNVBAMMGGNlcnRp
+ZmljYXRpb24ub3BlbmlkLm5ldDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABJ5o
+lgDBiHqNhN7rFkSy/xD34dQcOSR4KvEWMyb62jI+UGUofeAi/55RIt74pBsQz9+B
+48WXI8xhIphoNN7AejajgZcwgZQwEgYDVR0TAQH/BAgwBgEB/wIBADAOBgNVHQ8B
+Af8EBAMCAQYwIQYDVR0SBBowGIEWY2VydGlmaWNhdGlvbkBvaWRmLm9yZzAsBgNV
+HR8EJTAjMCGgH6AdhhtodHRwOi8vZXhhbXBsZS5jb20vbXljYS5jcmwwHQYDVR0O
+BBYEFHhk9LVVH8Gt9ZgfxgyhSl921XOhMAoGCCqGSM49BAMCA0cAMEQCICBxjCq9
+efAwMKREK+k0OXBtiQCbFD7QdpyH42LVYfdvAiAurlZwp9PtmQZzoSYDUvXpZM5v
+TvFLVc4ESGy3AtdC+g==
+-----END CERTIFICATE-----
+"""
+
 
 async def wait_for_service(url: str, name: str) -> None:
     """Poll a service health endpoint until it responds."""
@@ -622,6 +647,10 @@ async def create_mdl_dcql_query(
 
     The OID4VP Final (1.0) spec requires DCQL for requests that use
     credential_format=iso_mdl in the oid4vp-1final-verifier-test-plan.
+
+    For mso_mdoc credentials, DCQL claims use path notation where the path
+    is [namespace, claim_name] per the OID4VP Final spec and the conformance
+    suite's DCQL validator.
     """
     payload = {
         "credentials": [
@@ -630,9 +659,9 @@ async def create_mdl_dcql_query(
                 "format": "mso_mdoc",
                 "meta": {"doctype_value": "org.iso.18013.5.1.mDL"},
                 "claims": [
-                    {"namespace": "org.iso.18013.5.1", "claim_name": "given_name"},
-                    {"namespace": "org.iso.18013.5.1", "claim_name": "family_name"},
-                    {"namespace": "org.iso.18013.5.1", "claim_name": "birth_date"},
+                    {"path": ["org.iso.18013.5.1", "given_name"]},
+                    {"path": ["org.iso.18013.5.1", "family_name"]},
+                    {"path": ["org.iso.18013.5.1", "birth_date"]},
                 ],
             }
         ]
@@ -767,6 +796,15 @@ async def main() -> None:
         # Upload trust anchor to verifier (for mDOC holder cert validation)
         await upload_trust_anchor(
             client, VERIFIER_ADMIN_URL, root_cert_pem, anchor_type="mso_mdoc"
+        )
+        # The conformance suite wallet signs mDL presentations with its own
+        # hardcoded document signer cert (TestAppUtils.kt). Upload it so the
+        # verifier trusts mDLs presented by the conformance suite during VP tests.
+        await upload_trust_anchor(
+            client,
+            VERIFIER_ADMIN_URL,
+            CONFORMANCE_SUITE_MDL_DS_CERT_PEM,
+            anchor_type="mso_mdoc",
         )
 
         # Create presentation definitions (kept for backward-compat, but OID4VP

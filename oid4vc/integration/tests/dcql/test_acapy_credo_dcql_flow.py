@@ -21,6 +21,7 @@ import pytest
 
 from tests.conftest import wait_for_presentation_valid
 from tests.helpers import assert_selective_disclosure
+from tests.helpers.constants import MDL_MANDATORY_FIELDS
 
 
 class TestDCQLSdJwtFlow:
@@ -413,6 +414,7 @@ class TestDCQLMdocFlow:
                     "family_name": "Williams",
                     "birth_date": "1985-03-22",
                     "document_number": "DL-123456",
+                    **MDL_MANDATORY_FIELDS,
                 }
             },
             "did": issuer_did,
@@ -561,6 +563,8 @@ class TestDCQLMdocFlow:
                     "org.iso.18013.5.1": {
                         "given_name": "Carol",
                         "family_name": "Davis",
+                        "birth_date": "1990-01-01",
+                        **MDL_MANDATORY_FIELDS,
                     }
                 },
                 "did": issuer_did,
@@ -845,9 +849,8 @@ class TestDCQLSelectiveDisclosure:
                         "given_name": "David",
                         "family_name": "Brown",
                         "birth_date": "1988-07-20",
-                        "portrait": "base64_image_data_here",
-                        "driving_privileges": "Category B",
                         "signature": "base64_signature_here",
+                        **MDL_MANDATORY_FIELDS,
                     }
                 },
                 "did": issuer_did,

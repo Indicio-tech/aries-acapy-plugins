@@ -23,7 +23,6 @@ async def on_startup(profile: Profile, event: object):
     each tenant's Askar partition is queried automatically.
     """
     LOGGER.info("MSO_MDOC plugin startup - initializing profile-dependent resources")
-
     # Initialize storage and generate default keys/certs if needed
     storage_manager = MdocStorageManager(profile)
 

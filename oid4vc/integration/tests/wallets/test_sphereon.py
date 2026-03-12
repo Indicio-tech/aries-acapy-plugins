@@ -10,6 +10,7 @@ from bitarray import bitarray
 
 from tests.conftest import wait_for_presentation_valid
 from tests.helpers import MDOC_AVAILABLE
+from tests.helpers.constants import MDL_MANDATORY_FIELDS
 
 LOGGER = logging.getLogger(__name__)
 
@@ -84,7 +85,9 @@ async def test_sphereon_accept_credential_offer(acapy_issuer_admin, sphereon_cli
 @pytest.mark.skipif(not MDOC_AVAILABLE, reason="isomdl_uniffi not available")
 @pytest.mark.asyncio
 async def test_sphereon_accept_mdoc_credential_offer(
-    acapy_issuer_admin, sphereon_client
+    acapy_issuer_admin,
+    sphereon_client,
+    setup_issuer_certs,  # noqa: ARG001 - ensures default signing key exists
 ):
     """Test Sphereon accepting an mdoc credential offer from ACA-Py."""
 
@@ -150,6 +153,7 @@ async def test_sphereon_accept_mdoc_credential_offer(
                     "given_name": "John",
                     "family_name": "Doe",
                     "birth_date": "1990-01-01",
+                    **MDL_MANDATORY_FIELDS,
                 }
             },
             "verification_method": issuer_did + "#0",
@@ -244,6 +248,7 @@ async def test_sphereon_present_mdoc_credential(
                     "given_name": "John",
                     "family_name": "Doe",
                     "birth_date": "1990-01-01",
+                    **MDL_MANDATORY_FIELDS,
                 }
             },
             "verification_method": issuer_did + "#0",

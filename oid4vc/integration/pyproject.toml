@@ -28,7 +28,7 @@ dependencies = [
     # sd_jwt dependencies
     "jsonpointer>=3.0.0,<4.0.0",
     # isomdl-uniffi from GitHub releases (pre-built wheels)
-    "isomdl-uniffi @ https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test9/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl ; sys_platform == 'linux'",
+    "isomdl-uniffi @ https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test12/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl ; sys_platform == 'linux'",
     "acapy-agent>=1.4.0",
     "Appium-Python-Client>=4.0.0",
     "bitarray>=2.9.2",

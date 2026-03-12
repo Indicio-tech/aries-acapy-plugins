@@ -13,6 +13,7 @@ import uuid
 import pytest
 
 from tests.conftest import wait_for_presentation_valid
+from tests.helpers.constants import MDL_MANDATORY_FIELDS
 
 
 @pytest.mark.asyncio
@@ -279,6 +280,7 @@ async def test_acapy_credo_mdoc_flow(
                 "given_name": "Alice",
                 "family_name": "Smith",
                 "birth_date": "1990-01-01",
+                **MDL_MANDATORY_FIELDS,
             }
         },
     }
@@ -573,6 +575,7 @@ async def test_acapy_credo_mdoc_selective_disclosure(
                 "family_name": "Wonderland",
                 "birth_date": "1990-01-01",
                 "issue_date": "2023-01-01",
+                **MDL_MANDATORY_FIELDS,
             }
         },
     }
