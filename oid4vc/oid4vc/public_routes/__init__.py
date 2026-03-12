@@ -56,13 +56,15 @@ from .verification import (
     OID4VPPresentationIDMatchSchema,
     OID4VPRequestIDMatchSchema,
     PostOID4VPResponseSchema,
-    _create_default_did,
-    _retrieve_default_did,
     get_request,
     post_response,
-    retrieve_or_create_did_jwk,
     verify_dcql_presentation,
     verify_pres_def_presentation,
+)
+from ..did_utils import (
+    _create_default_did,
+    _retrieve_default_did,
+    retrieve_or_create_did_jwk,
 )
 
 __all__ = [
