@@ -367,8 +367,8 @@ class TestCheckTokenDpop:
             mock_dpop.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_dpop_without_proof_header_logs_and_continues(self, context):
-        """DPoP scheme without dpop_header should log a warning and not raise."""
+    async def test_dpop_without_proof_header_raises_401(self, context):
+        """DPoP scheme without a DPoP proof header MUST be rejected (RFC 9449 §4.3)."""
         with (
             patch(
                 "oid4vc.public_routes.token.Config.from_settings",
@@ -388,18 +388,19 @@ class TestCheckTokenDpop:
                 AsyncMock(),
             ) as mock_dpop,
         ):
+            from aiohttp import web
+
             from oid4vc.public_routes.token import check_token
 
-            # dpop_header=None: backward-compat mode, should not raise
-            result = await check_token(
-                context,
-                "DPoP some-access-token",
-                dpop_header=None,
-                method="POST",
-                url="https://issuer.example/credential",
-            )
+            with pytest.raises(web.HTTPUnauthorized):
+                await check_token(
+                    context,
+                    "DPoP some-access-token",
+                    dpop_header=None,
+                    method="POST",
+                    url="https://issuer.example/credential",
+                )
             mock_dpop.assert_not_awaited()
-            assert result.verified is True
 
 
 # ---------------------------------------------------------------------------

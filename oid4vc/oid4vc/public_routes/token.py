@@ -348,10 +348,9 @@ async def check_token(
     """Validate the OID4VCI token and (when present) the DPoP proof.
 
     Accepts both ``Bearer`` and ``DPoP`` Authorization schemes.  When the
-    scheme is ``DPoP`` the caller SHOULD supply the ``dpop_header``,
-    ``method``, and ``url`` arguments so the DPoP proof can be fully
-    verified per RFC 9449 §4.3.  If they are omitted the DPoP proof is
-    accepted without cryptographic binding (backward-compat only).
+    scheme is ``DPoP``, a ``DPoP`` proof header MUST be present (RFC 9449
+    §4.3); absence is rejected with 401.  ``method`` and ``url`` are
+    forwarded to ``_verify_dpop_proof`` for ``htm``/``htu`` binding.
     """
     if not bearer:
         raise web.HTTPUnauthorized()
@@ -399,22 +398,19 @@ async def check_token(
             headers={"Content-Type": "application/json"},
         )
 
-    # DPoP binding check (RFC 9449 §4.3): when the client presented a DPoP-bound
-    # access token and supplied a DPoP proof, verify the proof against the token.
+    # DPoP binding check (RFC 9449 §4.3): DPoP scheme requires a proof header.
     if scheme.lower() == "dpop":
-        if dpop_header and method and url:
-            await _verify_dpop_proof(
-                context.profile,
-                dpop_proof=dpop_header,
-                access_token=cred,
-                method=method,
-                url=url,
+        if not dpop_header:
+            raise web.HTTPUnauthorized(
+                reason="DPoP scheme requires a DPoP proof header (RFC 9449 §4.3)"
             )
-        else:
-            LOGGER.debug(
-                "DPoP scheme used but dpop_header/method/url not supplied; "
-                "skipping DPoP proof binding check (backward-compat mode)"
-            )
+        await _verify_dpop_proof(
+            context.profile,
+            dpop_proof=dpop_header,
+            access_token=cred,
+            method=method,
+            url=url,
+        )
 
     return result
 

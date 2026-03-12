@@ -300,15 +300,14 @@ async def test_token_with_correct_pin_but_code_reused(
 
 @pytest.mark.asyncio
 async def test_check_token_accepts_dpop_scheme(context):
-    """check_token must accept DPoP-scheme tokens and proceed to JWT verification.
+    """check_token must accept DPoP-scheme tokens with a valid DPoP proof header.
 
     The server advertises dpop_signing_alg_values_supported (HAIP DPOP-5.1),
-    so wallets such as Credo present DPoP-bound access tokens.  We accept the
-    DPoP scheme and verify the token JWT itself; the DPoP proof in the DPoP
-    HTTP header is not yet verified (full DPoP support is tracked separately).
+    so wallets such as Credo present DPoP-bound access tokens.  We verify
+    the token JWT itself and the DPoP proof per RFC 9449.
     """
-    import sys
     import importlib
+    import sys
 
     importlib.import_module("oid4vc.public_routes.token")
     token_mod = sys.modules["oid4vc.public_routes.token"]
@@ -320,11 +319,19 @@ async def test_check_token_accepts_dpop_scheme(context):
         verified=True,
     )
 
-    with patch.object(token_mod, "jwt_verify", AsyncMock(return_value=fake_result)):
-        with patch("oid4vc.config.Config.from_settings") as mock_cfg:
-            mock_cfg.return_value.auth_server_url = None
-            # DPoP scheme should not raise — it proceeds to jwt_verify
-            result = await check_token(context, "DPoP valid_dpop_token")
+    with (
+        patch.object(token_mod, "jwt_verify", AsyncMock(return_value=fake_result)),
+        patch("oid4vc.config.Config.from_settings") as mock_cfg,
+        patch.object(token_mod, "_verify_dpop_proof", AsyncMock()),
+    ):
+        mock_cfg.return_value.auth_server_url = None
+        result = await check_token(
+            context,
+            "DPoP valid_dpop_token",
+            dpop_header="some.dpop.proof",
+            method="POST",
+            url="https://issuer.example/credential",
+        )
 
     assert result.verified is True
 
