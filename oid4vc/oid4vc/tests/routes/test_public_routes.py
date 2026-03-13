@@ -16,7 +16,7 @@ from oid4vc.public_routes import (
     JWTVerifyResult,
     check_token,
     credential_issuer_metadata,
-    handle_proof_of_posession,
+    handle_proof_of_possession,
     issue_cred,
     receive_notification,
 )
@@ -78,11 +78,11 @@ async def test_get_token(context: AdminRequestContext, req: web.Request):
 
 
 @pytest.mark.asyncio
-async def test_handle_proof_of_posession(profile: Profile):
+async def test_handle_proof_of_possession(profile: Profile):
     """Test handling of proof of possession with a self-contained synthetic JWT.
 
     Generates a fresh EC keypair inline, builds and signs a proper
-    openid4vci-proof+jwt, and verifies it through handle_proof_of_posession.
+    openid4vci-proof+jwt, and verifies it through handle_proof_of_possession.
     No captured tokens or external URLs are used.
     """
     import base64
@@ -103,7 +103,7 @@ async def test_handle_proof_of_posession(profile: Profile):
     public_jwk = json.loads(key.get_jwk_public())
 
     # Build a valid openid4vci-proof+jwt embedding the public JWK in the header
-    # so handle_proof_of_posession can resolve it without DID lookup.
+    # so handle_proof_of_possession can resolve it without DID lookup.
     header = {"typ": "openid4vci-proof+jwt", "alg": "ES256", "jwk": public_jwk}
     payload = {
         "iat": int(time.time()),
@@ -118,7 +118,7 @@ async def test_handle_proof_of_posession(profile: Profile):
 
     proof = {"proof_type": "jwt", "jwt": f"{h_enc}.{p_enc}.{s_enc}"}
 
-    result = await handle_proof_of_posession(profile, proof, nonce)
+    result = await handle_proof_of_possession(profile, proof, nonce)
     assert result.verified is True
     assert result.holder_jwk == public_jwk
 
@@ -300,12 +300,12 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
         AsyncMock(return_value="header.payload.signature"),
     )
 
-    # Patch handle_proof_of_posession to return a verified PopResult
+    # Patch handle_proof_of_possession to return a verified PopResult
     mock_pop = MagicMock()
     mock_pop.verified = True
     mock_pop.holder_kid = "did:example:123#key-1"
     monkeypatch.setattr(
-        "oid4vc.public_routes.credential.handle_proof_of_posession",
+        "oid4vc.public_routes.credential.handle_proof_of_possession",
         AsyncMock(return_value=mock_pop),
     )
 

@@ -14,7 +14,7 @@ from aiohttp_apispec import docs, response_schema
 from marshmallow import fields
 
 from ..config import Config
-from ..cred_processor import CredProcessors
+from ..cred_processor import CredProcessorError, CredProcessors
 from ..did_utils import retrieve_or_create_did_jwk
 from ..jwt import jwt_sign
 from ..models.supported_cred import SupportedCredential
@@ -109,7 +109,7 @@ async def credential_issuer_metadata(request: web.Request):
         for supported in credentials_supported:
             try:
                 issuer = processors.issuer_for_format(supported.format)
-            except Exception:
+            except CredProcessorError:
                 issuer = None
             cred_configs[supported.identifier] = supported.to_issuer_metadata(
                 issuer=issuer
@@ -196,7 +196,7 @@ async def openid_configuration(request: web.Request):
         for supported in credentials_supported:
             try:
                 issuer = processors.issuer_for_format(supported.format)
-            except Exception:
+            except CredProcessorError:
                 issuer = None
             cred_configs[supported.identifier] = supported.to_issuer_metadata(
                 issuer=issuer

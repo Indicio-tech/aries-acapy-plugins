@@ -12,7 +12,9 @@ PRE_AUTHORIZED_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:pre-authorize
 NONCE_BYTES = 16
 
 # Token expiration time in seconds (24 hours)
-EXPIRES_IN = 86400
+OFFER_EXPIRES_IN = 86400
+# Keep old name as an alias for backward compatibility
+EXPIRES_IN = OFFER_EXPIRES_IN
 
 # Maximum age (seconds) allowed for a DPoP proof iat claim relative to server clock.
 # RFC 9449 §4.3 requires servers to check that the DPoP proof was created recently to

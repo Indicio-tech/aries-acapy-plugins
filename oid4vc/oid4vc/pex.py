@@ -408,7 +408,9 @@ class PresentationExchangeEvaluator:
                             f"Descriptor '{evaluator.id}' requires"
                             " limit_disclosure=required but submitted"
                             f" format '{fmt}' does not support"
-                            " selective disclosure"
+                            " selective disclosure."
+                            " Use a format that supports SD such as"
+                            f" {', '.join(sorted(_SELECTIVE_DISCLOSURE_FORMATS))}"
                         )
                     )
 

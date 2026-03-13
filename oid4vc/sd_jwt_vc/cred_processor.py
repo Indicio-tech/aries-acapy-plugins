@@ -104,11 +104,14 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
         context: AdminRequestContext,
     ) -> Any:
         """Return a signed credential in SD-JWT format."""
-        assert supported.format_data
-        assert supported.vc_additional_data
+        if not supported.format_data:
+            raise CredProcessorError("SupportedCredential is missing format_data")
+        if not supported.vc_additional_data:
+            raise CredProcessorError("SupportedCredential is missing vc_additional_data")
 
         sd_list = supported.vc_additional_data.get("sd_list") or []
-        assert isinstance(sd_list, list)
+        if not isinstance(sd_list, list):
+            raise CredProcessorError("vc_additional_data.sd_list must be a list")
 
         # Allow missing vct in body if format_data has vct
         body_vct = body.get("vct")
@@ -189,8 +192,10 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
     def validate_credential_subject(self, supported: SupportedCredential, subject: dict):
         """Validate the credential subject."""
         vc_additional = supported.vc_additional_data
-        assert vc_additional
-        assert supported.format_data
+        if not vc_additional:
+            raise CredProcessorError("SupportedCredential is missing vc_additional_data")
+        if not supported.format_data:
+            raise CredProcessorError("SupportedCredential is missing format_data")
         claims_metadata = supported.format_data.get("claims")
         sd_list = vc_additional.get("sd_list") or []
 
@@ -555,5 +560,6 @@ async def sd_jwt_verify(
     try:
         payload = (await sd_jwt_verifier.verify()).get_verified_payload()
         return VerifyResult(True, payload)
-    except Exception:
+    except (CredProcessorError, ValueError, KeyError) as exc:
+        LOGGER.debug("SD-JWT verification failed: %s", exc)
         return VerifyResult(False, None)

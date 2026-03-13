@@ -135,7 +135,7 @@ class TestBatchCredentialIssuanceSucceeds:
                 AsyncMock(return_value=supported),
             ),
             patch(
-                "oid4vc.public_routes.credential.handle_proof_of_posession",
+                "oid4vc.public_routes.credential.handle_proof_of_possession",
                 AsyncMock(return_value=mock_pop),
             ),
         ):
@@ -191,7 +191,7 @@ class TestBatchCredentialIssuanceSucceeds:
                 AsyncMock(return_value=supported),
             ),
             patch(
-                "oid4vc.public_routes.credential.handle_proof_of_posession",
+                "oid4vc.public_routes.credential.handle_proof_of_possession",
                 AsyncMock(return_value=mock_pop),
             ),
         ):
@@ -252,7 +252,7 @@ class TestProofsJwtSingleEntrySucceeds:
                 AsyncMock(return_value=supported),
             ),
             patch(
-                "oid4vc.public_routes.credential.handle_proof_of_posession",
+                "oid4vc.public_routes.credential.handle_proof_of_possession",
                 AsyncMock(return_value=mock_pop),
             ),
         ):

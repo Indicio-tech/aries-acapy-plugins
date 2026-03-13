@@ -46,9 +46,9 @@ from ..pop_result import PopResult
 from ..utils import get_auth_header, get_tenant_subpath
 from .constants import (
     DPOP_PROOF_MAX_AGE_SECONDS,
-    EXPIRES_IN,
     LOGGER,
     NONCE_BYTES,
+    OFFER_EXPIRES_IN,
     PRE_AUTHORIZED_CODE_GRANT_TYPE,
 )
 from .nonce import create_nonce
@@ -164,7 +164,7 @@ async def token(request: web.Request):
 
     payload = {
         "sub": record.refresh_id,
-        "exp": int(time.time()) + EXPIRES_IN,
+        "exp": int(time.time()) + OFFER_EXPIRES_IN,
     }
 
     # v1 compliance: do not require DID/verification method at token step.
@@ -196,15 +196,15 @@ async def token(request: web.Request):
 
     # Create a nonce for the wallet to use in its credential proof.
     # The /nonce endpoint also serves nonces (OID4VCI 1.0 §8); both are valid.
-    c_nonce_record = await create_nonce(context.profile, NONCE_BYTES, EXPIRES_IN)
+    c_nonce_record = await create_nonce(context.profile, NONCE_BYTES, OFFER_EXPIRES_IN)
 
     return web.json_response(
         {
             "access_token": record.token,
             "token_type": "Bearer",
-            "expires_in": EXPIRES_IN,
+            "expires_in": OFFER_EXPIRES_IN,
             "c_nonce": c_nonce_record.nonce_value,
-            "c_nonce_expires_in": EXPIRES_IN,
+            "c_nonce_expires_in": OFFER_EXPIRES_IN,
         }
     )
 
@@ -415,10 +415,10 @@ async def check_token(
     return result
 
 
-async def handle_proof_of_posession(
+async def handle_proof_of_possession(
     profile: Profile, proof: Dict[str, Any], c_nonce: str | None = None
 ):
-    """Handle proof of posession."""
+    """Handle proof of possession."""
     encoded_headers, encoded_payload, encoded_signature = proof["jwt"].split(".", 3)
     headers = b64_to_dict(encoded_headers)
 

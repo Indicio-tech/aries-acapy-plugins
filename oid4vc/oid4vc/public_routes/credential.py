@@ -25,7 +25,7 @@ from ..models.nonce import Nonce
 from ..models.supported_cred import SupportedCredential
 from ..routes import CredOfferQuerySchema, CredOfferResponseSchemaVal
 from ..routes.helpers import _parse_cred_offer
-from .token import check_token, handle_proof_of_posession
+from .token import check_token, handle_proof_of_possession
 
 LOGGER = logging.getLogger(__name__)
 
@@ -256,7 +256,7 @@ async def _issue_cred_inner(context, token_result, refresh_id, req_body):
             )
 
     # c_nonce may be None when the OID4VCI 1.0 /nonce endpoint is used.
-    # handle_proof_of_posession handles c_nonce=None by calling Nonce.redeem_by_value,
+    # handle_proof_of_possession handles c_nonce=None by calling Nonce.redeem_by_value,
     # which validates nonces issued by the /nonce endpoint with replay protection.
     c_nonce = token_result.payload.get("c_nonce") or ex_record.nonce
 
@@ -271,7 +271,7 @@ async def _issue_cred_inner(context, token_result, refresh_id, req_body):
     # signature, issuing one credential per proof (OID4VCI 1.0 §7.2.3).
     if "proof" in req_body:
         proof_value = req_body["proof"]
-        pop = await handle_proof_of_posession(context.profile, proof_value, c_nonce)
+        pop = await handle_proof_of_possession(context.profile, proof_value, c_nonce)
         if not pop.verified:
             raise _vc_error(400, "invalid_proof", "Proof signature verification failed.")
         all_pops = [pop]
@@ -299,7 +299,7 @@ async def _issue_cred_inner(context, token_result, refresh_id, req_body):
         all_pops = []
         for proof_jwt in jwt_proofs:
             proof_value = {"proof_type": "jwt", "jwt": proof_jwt}
-            pop = await handle_proof_of_posession(
+            pop = await handle_proof_of_possession(
                 context.profile, proof_value, batch_nonce
             )
             if not pop.verified:
