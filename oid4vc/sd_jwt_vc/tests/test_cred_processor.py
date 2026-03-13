@@ -118,18 +118,11 @@ class TestValidateCredentialSubject:
 
         subject = {"given_name": "John"}  # Missing family_name
 
-        with pytest.raises(
-            CredProcessorError, match="selectively disclosable claim is mandatory"
-        ):
+        with pytest.raises(CredProcessorError, match="mandatory"):
             processor.validate_credential_subject(supported, subject)
 
     def test_missing_mandatory_non_sd_claim(self):
-        """Test that non-SD mandatory claims are not currently validated.
-
-        The current implementation only validates mandatory fields that are
-        selectively disclosable (in sd_list). Non-SD mandatory field validation
-        is TODO as noted in the code.
-        """
+        """Non-SD mandatory claims must also be validated."""
         processor = SdJwtCredIssueProcessor()
         supported = MagicMock(spec=SupportedCredential)
         supported.format_data = {
@@ -143,9 +136,8 @@ class TestValidateCredentialSubject:
 
         subject = {"family_name": "Doe"}  # Missing mandatory given_name
 
-        # Currently passes because the implementation only validates SD claims
-        # TODO: This should raise once non-SD mandatory validation is implemented
-        processor.validate_credential_subject(supported, subject)
+        with pytest.raises(CredProcessorError, match="mandatory"):
+            processor.validate_credential_subject(supported, subject)
 
     def test_optional_claims_can_be_missing(self):
         """Test validation passes when only optional claims are missing."""
@@ -285,12 +277,57 @@ class TestValidateCredentialSubject:
 
         # Missing SD mandatory claim
         subject_missing_sd = {"family_name": "Doe"}
-        with pytest.raises(
-            CredProcessorError, match="selectively disclosable claim is mandatory"
-        ):
+        with pytest.raises(CredProcessorError, match="mandatory"):
             processor.validate_credential_subject(supported, subject_missing_sd)
 
-        # Missing non-SD mandatory claim - currently not validated (TODO in implementation)
+        # Missing non-SD mandatory claim must raise after the fix
         subject_missing_non_sd = {"given_name": "John"}
-        # This currently passes because non-SD mandatory validation is not implemented
-        processor.validate_credential_subject(supported, subject_missing_non_sd)
+        with pytest.raises(CredProcessorError, match="mandatory"):
+            processor.validate_credential_subject(supported, subject_missing_non_sd)
+
+
+class TestValueTypeEnforcement:
+    """Tests for value_type enforcement in validate_credential_subject."""
+
+    def _make_supported(self, claim_name, value_type, in_sd_list=True):
+        supported = MagicMock(spec=SupportedCredential)
+        supported.format_data = {
+            "vct": "IdentityCredential",
+            "claims": {claim_name: {"mandatory": False, "value_type": value_type}},
+        }
+        supported.vc_additional_data = {
+            "sd_list": [f"/{claim_name}"] if in_sd_list else []
+        }
+        return supported
+
+    def test_string_type_accepted(self):
+        """Correct string value passes."""
+        processor = SdJwtCredIssueProcessor()
+        supported = self._make_supported("given_name", "string")
+        processor.validate_credential_subject(supported, {"given_name": "Alice"})
+
+    def test_wrong_type_raises_for_sd_claim(self):
+        """SD claim with wrong value_type must raise CredProcessorError."""
+        processor = SdJwtCredIssueProcessor()
+        supported = self._make_supported("age", "integer")
+        with pytest.raises(CredProcessorError, match="wrong type|value_type"):
+            processor.validate_credential_subject(supported, {"age": "not-an-int"})
+
+    def test_integer_type_accepted(self):
+        """Correct integer value passes."""
+        processor = SdJwtCredIssueProcessor()
+        supported = self._make_supported("score", "integer")
+        processor.validate_credential_subject(supported, {"score": 42})
+
+    def test_boolean_type_accepted(self):
+        """Correct boolean value passes."""
+        processor = SdJwtCredIssueProcessor()
+        supported = self._make_supported("active", "boolean")
+        processor.validate_credential_subject(supported, {"active": True})
+
+    def test_wrong_type_raises_for_non_sd_claim(self):
+        """Non-SD claim with wrong value_type must also raise CredProcessorError."""
+        processor = SdJwtCredIssueProcessor()
+        supported = self._make_supported("score", "integer", in_sd_list=False)
+        with pytest.raises(CredProcessorError, match="wrong type|value_type"):
+            processor.validate_credential_subject(supported, {"score": "not-a-number"})

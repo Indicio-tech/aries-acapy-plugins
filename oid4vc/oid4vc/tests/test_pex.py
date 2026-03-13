@@ -163,3 +163,139 @@ async def test_evaluator_positional_out_of_bounds_returns_unverified(
     assert result.verified is False, (
         "A submission with more entries than descriptors must not succeed."
     )
+
+
+# ---------------------------------------------------------------------------
+# Multi-descriptor PEX evaluation
+# ---------------------------------------------------------------------------
+
+_MULTI_DEF = {
+    "id": "4a1b2c3d-0000-4000-8000-000000000099",
+    "input_descriptors": [
+        {
+            "id": "desc-0",
+            "constraints": {"fields": [{"path": ["$.type"]}]},
+        },
+        {
+            "id": "desc-1",
+            "constraints": {"fields": [{"path": ["$.credentialSubject.age"]}]},
+        },
+    ],
+}
+
+
+@pytest.mark.asyncio
+async def test_pex_evaluator_multi_descriptor_succeeds(profile, mock_processors):
+    """PresentationExchangeEvaluator must evaluate ALL descriptor_map entries.
+
+    A definition with two input descriptors and a submission with two matching
+    entries must produce verified=True with both descriptor IDs in the result.
+    """
+    profile.context.injector.bind_instance(CredProcessors, mock_processors)
+    # Override to return a payload that satisfies both descriptors
+    mock_processors.cred_verifier_for_format.return_value.verify_credential = AsyncMock(
+        return_value=MagicMock(
+            verified=True,
+            payload={"type": ["VerifiableCredential"], "credentialSubject": {"age": 30}},
+        )
+    )
+    evaluator = PresentationExchangeEvaluator.compile(_MULTI_DEF)
+
+    submission = {
+        "id": "4a1b2c3d-0000-4000-8000-000000000100",
+        "definition_id": "4a1b2c3d-0000-4000-8000-000000000099",
+        "descriptor_map": [
+            {"id": "desc-0", "format": "jwt_vc_json", "path": "$"},
+            {"id": "desc-1", "format": "jwt_vc_json", "path": "$"},
+        ],
+    }
+    presentation = {
+        "type": ["VerifiableCredential"],
+        "credentialSubject": {"age": 30},
+    }
+    result = await evaluator.verify(profile, submission, presentation)
+    assert result.verified is True, f"Expected verified; got: {result.details!r}"
+    assert "desc-0" in result.descriptor_id_to_claims
+    assert "desc-1" in result.descriptor_id_to_claims
+
+
+# ---------------------------------------------------------------------------
+# verify_pres_def_presentation multi-descriptor support
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_verify_pres_def_presentation_supports_multi_descriptor(
+    profile, mock_processors
+):
+    """verify_pres_def_presentation must NOT reject submissions with >1 descriptor.
+
+    This test exposes the limitation where the function raises HTTPBadRequest
+    for multi-entry descriptor_maps.  After the fix it must succeed.
+    """
+    from unittest.mock import patch
+
+    from oid4vc.models.presentation import OID4VPPresentation
+    from oid4vc.models.presentation_definition import OID4VPPresDef
+    from oid4vc.public_routes.verification import verify_pres_def_presentation
+
+    profile.context.injector.bind_instance(CredProcessors, mock_processors)
+    mock_processors.pres_verifier_for_format.return_value.verify_presentation = AsyncMock(
+        return_value=MagicMock(
+            verified=True,
+            payload={"type": ["VerifiableCredential"], "credentialSubject": {"age": 30}},
+        )
+    )
+    mock_processors.cred_verifier_for_format.return_value.verify_credential = AsyncMock(
+        return_value=MagicMock(
+            verified=True,
+            payload={"type": ["VerifiableCredential"], "credentialSubject": {"age": 30}},
+        )
+    )
+
+    pres_def_entry = MagicMock(spec=OID4VPPresDef)
+    pres_def_entry.pres_def = {
+        "id": "4a1b2c3d-0000-4000-8000-000000000099",
+        "input_descriptors": [
+            {"id": "desc-0", "constraints": {"fields": [{"path": ["$.type"]}]}},
+            {
+                "id": "desc-1",
+                "constraints": {"fields": [{"path": ["$.credentialSubject.age"]}]},
+            },
+        ],
+    }
+
+    presentation_record = MagicMock(spec=OID4VPPresentation)
+    presentation_record.nonce = "test-nonce"
+    presentation_record.client_id = "did:jwk:test"
+
+    submission_dict = {
+        "id": "4a1b2c3d-0000-4000-8000-000000000101",
+        "definition_id": "4a1b2c3d-0000-4000-8000-000000000099",
+        "descriptor_map": [
+            {"id": "desc-0", "format": "jwt_vc_json", "path": "$"},
+            {"id": "desc-1", "format": "jwt_vc_json", "path": "$"},
+        ],
+    }
+    from oid4vc.pex import PresentationSubmission
+
+    submission = PresentationSubmission.deserialize(submission_dict)
+
+    with patch(
+        "oid4vc.public_routes.verification.OID4VPPresDef.retrieve_by_id",
+        AsyncMock(return_value=pres_def_entry),
+    ):
+        # Before fix: raises HTTPBadRequest("not supported at this time")
+        # After fix: returns a PexVerifyResult without raising
+        result = await verify_pres_def_presentation(
+            profile,
+            submission,
+            "fake.jwt.token",
+            "4a1b2c3d-0000-4000-8000-000000000099",
+            presentation_record,
+        )
+
+    assert result.verified is True, (
+        "verify_pres_def_presentation must support multi-entry descriptor_maps. "
+        f"Got verified={result.verified}, details={result.details!r}"
+    )

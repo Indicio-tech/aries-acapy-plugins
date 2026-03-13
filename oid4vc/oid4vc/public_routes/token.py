@@ -1,6 +1,8 @@
 """Token endpoint for OID4VCI."""
 
+import base64
 import datetime
+import hashlib
 import hmac
 import json
 import time
@@ -12,7 +14,12 @@ from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.core.profile import Profile
 from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
-from acapy_agent.storage.error import StorageError, StorageNotFoundError
+from acapy_agent.storage.base import BaseStorage, StorageRecord
+from acapy_agent.storage.error import (
+    StorageDuplicateError,
+    StorageError,
+    StorageNotFoundError,
+)
 from acapy_agent.wallet.base import WalletError
 from acapy_agent.wallet.error import WalletNotFoundError
 from acapy_agent.wallet.jwt import b64_to_dict
@@ -38,9 +45,10 @@ from ..models.nonce import Nonce
 from ..pop_result import PopResult
 from ..utils import get_auth_header, get_tenant_subpath
 from .constants import (
-    EXPIRES_IN,
+    DPOP_PROOF_MAX_AGE_SECONDS,
     LOGGER,
     NONCE_BYTES,
+    OFFER_EXPIRES_IN,
     PRE_AUTHORIZED_CODE_GRANT_TYPE,
 )
 from .nonce import create_nonce
@@ -156,7 +164,7 @@ async def token(request: web.Request):
 
     payload = {
         "sub": record.refresh_id,
-        "exp": int(time.time()) + EXPIRES_IN,
+        "exp": int(time.time()) + OFFER_EXPIRES_IN,
     }
 
     # v1 compliance: do not require DID/verification method at token step.
@@ -188,32 +196,161 @@ async def token(request: web.Request):
 
     # Create a nonce for the wallet to use in its credential proof.
     # The /nonce endpoint also serves nonces (OID4VCI 1.0 §8); both are valid.
-    c_nonce_record = await create_nonce(context.profile, NONCE_BYTES, EXPIRES_IN)
+    c_nonce_record = await create_nonce(context.profile, NONCE_BYTES, OFFER_EXPIRES_IN)
 
     return web.json_response(
         {
             "access_token": record.token,
             "token_type": "Bearer",
-            "expires_in": EXPIRES_IN,
+            "expires_in": OFFER_EXPIRES_IN,
             "c_nonce": c_nonce_record.nonce_value,
-            "c_nonce_expires_in": EXPIRES_IN,
+            "c_nonce_expires_in": OFFER_EXPIRES_IN,
         }
     )
+
+
+async def _verify_dpop_proof(
+    profile: Profile,
+    dpop_proof: str,
+    access_token: str,
+    method: str,
+    url: str,
+) -> None:
+    """Verify a DPoP proof JWT per RFC 9449 §4.3.
+
+    Raises ``web.HTTPUnauthorized`` with a descriptive reason if any check
+    fails.  On success returns ``None``.
+    """
+
+    # --- 1. Parse header and payload (before signature verification) ---
+    try:
+        parts = dpop_proof.split(".", 2)
+        if len(parts) != 3:
+            raise ValueError("wrong number of JWT parts")
+        dpop_headers = b64_to_dict(parts[0])
+        dpop_payload = b64_to_dict(parts[1])
+    except Exception:
+        raise web.HTTPUnauthorized(reason="invalid DPoP proof: malformed JWT")
+
+    # --- 2. typ MUST be "dpop+jwt" (RFC 9449 §4.2) ---
+    if dpop_headers.get("typ", "").lower() != "dpop+jwt":
+        raise web.HTTPUnauthorized(
+            reason=(f"DPoP proof typ must be 'dpop+jwt', got {dpop_headers.get('typ')!r}")
+        )
+
+    # --- 3. alg MUST be an asymmetric algorithm (not 'none') ---
+    alg = dpop_headers.get("alg", "")
+    if not alg or alg.lower() == "none":
+        raise web.HTTPUnauthorized(
+            reason="DPoP proof alg must be a non-trivial asymmetric algorithm"
+        )
+
+    # --- 4. Embedded public key in jwk header claim is mandatory (RFC 9449 §4.2) ---
+    jwk_header = dpop_headers.get("jwk")
+    if not jwk_header:
+        raise web.HTTPUnauthorized(
+            reason="DPoP proof must include the public key as a 'jwk' header claim"
+        )
+    try:
+        dpop_key = Key.from_jwk(jwk_header)
+    except Exception:
+        raise web.HTTPUnauthorized(
+            reason="DPoP proof 'jwk' header claim is not a valid JWK"
+        )
+
+    # --- 5. Verify signature using the embedded key ---
+    try:
+        sig_bytes = b64_to_bytes(parts[2], urlsafe=True)
+        signature_ok = dpop_key.verify_signature(
+            f"{parts[0]}.{parts[1]}".encode(),
+            sig_bytes,
+            sig_type=alg,
+        )
+    except Exception:
+        signature_ok = False
+    if not signature_ok:
+        raise web.HTTPUnauthorized(reason="DPoP proof signature verification failed")
+
+    # --- 6. htm MUST match the request HTTP method (RFC 9449 §4.3) ---
+    htm = dpop_payload.get("htm", "")
+    if htm.upper() != method.upper():
+        raise web.HTTPUnauthorized(
+            reason=f"DPoP proof htm '{htm}' does not match request method '{method}'"
+        )
+
+    # --- 7. htu MUST match the request URI (scheme + host + path, no query/fragment) ---
+    htu = dpop_payload.get("htu", "")
+    try:
+        htu_parsed = urlparse(htu)
+        url_parsed = urlparse(url)
+        # RFC 9449 §4.3: compare without query string or fragment
+        htu_base = f"{htu_parsed.scheme}://{htu_parsed.netloc}{htu_parsed.path}".rstrip(
+            "/"
+        )
+        url_base = f"{url_parsed.scheme}://{url_parsed.netloc}{url_parsed.path}".rstrip(
+            "/"
+        )
+    except Exception:
+        raise web.HTTPUnauthorized(reason="DPoP proof htu claim is invalid")
+    if htu_base != url_base:
+        raise web.HTTPUnauthorized(
+            reason=f"DPoP proof htu '{htu_base}' does not match request URL '{url_base}'"
+        )
+
+    # --- 8. ath MUST be BASE64URL(SHA-256(ASCII(access_token))) (RFC 9449 §4.2) ---
+    ath = dpop_payload.get("ath", "")
+    expected_ath = (
+        base64.urlsafe_b64encode(hashlib.sha256(access_token.encode("ascii")).digest())
+        .rstrip(b"=")
+        .decode()
+    )
+    if ath != expected_ath:
+        raise web.HTTPUnauthorized(
+            reason="DPoP proof ath claim does not match the access token hash"
+        )
+
+    # --- 9. iat must be within the acceptable clock-skew window ---
+    iat = dpop_payload.get("iat")
+    now = int(time.time())
+    if iat is None or abs(now - iat) > DPOP_PROOF_MAX_AGE_SECONDS:
+        raise web.HTTPUnauthorized(
+            reason="DPoP proof iat is missing or outside the acceptable time window"
+        )
+
+    # --- 10. jti replay protection: reject a jti that was already used ---
+    jti = dpop_payload.get("jti")
+    if not jti:
+        raise web.HTTPUnauthorized(reason="DPoP proof jti claim is required")
+
+    async with profile.session() as session:
+        storage = session.inject(BaseStorage)
+        try:
+            await storage.add_record(
+                StorageRecord(
+                    type="oid4vc.dpop_jti",
+                    value=str(iat),
+                    id=jti,
+                )
+            )
+        except StorageDuplicateError:
+            raise web.HTTPUnauthorized(
+                reason="DPoP proof jti has already been used (replay detected)"
+            )
 
 
 async def check_token(
     context: AdminRequestContext,
     bearer: str | None = None,
+    dpop_header: str | None = None,
+    method: str | None = None,
+    url: str | None = None,
 ) -> JWTVerifyResult:
-    """Validate the OID4VCI token.
+    """Validate the OID4VCI token and (when present) the DPoP proof.
 
-    Accepts both ``Bearer`` and ``DPoP`` Authorization schemes.  When
-    ``dpop_signing_alg_values_supported`` is advertised in the server
-    metadata, DPoP-capable clients (e.g. Credo 0.6.x) will present an
-    ``Authorization: DPoP <token>`` header.  We accept and verify the
-    access-token JWT in both cases; the DPoP proof itself is not
-    cryptographically validated here (full DPoP binding per RFC 9449 is
-    not yet implemented).
+    Accepts both ``Bearer`` and ``DPoP`` Authorization schemes.  When the
+    scheme is ``DPoP``, a ``DPoP`` proof header MUST be present (RFC 9449
+    §4.3); absence is rejected with 401.  ``method`` and ``url`` are
+    forwarded to ``_verify_dpop_proof`` for ``htm``/``htu`` binding.
     """
     if not bearer:
         raise web.HTTPUnauthorized()
@@ -223,11 +360,6 @@ async def check_token(
         raise web.HTTPUnauthorized() from None
     if scheme.lower() not in ("bearer", "dpop"):
         raise web.HTTPUnauthorized()
-    # NOTE: When scheme is "dpop", the DPoP proof in the DPoP HTTP header is NOT
-    # verified (RFC 9449 §4.3).  We advertise dpop_signing_alg_values_supported
-    # in AS metadata (required by HAIP DPOP-5.1), so wallets such as Credo may
-    # present DPoP-bound tokens.  Accepting without proof verification is a
-    # temporary compatibility measure; full DPoP support is tracked separately.
 
     config = Config.from_settings(context.settings)
     profile = context.profile
@@ -266,13 +398,27 @@ async def check_token(
             headers={"Content-Type": "application/json"},
         )
 
+    # DPoP binding check (RFC 9449 §4.3): DPoP scheme requires a proof header.
+    if scheme.lower() == "dpop":
+        if not dpop_header:
+            raise web.HTTPUnauthorized(
+                reason="DPoP scheme requires a DPoP proof header (RFC 9449 §4.3)"
+            )
+        await _verify_dpop_proof(
+            context.profile,
+            dpop_proof=dpop_header,
+            access_token=cred,
+            method=method,
+            url=url,
+        )
+
     return result
 
 
-async def handle_proof_of_posession(
+async def handle_proof_of_possession(
     profile: Profile, proof: Dict[str, Any], c_nonce: str | None = None
 ):
-    """Handle proof of posession."""
+    """Handle proof of possession."""
     encoded_headers, encoded_payload, encoded_signature = proof["jwt"].split(".", 3)
     headers = b64_to_dict(encoded_headers)
 

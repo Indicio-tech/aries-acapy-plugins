@@ -14,13 +14,17 @@ from aiohttp_apispec import docs, response_schema
 from marshmallow import fields
 
 from ..config import Config
-from ..cred_processor import CredProcessors
+from ..cred_processor import CredProcessorError, CredProcessors
 from ..did_utils import retrieve_or_create_did_jwk
 from ..jwt import jwt_sign
 from ..models.supported_cred import SupportedCredential
 from ..utils import get_tenant_subpath
 
 LOGGER = logging.getLogger(__name__)
+
+# Maximum number of SupportedCredential records returned per metadata request.
+# Prevents unbounded memory use when many credential types are configured.
+SUPPORTED_CRED_QUERY_LIMIT = 500
 
 
 class BatchCredentialIssuanceSchema(OpenAPISchema):
@@ -76,8 +80,9 @@ async def credential_issuer_metadata(request: web.Request):
     public_url = config.endpoint
 
     async with context.session() as session:
-        # TODO If there's a lot, this will be a problem
-        credentials_supported = await SupportedCredential.query(session)
+        credentials_supported = (await SupportedCredential.query(session))[
+            :SUPPORTED_CRED_QUERY_LIMIT
+        ]
 
         wallet_id = request.match_info.get("wallet_id")
         subpath = f"/tenant/{wallet_id}" if wallet_id else ""
@@ -104,7 +109,7 @@ async def credential_issuer_metadata(request: web.Request):
         for supported in credentials_supported:
             try:
                 issuer = processors.issuer_for_format(supported.format)
-            except Exception:
+            except CredProcessorError:
                 issuer = None
             cred_configs[supported.identifier] = supported.to_issuer_metadata(
                 issuer=issuer
@@ -178,8 +183,9 @@ async def openid_configuration(request: web.Request):
     public_url = config.endpoint
 
     async with context.session() as session:
-        # TODO If there's a lot, this will be a problem
-        credentials_supported = await SupportedCredential.query(session)
+        credentials_supported = (await SupportedCredential.query(session))[
+            :SUPPORTED_CRED_QUERY_LIMIT
+        ]
 
         wallet_id = request.match_info.get("wallet_id")
         subpath = f"/tenant/{wallet_id}" if wallet_id else ""
@@ -190,7 +196,7 @@ async def openid_configuration(request: web.Request):
         for supported in credentials_supported:
             try:
                 issuer = processors.issuer_for_format(supported.format)
-            except Exception:
+            except CredProcessorError:
                 issuer = None
             cred_configs[supported.identifier] = supported.to_issuer_metadata(
                 issuer=issuer

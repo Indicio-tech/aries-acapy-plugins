@@ -86,7 +86,7 @@ async def startup(profile: Profile, event: Event):
         )
         profile.context.injector.bind_instance(Oid4vciServer, oid4vci)
         LOGGER.info("OID4VCI server instance created and bound")
-        await AppResources.startup(config)
+        await AppResources.startup(config, profile)
     except Exception:
         LOGGER.exception("Unable to register OID4VCI server")
         raise

@@ -9,6 +9,7 @@ from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
+from acapy_agent.wallet.jwt import b64_to_dict
 from aiohttp import web
 from aiohttp_apispec import (
     docs,
@@ -20,10 +21,11 @@ from marshmallow import fields
 
 from ..cred_processor import CredProcessorError, CredProcessors
 from ..models.exchange import OID4VCIExchangeRecord
+from ..models.nonce import Nonce
 from ..models.supported_cred import SupportedCredential
 from ..routes import CredOfferQuerySchema, CredOfferResponseSchemaVal
 from ..routes.helpers import _parse_cred_offer
-from .token import check_token, handle_proof_of_posession
+from .token import check_token, handle_proof_of_possession
 
 LOGGER = logging.getLogger(__name__)
 
@@ -111,7 +113,14 @@ async def issue_cred(request: web.Request):
     """
     context: AdminRequestContext = request["context"]
     # check_token raises HTTPUnauthorized on auth failures — propagate as-is.
-    token_result = await check_token(context, request.headers.get("Authorization"))
+    # Forward DPoP proof, method, and URL so RFC 9449 binding can be verified.
+    token_result = await check_token(
+        context,
+        request.headers.get("Authorization"),
+        dpop_header=request.headers.get("DPoP"),
+        method=request.method,
+        url=str(request.url),
+    )
     refresh_id = token_result.payload["sub"]
     req_body = await request.json()
     LOGGER.info("request: %s", req_body)
@@ -247,7 +256,7 @@ async def _issue_cred_inner(context, token_result, refresh_id, req_body):
             )
 
     # c_nonce may be None when the OID4VCI 1.0 /nonce endpoint is used.
-    # handle_proof_of_posession handles c_nonce=None by calling Nonce.redeem_by_value,
+    # handle_proof_of_possession handles c_nonce=None by calling Nonce.redeem_by_value,
     # which validates nonces issued by the /nonce endpoint with replay protection.
     c_nonce = token_result.payload.get("c_nonce") or ex_record.nonce
 
@@ -256,37 +265,63 @@ async def _issue_cred_inner(context, token_result, refresh_id, req_body):
         raise web.HTTPInternalServerError()
 
     # Normalize proof: accept both 'proof' (singular, draft spec) and
-    # 'proofs.jwt' (plural array, OID4VCI 1.0 final spec)
+    # 'proofs.jwt' (plural array, OID4VCI 1.0 final spec).
+    # For a single proof, verify it directly.  For a batch (proofs.jwt with
+    # N entries), redeem the shared nonce once then verify each proof's
+    # signature, issuing one credential per proof (OID4VCI 1.0 §7.2.3).
     if "proof" in req_body:
         proof_value = req_body["proof"]
+        pop = await handle_proof_of_possession(context.profile, proof_value, c_nonce)
+        if not pop.verified:
+            raise _vc_error(400, "invalid_proof", "Proof signature verification failed.")
+        all_pops = [pop]
     elif "proofs" in req_body and isinstance(req_body["proofs"], dict):
         jwt_proofs = req_body["proofs"].get("jwt", [])
         if not jwt_proofs:
             raise _vc_error(
                 400, "invalid_proof", f"proofs.jwt is empty for {supported.format}"
             )
-        if len(jwt_proofs) > 1:
-            raise _vc_error(
-                400,
-                "invalid_proof",
-                f"proofs.jwt contains {len(jwt_proofs)} entries but batch "
-                "issuance is not supported; send exactly one proof.",
+
+        # All proofs in a batch MUST share the same nonce (OID4VCI 1.0 §7.2.3).
+        # When the /nonce endpoint was used (c_nonce is None in the token payload),
+        # redeem the nonce once for the entire batch via DB, then treat the
+        # redeemed value as the expected nonce for every proof's signature check.
+        batch_nonce = c_nonce
+        if batch_nonce is None:
+            first_payload = b64_to_dict(jwt_proofs[0].split(".", 2)[1])
+            first_nonce = first_payload.get("nonce") or first_payload.get("c_nonce")
+            async with context.profile.session() as session:
+                redeemed = await Nonce.redeem_by_value(session, first_nonce)
+            if not redeemed:
+                raise _vc_error(400, "invalid_nonce", "invalid or already-used nonce")
+            batch_nonce = first_nonce
+
+        all_pops = []
+        for proof_jwt in jwt_proofs:
+            proof_value = {"proof_type": "jwt", "jwt": proof_jwt}
+            pop = await handle_proof_of_possession(
+                context.profile, proof_value, batch_nonce
             )
-        # Normalize to the expected structure
-        proof_value = {"proof_type": "jwt", "jwt": jwt_proofs[0]}
+            if not pop.verified:
+                raise _vc_error(
+                    400, "invalid_proof", "Proof signature verification failed."
+                )
+            all_pops.append(pop)
     else:
         raise _vc_error(400, "invalid_proof", f"proof is required for {supported.format}")
-
-    pop = await handle_proof_of_posession(context.profile, proof_value, c_nonce)
-
-    if not pop.verified:
-        raise _vc_error(400, "invalid_proof", "Proof signature verification failed.")
 
     try:
         processors = context.inject(CredProcessors)
         processor = processors.issuer_for_format(supported.format)
 
-        credential = await processor.issue(req_body, supported, ex_record, pop, context)
+        issued_credentials = []
+        for pop in all_pops:
+            credential = await processor.issue(
+                req_body, supported, ex_record, pop, context
+            )
+            issued_credentials.append(
+                {"format": supported.format, "credential": credential}
+            )
     except CredProcessorError as e:
         raise _vc_error(400, "invalid_credential_request", e.message)
 
@@ -299,9 +334,9 @@ async def _issue_cred_inner(context, token_result, refresh_id, req_body):
     # Also include the singular `credential` key (draft-era field) for wallets such as
     # waltid that still parse only the top-level `credential` field and NPE when absent.
     cred_response: dict = {
-        "credential": credential,
+        "credential": issued_credentials[0]["credential"],
         # OID4VCI 1.0 §7.3.1: each entry in `credentials` MUST include `format`.
-        "credentials": [{"format": supported.format, "credential": credential}],
+        "credentials": issued_credentials,
     }
     if ex_record.notification_id:
         cred_response["notification_id"] = ex_record.notification_id

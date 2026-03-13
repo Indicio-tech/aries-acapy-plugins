@@ -3959,4 +3959,4 @@ sd-jwt-vc = ["jsonpointer"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "488fb3a7927a4f840dcad04caa4278d55222f72911e3726d95614e28e6795826"
+content-hash = "562b938dad15b29bbc3d42f7035d043c089034df2aa21b57365fe66fae49efe7"

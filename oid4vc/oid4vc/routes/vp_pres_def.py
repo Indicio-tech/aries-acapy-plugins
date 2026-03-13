@@ -34,7 +34,7 @@ class CreateOID4VPPresDefResponseSchema(OpenAPISchema):
 
     pres_def = fields.Dict(
         required=True,
-        metadata={"descripton": "The created presentation definition"},
+        metadata={"description": "The created presentation definition"},
     )
 
     pres_def_id = fields.Str(
@@ -98,7 +98,7 @@ class UpdateOID4VPPresDefResponseSchema(OpenAPISchema):
 
     pres_def = fields.Dict(
         required=True,
-        metadata={"descripton": "The updated presentation definition"},
+        metadata={"description": "The updated presentation definition"},
     )
 
     pres_def_id = fields.Str(

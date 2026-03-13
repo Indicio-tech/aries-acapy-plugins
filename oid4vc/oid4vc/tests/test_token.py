@@ -12,7 +12,7 @@ from aries_askar import Key, KeyAlg
 from multidict import MultiDict
 
 from oid4vc.models.exchange import OID4VCIExchangeRecord
-from oid4vc.public_routes.token import check_token, handle_proof_of_posession, token
+from oid4vc.public_routes.token import check_token, handle_proof_of_possession, token
 
 
 @pytest.fixture
@@ -300,15 +300,14 @@ async def test_token_with_correct_pin_but_code_reused(
 
 @pytest.mark.asyncio
 async def test_check_token_accepts_dpop_scheme(context):
-    """check_token must accept DPoP-scheme tokens and proceed to JWT verification.
+    """check_token must accept DPoP-scheme tokens with a valid DPoP proof header.
 
     The server advertises dpop_signing_alg_values_supported (HAIP DPOP-5.1),
-    so wallets such as Credo present DPoP-bound access tokens.  We accept the
-    DPoP scheme and verify the token JWT itself; the DPoP proof in the DPoP
-    HTTP header is not yet verified (full DPoP support is tracked separately).
+    so wallets such as Credo present DPoP-bound access tokens.  We verify
+    the token JWT itself and the DPoP proof per RFC 9449.
     """
-    import sys
     import importlib
+    import sys
 
     importlib.import_module("oid4vc.public_routes.token")
     token_mod = sys.modules["oid4vc.public_routes.token"]
@@ -320,11 +319,19 @@ async def test_check_token_accepts_dpop_scheme(context):
         verified=True,
     )
 
-    with patch.object(token_mod, "jwt_verify", AsyncMock(return_value=fake_result)):
-        with patch("oid4vc.config.Config.from_settings") as mock_cfg:
-            mock_cfg.return_value.auth_server_url = None
-            # DPoP scheme should not raise — it proceeds to jwt_verify
-            result = await check_token(context, "DPoP valid_dpop_token")
+    with (
+        patch.object(token_mod, "jwt_verify", AsyncMock(return_value=fake_result)),
+        patch("oid4vc.config.Config.from_settings") as mock_cfg,
+        patch.object(token_mod, "_verify_dpop_proof", AsyncMock()),
+    ):
+        mock_cfg.return_value.auth_server_url = None
+        result = await check_token(
+            context,
+            "DPoP valid_dpop_token",
+            dpop_header="some.dpop.proof",
+            method="POST",
+            url="https://issuer.example/credential",
+        )
 
     assert result.verified is True
 
@@ -435,7 +442,7 @@ async def test_pin_comparison_uses_hmac(context, monkeypatch, token_request):
 
 
 # ===========================================================================
-# C-4 fix — handle_proof_of_posession validates aud claim
+# C-4 fix — handle_proof_of_possession validates aud claim
 # ===========================================================================
 
 
@@ -451,7 +458,7 @@ async def test_proof_with_wrong_aud_rejected(profile):
         return_value=MagicMock(endpoint="http://localhost:8020"),
     ):
         with pytest.raises(web.HTTPBadRequest) as exc_info:
-            await handle_proof_of_posession(profile, proof, nonce)
+            await handle_proof_of_possession(profile, proof, nonce)
 
     body = json.loads(exc_info.value.text)
     assert body["error"] == "invalid_proof"
@@ -469,7 +476,7 @@ async def test_proof_with_correct_aud_accepted(profile):
         "oid4vc.public_routes.token.Config.from_settings",
         return_value=MagicMock(endpoint="http://localhost:8020"),
     ):
-        result = await handle_proof_of_posession(profile, proof, nonce)
+        result = await handle_proof_of_possession(profile, proof, nonce)
 
     assert result.verified is True
 
@@ -487,7 +494,7 @@ async def test_proof_aud_with_explicit_default_port_accepted(profile):
         "oid4vc.public_routes.token.Config.from_settings",
         return_value=MagicMock(endpoint="https://myissuerapi.zrok.dev.indicioctech.io"),
     ):
-        result = await handle_proof_of_posession(profile, proof, nonce)
+        result = await handle_proof_of_possession(profile, proof, nonce)
 
     assert result.verified is True
 
@@ -508,7 +515,7 @@ async def test_proof_with_tenant_scoped_aud_accepted(profile):
         "oid4vc.public_routes.token.Config.from_settings",
         return_value=MagicMock(endpoint="http://localhost:8020"),
     ):
-        result = await handle_proof_of_posession(profile, proof, nonce)
+        result = await handle_proof_of_possession(profile, proof, nonce)
 
     assert result.verified is True
 
@@ -531,7 +538,7 @@ async def test_proof_with_cross_issuer_tenant_path_rejected(profile):
         return_value=MagicMock(endpoint="http://localhost:8020"),
     ):
         with pytest.raises(web.HTTPBadRequest) as exc_info:
-            await handle_proof_of_posession(profile, proof, nonce)
+            await handle_proof_of_possession(profile, proof, nonce)
 
     body = json.loads(exc_info.value.text)
     assert body["error"] == "invalid_proof"
@@ -569,7 +576,7 @@ async def test_proof_iss_fallback_when_no_key_in_header(profile):
             new=AsyncMock(return_value=key),
         ),
     ):
-        result = await handle_proof_of_posession(profile, proof, nonce)
+        result = await handle_proof_of_possession(profile, proof, nonce)
 
     assert result.verified is True
     assert result.holder_jwk is not None  # derived from iss-resolved key
@@ -595,6 +602,6 @@ async def test_proof_without_aud_not_rejected_when_endpoint_unconfigured(profile
         "oid4vc.public_routes.token.Config.from_settings",
         return_value=MagicMock(endpoint=None),
     ):
-        result = await handle_proof_of_posession(profile, proof, nonce)
+        result = await handle_proof_of_possession(profile, proof, nonce)
 
     assert result.verified is True

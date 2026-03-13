@@ -11,6 +11,7 @@ from acapy_agent.protocols.present_proof.dif.pres_exch import (
     DIFField,
     InputDescriptors,
     PresentationDefinition,
+    SubmissionRequirements,
 )
 from acapy_agent.protocols.present_proof.dif.pres_exch import (
     InputDescriptorMapping as InnerInDescMapping,
@@ -24,6 +25,10 @@ from jsonschema import Draft7Validator, ValidationError
 from marshmallow import EXCLUDE, fields
 
 from oid4vc.cred_processor import CredProcessors
+from oid4vc.jwt import jwt_verify
+
+# Credential formats that support selective disclosure (PEX §7.1.3 limit_disclosure)
+_SELECTIVE_DISCLOSURE_FORMATS = frozenset({"vc+sd-jwt", "mso_mdoc"})
 
 
 # TODO Update ACA-Py's InputDescriptorMapping model to match this
@@ -162,9 +167,22 @@ class ConstraintFieldEvaluator:
         self.filter = filter
 
     @classmethod
-    def compile(cls, constraint: Union[dict, DIFField]):
-        """Compile an input descriptor."""
+    def compile(
+        cls,
+        constraint: Union[dict, DIFField],
+        raw_filter: Optional[dict] = None,
+    ):
+        """Compile an input descriptor.
+
+        raw_filter, if supplied, is the original JSON Schema dict for the field's
+        filter as it appeared in the PD before ACA-Py deserialization.  ACA-Py's
+        DIFField.Filter model silently drops nested keywords such as 'contains',
+        'anyOf', and '$ref', so we use the raw dict when available to ensure the
+        full JSON Schema filter is evaluated (PEX §7.1.1).
+        """
         if isinstance(constraint, dict):
+            if raw_filter is None:
+                raw_filter = constraint.get("filter")
             constraint = DIFField.deserialize(constraint)
         elif isinstance(constraint, DIFField):
             pass
@@ -173,11 +191,13 @@ class ConstraintFieldEvaluator:
 
         paths = [jsonpath.parse(path) for path in constraint.paths]
 
-        filter = None
-        if constraint._filter:
-            filter = FilterEvaluator.compile(constraint._filter.serialize())
+        filter_ev = None
+        if raw_filter is not None:
+            filter_ev = FilterEvaluator.compile(raw_filter)
+        elif constraint._filter:
+            filter_ev = FilterEvaluator.compile(constraint._filter.serialize())
 
-        return cls(paths, filter)
+        return cls(paths, filter_ev)
 
     def match(self, value: Any) -> Optional[Matched]:
         """Check if value matches and return path of first matching."""
@@ -203,26 +223,66 @@ class DescriptorMatchFailed(Exception):
 class DescriptorEvaluator:
     """Evaluate input descriptors."""
 
-    def __init__(self, id: str, field_constraints: List[ConstraintFieldEvaluator]):
+    def __init__(
+        self,
+        id: str,
+        field_constraints: List[ConstraintFieldEvaluator],
+        limit_disclosure: Optional[str] = None,
+        groups: Optional[List[str]] = None,
+    ):
         """Initialize descriptor evaluator."""
         self.id = id
         self._field_constraints = field_constraints
+        self.limit_disclosure = limit_disclosure
+        self.groups = groups or []
 
     @classmethod
-    def compile(cls, descriptor: Union[dict, InputDescriptors]) -> "DescriptorEvaluator":
-        """Compile an input descriptor."""
+    def compile(
+        cls,
+        descriptor: Union[dict, InputDescriptors],
+        raw_descriptor: Optional[dict] = None,
+    ) -> "DescriptorEvaluator":
+        """Compile an input descriptor.
+
+        raw_descriptor, if supplied, is the original descriptor dict before ACA-Py
+        deserialization so that raw filter dicts (including keywords dropped by
+        ACA-Py's Filter model) are preserved for each field.
+        """
         if isinstance(descriptor, dict):
+            raw_descriptor = descriptor
             descriptor = InputDescriptors.deserialize(descriptor)
         elif isinstance(descriptor, InputDescriptors):
             pass
         else:
             raise TypeError("descriptor must be dict or InputDescriptor")
 
-        fields = descriptor.constraint._fields if descriptor.constraint else []
+        # Extract raw filter dicts from the original descriptor dict so that
+        # keywords silently dropped by ACA-Py's Filter model (e.g. 'contains')
+        # are preserved for JSONSchema evaluation (PEX §7.1.1).
+        raw_fields: List[Optional[dict]] = []
+        if raw_descriptor:
+            for rf in (raw_descriptor.get("constraints") or {}).get("fields") or []:
+                raw_fields.append(rf.get("filter") if isinstance(rf, dict) else None)
+
+        acapy_fields = descriptor.constraint._fields if descriptor.constraint else []
         field_constraints = [
-            ConstraintFieldEvaluator.compile(constraint) for constraint in fields
+            ConstraintFieldEvaluator.compile(
+                constraint,
+                raw_filter=raw_fields[i] if i < len(raw_fields) else None,
+            )
+            for i, constraint in enumerate(acapy_fields)
         ]
-        return cls(descriptor.id, field_constraints)
+
+        limit_disclosure = (
+            descriptor.constraint.limit_disclosure if descriptor.constraint else None
+        )
+        groups = list(descriptor.groups or [])
+        return cls(
+            descriptor.id,
+            field_constraints,
+            limit_disclosure=limit_disclosure,
+            groups=groups,
+        )
 
     def match(self, value: Any) -> Dict[str, Any]:
         """Check value."""
@@ -248,17 +308,31 @@ class PexVerifyResult:
 class PresentationExchangeEvaluator:
     """Evaluate presentation submissions against presentation definitions."""
 
-    def __init__(self, id: str, descriptors: List[DescriptorEvaluator]):
+    def __init__(
+        self,
+        id: str,
+        descriptors: List[DescriptorEvaluator],
+        submission_requirements: Optional[List[SubmissionRequirements]] = None,
+    ):
         """Initialize the evaluator."""
         self.id = id
         self._id_to_descriptor: Dict[str, DescriptorEvaluator] = {
             desc.id: desc for desc in descriptors
         }
+        self._submission_requirements: List[SubmissionRequirements] = (
+            submission_requirements or []
+        )
 
     @classmethod
     def compile(cls, definition: Union[dict, PresentationDefinition]):
         """Compile a presentation definition object into evaluatable state."""
+        # Keep raw descriptor dicts (keyed by id) so that filter keywords dropped
+        # by ACA-Py's model (e.g. 'contains') can be recovered during compilation.
+        raw_by_id: Dict[str, dict] = {}
         if isinstance(definition, dict):
+            for rd in definition.get("input_descriptors") or []:
+                if isinstance(rd, dict) and "id" in rd:
+                    raw_by_id[rd["id"]] = rd
             definition = PresentationDefinition.deserialize(definition)
         elif isinstance(definition, PresentationDefinition):
             pass
@@ -266,9 +340,14 @@ class PresentationExchangeEvaluator:
             raise TypeError("definition must be dict or PresentationDefinition")
 
         descriptors = [
-            DescriptorEvaluator.compile(desc) for desc in definition.input_descriptors
+            DescriptorEvaluator.compile(desc, raw_descriptor=raw_by_id.get(desc.id))
+            for desc in definition.input_descriptors
         ]
-        return cls(definition.id, descriptors)
+        return cls(
+            definition.id,
+            descriptors,
+            submission_requirements=definition.submission_requirements or [],
+        )
 
     async def verify(
         self,
@@ -291,7 +370,19 @@ class PresentationExchangeEvaluator:
         descriptor_id_to_fields = {}
         descriptors_list = list(self._id_to_descriptor.values())
         for idx, item in enumerate(submission.descriptor_maps or []):
-            # TODO Check JWT VP generally, if format is jwt_vp
+            # JWT VP outer wrapper: when the submission descriptor format is
+            # jwt_vp, the presentation is a raw JWT string that wraps VCs inside
+            # a "vp" claim.  Decode and verify the outer envelope first, then
+            # use the decoded VP payload dict for JSONPath evaluation below.
+            vp_payload = presentation
+            if item.fmt == "jwt_vp" and isinstance(vp_payload, str):
+                vp_result = await jwt_verify(profile, vp_payload)
+                if not vp_result.verified:
+                    return PexVerifyResult(
+                        details="JWT VP outer wrapper signature verification failed"
+                    )
+                vp_payload = vp_result.payload
+
             evaluator = self._id_to_descriptor.get(item.id) if item.id else None
             if not evaluator and item.id is None and idx < len(descriptors_list):
                 # Deliberate interoperability relaxation: PEX 2.0 §5.1.1
@@ -307,11 +398,27 @@ class PresentationExchangeEvaluator:
                     details=f"Could not find input descriptor corresponding to {item.id}"
                 )
 
+            # PEX §7.1.3 — limit_disclosure: required means the credential MUST
+            # use a format that supports selective disclosure (SD-JWT or mDOC).
+            if evaluator.limit_disclosure == "required":
+                fmt = item.path_nested.fmt if item.path_nested else item.fmt
+                if fmt not in _SELECTIVE_DISCLOSURE_FORMATS:
+                    return PexVerifyResult(
+                        details=(
+                            f"Descriptor '{evaluator.id}' requires"
+                            " limit_disclosure=required but submitted"
+                            f" format '{fmt}' does not support"
+                            " selective disclosure."
+                            " Use a format that supports SD such as"
+                            f" {', '.join(sorted(_SELECTIVE_DISCLOSURE_FORMATS))}"
+                        )
+                    )
+
             processors = profile.inject(CredProcessors)
             if item.path_nested:
                 assert item.path_nested.path
                 path = jsonpath.parse(item.path_nested.path)
-                values = path.find(presentation)
+                values = path.find(vp_payload)
                 if len(values) != 1:
                     return PexVerifyResult(
                         details="More than one value found for path "
@@ -321,7 +428,7 @@ class PresentationExchangeEvaluator:
                 vc = values[0].value
                 processor = processors.cred_verifier_for_format(item.path_nested.fmt)
             else:
-                vc = presentation
+                vc = vp_payload
                 processor = processors.cred_verifier_for_format(item.fmt)
 
             result = await processor.verify_credential(profile, vc)
@@ -335,8 +442,63 @@ class PresentationExchangeEvaluator:
                     details="Credential did not match expected descriptor constraints"
                 )
 
-            descriptor_id_to_claims[item.id] = result.payload
-            descriptor_id_to_fields[item.id] = fields
+            # Use evaluator.id (the real descriptor ID) rather than item.id,
+            # which may be None for positional-fallback submissions.
+            descriptor_id_to_claims[evaluator.id] = result.payload
+            descriptor_id_to_fields[evaluator.id] = fields
+
+        satisfied_ids = set(descriptor_id_to_claims.keys())
+
+        if self._submission_requirements:
+            # PEX §4.1 — enforce group rules declared in submission_requirements.
+            for sr in self._submission_requirements:
+                if not sr._from:
+                    # from_nested groups not yet supported; skip
+                    continue
+                group_desc_ids = {
+                    did
+                    for did, desc in self._id_to_descriptor.items()
+                    if sr._from in (desc.groups or [])
+                }
+                n = sum(1 for did in satisfied_ids if did in group_desc_ids)
+                if sr.rule == "pick":
+                    if sr.count is not None and n != sr.count:
+                        return PexVerifyResult(
+                            details=(
+                                f"Group '{sr._from}': pick rule requires exactly "
+                                f"{sr.count} descriptor(s), got {n}"
+                            )
+                        )
+                    if sr.minimum is not None and n < sr.minimum:
+                        return PexVerifyResult(
+                            details=(
+                                f"Group '{sr._from}': pick rule requires at least "
+                                f"{sr.minimum} descriptor(s), got {n}"
+                            )
+                        )
+                    if sr.maximum is not None and n > sr.maximum:
+                        return PexVerifyResult(
+                            details=(
+                                f"Group '{sr._from}': pick rule requires at most "
+                                f"{sr.maximum} descriptor(s), got {n}"
+                            )
+                        )
+                elif sr.rule == "all":
+                    if n != len(group_desc_ids):
+                        return PexVerifyResult(
+                            details=(
+                                f"Group '{sr._from}': 'all' rule requires all "
+                                f"{len(group_desc_ids)} descriptor(s), got {n}"
+                            )
+                        )
+        else:
+            # PEX §5 — when no submission_requirements are declared, the submission
+            # MUST include an entry for every input_descriptor.
+            missing = set(self._id_to_descriptor.keys()) - satisfied_ids
+            if missing:
+                return PexVerifyResult(
+                    details=f"Submission missing required descriptors: {missing}"
+                )
 
         return PexVerifyResult(
             verified=True,

@@ -5,6 +5,7 @@ from aiohttp import web
 
 from ..status_handler import StatusHandler
 from .credential import dereference_cred_offer, issue_cred
+from .did_configuration import did_configuration
 from .metadata import credential_issuer_metadata, openid_configuration
 from .nonce import get_nonce
 from .notification import receive_notification
@@ -67,8 +68,11 @@ async def register(app: web.Application, multitenant: bool, context: InjectionCo
             openid_configuration,
             allow_head=False,
         ),
-        # TODO Add .well-known/did-configuration.json
-        # Spec: https://identity.foundation/.well-known/resources/did-configuration/
+        web.get(
+            f"{subpath}/.well-known/did-configuration.json",
+            did_configuration,
+            allow_head=False,
+        ),
         web.post(f"{subpath}/token", token),
         web.post(f"{subpath}/notification", receive_notification),
         web.post(f"{subpath}/credential", issue_cred),

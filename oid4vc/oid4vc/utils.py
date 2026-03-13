@@ -12,7 +12,9 @@ from oid4vc.config import Config
 from oid4vc.jwt import jwt_sign
 from oid4vc.models.supported_cred import SupportedCredential
 
-EXPIRES_IN = 300
+AUTH_TOKEN_EXPIRES_IN = 300
+# Keep old name as an alias for backward compatibility
+EXPIRES_IN = AUTH_TOKEN_EXPIRES_IN
 
 
 async def supported_cred_is_unique(identifier: str, profile: Profile):

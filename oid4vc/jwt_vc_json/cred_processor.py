@@ -12,6 +12,7 @@ from acapy_agent.core.profile import Profile
 from pydid import DIDUrl
 
 from oid4vc.cred_processor import (
+    CredProcessorError,
     CredVerifier,
     Issuer,
     PresVerifier,
@@ -39,7 +40,8 @@ class JwtVcJsonCredProcessor(Issuer, CredVerifier, PresVerifier):
         context: AdminRequestContext,
     ) -> Any:
         """Return signed credential in JWT format."""
-        assert supported.format_data
+        if not supported.format_data:
+            raise CredProcessorError("JWT VC JSON needs format_data to issue")
 
         current_time = datetime.datetime.now(datetime.timezone.utc)
         current_time_unix_timestamp = int(current_time.timestamp())
@@ -97,11 +99,24 @@ class JwtVcJsonCredProcessor(Issuer, CredVerifier, PresVerifier):
 
     def validate_credential_subject(self, supported: SupportedCredential, subject: dict):
         """Validate the credential subject."""
-        pass
+        if not subject or not isinstance(subject, dict):
+            raise CredProcessorError("Credential subject must be a non-empty dict")
 
     def validate_supported_credential(self, supported: SupportedCredential):
         """Validate a supported JWT VC JSON Credential."""
-        pass
+        if not supported.format_data:
+            raise CredProcessorError("JWT VC JSON needs format_data")
+        vc_additional = supported.vc_additional_data or {}
+        cred_type = vc_additional.get("type")
+        if not cred_type or not isinstance(cred_type, list):
+            raise CredProcessorError(
+                'JWT VC JSON vc_additional_data["type"] must be a list '
+                '(e.g. ["VerifiableCredential", "MyCredential"])'
+            )
+        if "VerifiableCredential" not in cred_type:
+            raise CredProcessorError(
+                'vc_additional_data["type"] must include "VerifiableCredential"'
+            )
 
     async def verify(self, profile: Profile, jwt: str) -> VerifyResult:
         """Verify a credential or presentation."""

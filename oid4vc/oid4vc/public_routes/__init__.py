@@ -47,7 +47,7 @@ from .token import (
     GetTokenSchema,
     JWTVerifyResult,
     check_token,
-    handle_proof_of_posession,
+    handle_proof_of_possession,
     token,
 )
 
@@ -99,7 +99,7 @@ __all__ = [
     "GetTokenSchema",
     "JWTVerifyResult",
     "check_token",
-    "handle_proof_of_posession",
+    "handle_proof_of_possession",
     "token",
     # Verification
     "OID4VPPresentationIDMatchSchema",

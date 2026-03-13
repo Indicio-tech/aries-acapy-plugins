@@ -104,11 +104,14 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
         context: AdminRequestContext,
     ) -> Any:
         """Return a signed credential in SD-JWT format."""
-        assert supported.format_data
-        assert supported.vc_additional_data
+        if not supported.format_data:
+            raise CredProcessorError("SupportedCredential is missing format_data")
+        if not supported.vc_additional_data:
+            raise CredProcessorError("SupportedCredential is missing vc_additional_data")
 
         sd_list = supported.vc_additional_data.get("sd_list") or []
-        assert isinstance(sd_list, list)
+        if not isinstance(sd_list, list):
+            raise CredProcessorError("vc_additional_data.sd_list must be a list")
 
         # Allow missing vct in body if format_data has vct
         body_vct = body.get("vct")
@@ -189,40 +192,68 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
     def validate_credential_subject(self, supported: SupportedCredential, subject: dict):
         """Validate the credential subject."""
         vc_additional = supported.vc_additional_data
-        assert vc_additional
-        assert supported.format_data
+        if not vc_additional:
+            raise CredProcessorError("SupportedCredential is missing vc_additional_data")
+        if not supported.format_data:
+            raise CredProcessorError("SupportedCredential is missing format_data")
         claims_metadata = supported.format_data.get("claims")
         sd_list = vc_additional.get("sd_list") or []
 
-        # TODO this will only enforce mandatory fields that are selectively disclosable
-        # We should validate that disclosed claims that are mandatory are also present
+        _VALUE_TYPE_MAP: dict = {
+            "string": str,
+            "number": (int, float),
+            "integer": int,
+            "boolean": bool,
+            "null": type(None),
+        }
         missing = []
+        type_errors = []
+
+        def _check_claim(pointer: JsonPointer, metadata: ClaimMetadata):
+            claim = pointer.resolve(subject, Unset)
+            if claim is Unset:
+                if metadata.mandatory:
+                    missing.append(pointer.path)
+            elif metadata.value_type is not None:
+                expected = _VALUE_TYPE_MAP.get(metadata.value_type)
+                if expected and not isinstance(claim, expected):
+                    type_errors.append(
+                        f"{pointer.path!r} expected {metadata.value_type!r},"
+                        f" got {type(claim).__name__!r}"
+                    )
+
+        # Validate selectively-disclosable claims
         for sd in sd_list:
-            # iat is the only claim that can be disclosable that is not set in the subject
+            # iat is auto-set at issuance, never present in the subject
             if sd == "/iat":
                 continue
             pointer = JsonPointer(sd)
 
-            # Skip if no claims metadata defined
             if claims_metadata is None:
                 continue
 
-            metadata = pointer.resolve(claims_metadata, None)
-            if metadata:
-                metadata = ClaimMetadata(**metadata)
-            else:
-                metadata = ClaimMetadata()
+            raw = pointer.resolve(claims_metadata, None)
+            metadata = _parse_claim_metadata(raw)
+            _check_claim(pointer, metadata)
 
-            claim = pointer.resolve(subject, Unset)
-            if claim is Unset and metadata.mandatory:
-                missing.append(pointer.path)
-
-            # TODO type checking against value_type
+        # Validate non-SD mandatory claims that haven't been checked above
+        if claims_metadata:
+            sd_paths = set(sd_list)
+            for claim_name, raw in claims_metadata.items():
+                sd_ptr = f"/{claim_name}"
+                if sd_ptr in sd_paths:
+                    continue  # Already validated in the loop above
+                metadata = _parse_claim_metadata(raw)
+                if metadata.mandatory or metadata.value_type is not None:
+                    _check_claim(JsonPointer(sd_ptr), metadata)
 
         if missing:
             raise CredProcessorError(
-                "Invalid credential subject; selectively disclosable claim is"
-                f" mandatory but missing: {missing}"
+                f"Invalid credential subject; mandatory claim is missing: {missing}"
+            )
+        if type_errors:
+            raise CredProcessorError(
+                f"Invalid credential subject; wrong type: {type_errors}"
             )
 
     def validate_supported_credential(self, supported: SupportedCredential):
@@ -300,6 +331,16 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
 
         result = await sd_jwt_verify(profile, credential)
         return VerifyResult(result.verified, result.payload)
+
+
+_CLAIM_METADATA_FIELDS = frozenset(ClaimMetadata.__dataclass_fields__)
+
+
+def _parse_claim_metadata(raw) -> ClaimMetadata:
+    """Build a ClaimMetadata from a raw dict, ignoring unknown keys (e.g. 'claims')."""
+    if not isinstance(raw, dict):
+        return ClaimMetadata()
+    return ClaimMetadata(**{k: v for k, v in raw.items() if k in _CLAIM_METADATA_FIELDS})
 
 
 class SDJWTIssuerACAPy(SDJWTIssuer):
@@ -519,5 +560,6 @@ async def sd_jwt_verify(
     try:
         payload = (await sd_jwt_verifier.verify()).get_verified_payload()
         return VerifyResult(True, payload)
-    except Exception:
+    except (CredProcessorError, ValueError, KeyError) as exc:
+        LOGGER.debug("SD-JWT verification failed: %s", exc)
         return VerifyResult(False, None)

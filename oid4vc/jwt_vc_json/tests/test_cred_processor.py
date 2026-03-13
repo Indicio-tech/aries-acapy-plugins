@@ -33,6 +33,7 @@ import pytest
 from acapy_agent.admin.request_context import AdminRequestContext
 
 from jwt_vc_json.cred_processor import JwtVcJsonCredProcessor
+from oid4vc.cred_processor import CredProcessorError
 from oid4vc.models.exchange import OID4VCIExchangeRecord
 from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.pop_result import PopResult
@@ -310,3 +311,135 @@ class TestCredentialProcessor:
         assert vc["issuer"] == ex_record.issuer_id
         assert "credentialSubject" in vc
         assert vc["credentialSubject"]["id"].startswith("did:")
+
+
+# ---------------------------------------------------------------------------
+# validate_credential_subject
+# ---------------------------------------------------------------------------
+
+
+class TestValidateCredentialSubject:
+    """Tests for JwtVcJsonCredProcessor.validate_credential_subject."""
+
+    def _make_supported(self):
+        return SupportedCredential(
+            format_data={"types": ["VerifiableCredential", "PhotoCard"]},
+            vc_additional_data={
+                "@context": ["https://www.w3.org/2018/credentials/v1"],
+                "type": ["VerifiableCredential", "PhotoCard"],
+            },
+        )
+
+    def test_valid_subject_passes(self):
+        """A non-empty dict subject does not raise."""
+        processor = JwtVcJsonCredProcessor()
+        supported = self._make_supported()
+        processor.validate_credential_subject(supported, {"given_name": "Alice"})
+
+    def test_empty_dict_raises(self):
+        """An empty dict is rejected."""
+        processor = JwtVcJsonCredProcessor()
+        supported = self._make_supported()
+        with pytest.raises(CredProcessorError, match="non-empty dict"):
+            processor.validate_credential_subject(supported, {})
+
+    def test_none_raises(self):
+        """None is rejected."""
+        processor = JwtVcJsonCredProcessor()
+        supported = self._make_supported()
+        with pytest.raises(CredProcessorError, match="non-empty dict"):
+            processor.validate_credential_subject(supported, None)
+
+    def test_non_dict_raises(self):
+        """A non-dict subject is rejected."""
+        processor = JwtVcJsonCredProcessor()
+        supported = self._make_supported()
+        with pytest.raises(CredProcessorError, match="non-empty dict"):
+            processor.validate_credential_subject(supported, ["not", "a", "dict"])
+
+
+# ---------------------------------------------------------------------------
+# validate_supported_credential
+# ---------------------------------------------------------------------------
+
+
+class TestValidateSupportedCredential:
+    """Tests for JwtVcJsonCredProcessor.validate_supported_credential."""
+
+    def test_valid_supported_cred_passes(self):
+        """A properly configured SupportedCredential does not raise."""
+        processor = JwtVcJsonCredProcessor()
+        supported = SupportedCredential(
+            format_data={"types": ["VerifiableCredential", "PhotoCard"]},
+            vc_additional_data={
+                "@context": ["https://www.w3.org/2018/credentials/v1"],
+                "type": ["VerifiableCredential", "PhotoCard"],
+            },
+        )
+        processor.validate_supported_credential(supported)
+
+    def test_missing_format_data_raises(self):
+        """SupportedCredential with no format_data raises CredProcessorError."""
+        processor = JwtVcJsonCredProcessor()
+        supported = SupportedCredential(
+            vc_additional_data={
+                "type": ["VerifiableCredential", "PhotoCard"],
+            },
+        )
+        with pytest.raises(CredProcessorError, match="format_data"):
+            processor.validate_supported_credential(supported)
+
+    def test_missing_type_in_vc_additional_data_raises(self):
+        """Missing type list in vc_additional_data raises CredProcessorError."""
+        processor = JwtVcJsonCredProcessor()
+        supported = SupportedCredential(
+            format_data={"types": ["VerifiableCredential"]},
+            vc_additional_data={"@context": ["https://www.w3.org/2018/credentials/v1"]},
+        )
+        with pytest.raises(CredProcessorError, match="type.*list"):
+            processor.validate_supported_credential(supported)
+
+    def test_type_not_a_list_raises(self):
+        """A non-list type value raises CredProcessorError."""
+        processor = JwtVcJsonCredProcessor()
+        supported = SupportedCredential(
+            format_data={"types": ["VerifiableCredential"]},
+            vc_additional_data={"type": "VerifiableCredential"},
+        )
+        with pytest.raises(CredProcessorError, match="type.*list"):
+            processor.validate_supported_credential(supported)
+
+    def test_type_missing_verifiable_credential_raises(self):
+        """type list that omits VerifiableCredential raises CredProcessorError."""
+        processor = JwtVcJsonCredProcessor()
+        supported = SupportedCredential(
+            format_data={"types": ["PhotoCard"]},
+            vc_additional_data={"type": ["PhotoCard"]},
+        )
+        with pytest.raises(CredProcessorError, match="VerifiableCredential"):
+            processor.validate_supported_credential(supported)
+
+
+# ---------------------------------------------------------------------------
+# issue() – format_data guard (assert → CredProcessorError)
+# ---------------------------------------------------------------------------
+
+
+class TestIssueFormatDataGuard:
+    """Tests that issue() raises CredProcessorError when format_data is absent."""
+
+    @pytest.mark.asyncio
+    async def test_issue_without_format_data_raises(
+        self,
+        ex_record: OID4VCIExchangeRecord,
+        pop: PopResult,
+    ):
+        """issue() must raise CredProcessorError, not AssertionError, for missing format_data."""
+        supported = SupportedCredential(
+            vc_additional_data={"type": ["VerifiableCredential"]},
+        )
+        context = MagicMock()
+
+        cred_processor = JwtVcJsonCredProcessor()
+        with pytest.raises(CredProcessorError, match="format_data"):
+            await cred_processor.issue({}, supported, ex_record, pop, context)

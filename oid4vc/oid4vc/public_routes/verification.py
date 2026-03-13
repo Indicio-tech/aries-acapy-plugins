@@ -229,7 +229,7 @@ class OID4VPPresentationIDMatchSchema(OpenAPISchema):
 
 
 class PostOID4VPResponseSchema(OpenAPISchema):
-    """Schema for ..."""
+    """Schema for an OID4VP authorization response (direct_post)."""
 
     presentation_submission = fields.Str(required=False, metadata={"description": ""})
 
@@ -281,12 +281,10 @@ async def verify_pres_def_presentation(
     if not submission.descriptor_maps:
         raise web.HTTPBadRequest(reason="Descriptor map of submission must not be empty")
 
-    # TODO: Support longer descriptor map arrays
-    if len(submission.descriptor_maps) != 1:
-        raise web.HTTPBadRequest(
-            reason="Descriptor map of length greater than 1 is not supported at this time"
-        )
-
+    # Use the format from the first descriptor_map entry to determine the
+    # outer presentation verifier.  All entries in a single PEX submission
+    # reference credentials within the same VP envelope, so the outer format
+    # is consistent.  The PresentationExchangeEvaluator handles all entries.
     verifier = processors.pres_verifier_for_format(submission.descriptor_maps[0].fmt)
     LOGGER.debug("VERIFIER: %s", verifier)
 

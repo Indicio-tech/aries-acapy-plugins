@@ -1774,7 +1774,7 @@ class TestPublicRouteFunctionality:
 
     def test_proof_of_possession_handling(self):
         """Test proof of possession with realistic JWT data."""
-        from oid4vc.public_routes import handle_proof_of_posession
+        from oid4vc.public_routes import handle_proof_of_possession
 
         # Test realistic proof of possession data
         realistic_pop_proof = {
@@ -1783,7 +1783,7 @@ class TestPublicRouteFunctionality:
         }
 
         # Test function availability
-        assert handle_proof_of_posession is not None
+        assert handle_proof_of_possession is not None
 
         # Test proof structure
         assert realistic_pop_proof["proof_type"] == "jwt"
