@@ -204,8 +204,20 @@ print(json.dumps(config))
 PYEOF
 )
 
-MDL_RESP=$(post_json "$ISSUER_ADMIN/oid4vci/credential-supported/create" "$MDL_CONFIG")
-MDL_CRED_ID=$(echo "$MDL_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin)['supported_cred_id'])")
+MDL_CRED_ID=$(get_json "$ISSUER_ADMIN/oid4vci/credential-supported/records" | \
+  python3 -c "
+import json, sys
+records = json.load(sys.stdin).get('results', [])
+match = next((r['supported_cred_id'] for r in records if r.get('identifier') == '$MDL_CONFIG_ID'), '')
+print(match)
+" 2>/dev/null)
+
+if [[ -n "$MDL_CRED_ID" ]]; then
+  info "mDL credential config already exists, reusing it…"
+else
+  MDL_RESP=$(post_json "$ISSUER_ADMIN/oid4vci/credential-supported/create" "$MDL_CONFIG")
+  MDL_CRED_ID=$(echo "$MDL_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin)['supported_cred_id'])")
+fi
 success "mDL credential config: $MDL_CRED_ID"
 
 # ── Step 4: Store config for Playwright ──────────────────────────────────────
