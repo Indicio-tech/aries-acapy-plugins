@@ -41,7 +41,7 @@ docker compose up -d
 ./setup.sh
 
 # 5. Open the wallet in your browser
-open http://localhost:7101
+open http://localhost:7201
 ```
 
 Register a new account in the wallet and you're ready to go.
@@ -53,7 +53,7 @@ Register a new account in the wallet and you're ready to go.
 | Service | URL | Purpose |
 |---|---|---|
 | walt.id Web Wallet | <http://localhost:7101> | Holder wallet (browser) |
-| ACA-Py Issuer admin | <http://localhost:8021> | Issue credentials |
+| ACA-Py Issuer admin | <http://localhost:8121> | Issue credentials |
 | ACA-Py Issuer OID4VCI | <http://localhost:8022> | OID4VCI v1 endpoint |
 | ACA-Py Verifier admin | <http://localhost:8031> | Verify presentations |
 | ACA-Py Verifier OID4VP | <http://localhost:8032> | OID4VP v1 endpoint |
@@ -140,7 +140,7 @@ Restart the stack: `docker compose up -d` and re-run `./setup.sh`.
 │                                                          │
 │  ┌─────────────────┐     OID4VCI v1    ┌─────────────┐  │
 │  │  ACA-Py Issuer  │ ◄──────────────── │  walt.id    │  │
-│  │  :8021 admin    │                   │  wallet-api │  │
+│  │  :8121 admin    │                   │  wallet-api │  │
 │  │  :8022 OID4VCI  │                   │  :7001      │  │
 │  └─────────────────┘                   └─────────────┘  │
 │                                              │           │
@@ -236,10 +236,10 @@ To issue a credential manually:
 
 ```bash
 # Get the credential config IDs
-curl -s http://localhost:8021/oid4vci/credential-supported/list | python3 -m json.tool
+curl -s http://localhost:8121/oid4vci/credential-supported/list | python3 -m json.tool
 
 # Create an offer (replace <did> and <config_id>)
-curl -s -X POST http://localhost:8021/oid4vci/exchange/create \
+curl -s -X POST http://localhost:8121/oid4vci/exchange/create \
   -H "Content-Type: application/json" \
   -d '{
     "supported_cred_id": "<config_id>",

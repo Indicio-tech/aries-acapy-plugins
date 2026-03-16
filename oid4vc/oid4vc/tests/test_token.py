@@ -475,6 +475,26 @@ async def test_proof_with_correct_aud_accepted(profile):
 
 
 @pytest.mark.asyncio
+async def test_proof_aud_with_explicit_default_port_accepted(profile):
+    """Wallets may send aud with explicit :443 — must equal endpoint without it."""
+    nonce = "nonce-port"
+    jwt_str = _build_proof_jwt(
+        nonce, aud="https://myissuerapi.zrok.dev.indicioctech.io:443"
+    )
+    proof = {"proof_type": "jwt", "jwt": jwt_str}
+
+    with patch(
+        "oid4vc.public_routes.token.Config.from_settings",
+        return_value=MagicMock(
+            endpoint="https://myissuerapi.zrok.dev.indicioctech.io"
+        ),
+    ):
+        result = await handle_proof_of_posession(profile, proof, nonce)
+
+    assert result.verified is True
+
+
+@pytest.mark.asyncio
 async def test_proof_with_tenant_scoped_aud_accepted(profile):
     """Diff-3: proof JWT aud set to a tenant-scoped URL must be accepted.
 
@@ -518,6 +538,43 @@ async def test_proof_with_cross_issuer_tenant_path_rejected(profile):
     body = json.loads(exc_info.value.text)
     assert body["error"] == "invalid_proof"
     assert "aud" in body["error_description"]
+
+
+@pytest.mark.asyncio
+async def test_proof_iss_fallback_when_no_key_in_header(profile):
+    """Wallets that omit jwk/kid/x5c but put their DID in iss must be resolved."""
+    nonce = "nonce-iss-fallback"
+    key = Key.generate(KeyAlg.P256)
+    public_jwk = json.loads(key.get_jwk_public())
+    # Header has NO jwk, kid, or x5c — only alg+typ
+    header = {"typ": "openid4vci-proof+jwt", "alg": "ES256"}
+    payload = {
+        "iss": "did:key:zDnaemDNiAWCCLFKP2ppPJuq52E2Gh9trydNgTqrWDkb5oiaQ",
+        "aud": "http://localhost:8020",
+        "iat": int(time.time()),
+        "exp": int(time.time()) + 600,
+        "nonce": nonce,
+    }
+    h_enc = _make_b64url(json.dumps(header).encode())
+    p_enc = _make_b64url(json.dumps(payload).encode())
+    sig = key.sign_message(f"{h_enc}.{p_enc}".encode(), sig_type="ES256")
+    jwt_str = f"{h_enc}.{p_enc}.{_make_b64url(sig)}"
+    proof = {"proof_type": "jwt", "jwt": jwt_str}
+
+    with (
+        patch(
+            "oid4vc.public_routes.token.Config.from_settings",
+            return_value=MagicMock(endpoint="http://localhost:8020"),
+        ),
+        patch(
+            "oid4vc.public_routes.token.key_material_for_kid",
+            new=AsyncMock(return_value=key),
+        ),
+    ):
+        result = await handle_proof_of_posession(profile, proof, nonce)
+
+    assert result.verified is True
+    assert result.holder_jwk is not None  # derived from iss-resolved key
 
 
 @pytest.mark.asyncio

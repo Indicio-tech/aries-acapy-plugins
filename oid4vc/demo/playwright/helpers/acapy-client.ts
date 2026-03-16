@@ -14,7 +14,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const ISSUER_ADMIN_URL = process.env.ACAPY_ISSUER_ADMIN_URL || 'http://localhost:8021';
+const ISSUER_ADMIN_URL = process.env.ACAPY_ISSUER_ADMIN_URL || 'http://localhost:8121';
 const VERIFIER_ADMIN_URL = process.env.ACAPY_VERIFIER_ADMIN_URL || 'http://localhost:8031';
 const ISSUER_OID4VCI_URL = process.env.ACAPY_ISSUER_OID4VCI_URL || 'http://localhost:8022';
 const VERIFIER_OID4VP_URL = process.env.ACAPY_VERIFIER_OID4VP_URL || 'http://localhost:8032';

@@ -8,7 +8,7 @@ import axios from 'axios';
 import type { AxiosInstance } from 'axios';
 import type { BrowserContext, Page } from '@playwright/test';
 
-const WALLET_API_URL = process.env.WALTID_WALLET_API_URL || 'http://localhost:7101';
+const WALLET_API_URL = process.env.WALTID_WALLET_API_URL || 'http://localhost:7201';
 
 interface WalletUser {
   email: string;
@@ -145,7 +145,7 @@ export async function injectAuthContext(context: BrowserContext, user: WalletUse
   // walt.id uses localStorage for auth token, so we need to set it via page script
   const page = await context.newPage();
   
-  await page.goto(process.env.WALTID_WALLET_URL || 'http://localhost:7101');
+  await page.goto(process.env.WALTID_WALLET_URL || 'http://localhost:7201');
   
   // Set the auth token in localStorage
   await page.evaluate((token) => {
@@ -157,7 +157,7 @@ export async function injectAuthContext(context: BrowserContext, user: WalletUse
     {
       name: 'waltid_session',
       value: user.token,
-      domain: new URL(process.env.WALTID_WALLET_URL || 'http://localhost:7101').hostname,
+      domain: new URL(process.env.WALTID_WALLET_URL || 'http://localhost:7201').hostname,
       path: '/',
       httpOnly: false,
       secure: false,
@@ -185,8 +185,8 @@ export async function loginViaBrowser(
   password: string,
   baseUrl?: string
 ): Promise<void> {
-  const walletUrl = baseUrl || process.env.WALTID_WALLET_URL || 'http://localhost:7101';
-  const walletApiUrl = process.env.WALTID_WALLET_API_URL || 'http://localhost:7101';
+  const walletUrl = baseUrl || process.env.WALTID_WALLET_URL || 'http://localhost:7201';
+  const walletApiUrl = process.env.WALTID_WALLET_API_URL || 'http://localhost:7201';
   
   // Authenticate via API (more reliable than UI login)
   const client = createApiClient();

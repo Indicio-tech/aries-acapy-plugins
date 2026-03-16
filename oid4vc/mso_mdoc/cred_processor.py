@@ -193,18 +193,56 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
     _COSE_ALG: dict = {"ES256": -7, "ES384": -35, "ES512": -36, "ES256K": -47}
 
     def transform_issuer_metadata(self, metadata: dict) -> None:
-        """Convert mso_mdoc algorithm names to COSE integer identifiers.
+        """Transform mso_mdoc metadata to OID4VCI 1.0 spec compliance.
 
-        Per OID4VCI spec Appendix E and ISO 18013-5, ``credential_signing_alg_
-        values_supported`` for mso_mdoc must contain COSE algorithm integer
-        identifiers (e.g. -7 for ES256), NOT string names. This method converts
-        any string entries in-place.
+        Per OID4VCI spec Appendix E and ISO 18013-5:
+        1. ``credential_signing_alg_values_supported`` must contain COSE algorithm
+           integer identifiers (e.g. -7 for ES256), NOT string names.
+        2. ``claims`` must be converted from nested object format to an array of
+           claim description objects with ``path`` fields, wrapped in
+           ``credential_metadata`` per OID4VCI spec §12.2.4 and Appendix B.2.
+        3. ``display`` must be moved to ``credential_metadata`` per spec §12.2.4.
         """
+        # Convert algorithm names to COSE integer identifiers
         algs = metadata.get("credential_signing_alg_values_supported")
         if algs:
             metadata["credential_signing_alg_values_supported"] = [
                 self._COSE_ALG.get(a, a) if isinstance(a, str) else a for a in algs
             ]
+
+        # Initialize or retrieve credential_metadata
+        cred_metadata = metadata.pop("credential_metadata", {})
+
+        # Move display to credential_metadata (per spec §12.2.4)
+        display = metadata.pop("display", None)
+        if display:
+            cred_metadata["display"] = display
+
+        # Transform claims from nested object to spec-compliant array format
+        claims_obj = metadata.pop("claims", None)
+        if claims_obj and isinstance(claims_obj, dict):
+            claims_array = []
+            # Flatten nested claims structure into array of claim description objects
+            for namespace, namespace_claims in claims_obj.items():
+                if isinstance(namespace_claims, dict):
+                    for claim_name, claim_spec in namespace_claims.items():
+                        if claim_spec is None:
+                            continue
+                        claim_desc = {
+                            "path": [namespace, claim_name],
+                        }
+                        if isinstance(claim_spec, dict):
+                            if "mandatory" in claim_spec:
+                                claim_desc["mandatory"] = claim_spec["mandatory"]
+                            if "display" in claim_spec:
+                                claim_desc["display"] = claim_spec["display"]
+                        claims_array.append(claim_desc)
+
+            cred_metadata["claims"] = claims_array
+
+        # Re-insert credential_metadata if it has content
+        if cred_metadata:
+            metadata["credential_metadata"] = cred_metadata
 
     def __init__(self, trust_store: Optional[Any] = None):
         """Initialize the processor."""
