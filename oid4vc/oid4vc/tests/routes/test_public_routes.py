@@ -76,9 +76,10 @@ async def test_issuer_metadata(context: AdminRequestContext, req: web.Request):
 async def test_issuer_metadata_no_auth_server():
     """Credential issuer metadata without external auth server.
 
-    When no auth_server_url is configured, the response must omit both
-    ``authorization_servers`` and ``token_endpoint``.  Wallets that need the
-    token endpoint should discover it via /.well-known/oauth-authorization-server.
+    When no auth_server_url is configured, the response must omit
+    ``authorization_servers`` but include ``token_endpoint`` directly.
+    Some wallets (e.g. waltid) read token_endpoint from the credential issuer
+    metadata rather than performing AS discovery.
     """
     from acapy_agent.config.settings import Settings
     from acapy_agent.resolver.did_resolver import DIDResolver
@@ -135,7 +136,7 @@ async def test_issuer_metadata_no_auth_server():
         await credential_issuer_metadata(mock_req)
         response_data = mock_json_response.call_args[0][0]
         assert "authorization_servers" not in response_data
-        assert "token_endpoint" not in response_data
+        assert response_data["token_endpoint"] == f"http://localhost:8020/tenant/{wallet_id}/token"
         wallet_id = items["wallet_id"]
         assert response_data["credential_issuer"] == f"http://localhost:8020/tenant/{wallet_id}"
         assert response_data["credential_endpoint"] == f"http://localhost:8020/tenant/{wallet_id}/credential"
