@@ -81,7 +81,6 @@ async def test_issuer_metadata_no_auth_server():
     Some wallets (e.g. waltid) read token_endpoint from the credential issuer
     metadata rather than performing AS discovery.
     """
-    from acapy_agent.config.settings import Settings
     from acapy_agent.resolver.did_resolver import DIDResolver
     from acapy_agent.utils.testing import create_test_profile
     from acapy_agent.wallet.default_verification_key_strategy import (
@@ -90,9 +89,9 @@ async def test_issuer_metadata_no_auth_server():
     )
 
     from jwt_vc_json import JwtVcJsonCredProcessor
-    from oid4vc.config import Config
     from oid4vc.cred_processor import CredProcessors
     from oid4vc.jwk_resolver import JwkResolver
+    from sd_jwt_vc.cred_processor import SdJwtCredIssueProcessor
 
     no_auth_settings = {
         "admin.admin_insecure_mode": True,
@@ -135,9 +134,9 @@ async def test_issuer_metadata_no_auth_server():
     with patch("aiohttp.web.json_response") as mock_json_response:
         await credential_issuer_metadata(mock_req)
         response_data = mock_json_response.call_args[0][0]
+        wallet_id = items["wallet_id"]
         assert "authorization_servers" not in response_data
         assert response_data["token_endpoint"] == f"http://localhost:8020/tenant/{wallet_id}/token"
-        wallet_id = items["wallet_id"]
         assert response_data["credential_issuer"] == f"http://localhost:8020/tenant/{wallet_id}"
         assert response_data["credential_endpoint"] == f"http://localhost:8020/tenant/{wallet_id}/credential"
         assert response_data["nonce_endpoint"] == f"http://localhost:8020/tenant/{wallet_id}/nonce"
