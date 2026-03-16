@@ -12,8 +12,8 @@ playwright/.playwright/
 
 node_modules/
 
-# holdr-sdk-mdoc-cli artifacts
+# mDoc CLI test artifacts
 *.jar
 license.txt
-holdr-mdoc-cli.db*
-holdr-mdoc-cli-logs.txt
+*-cli.db*
+*-cli-logs.txt
