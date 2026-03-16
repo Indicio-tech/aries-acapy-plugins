@@ -73,6 +73,76 @@ async def test_issuer_metadata(context: AdminRequestContext, req: web.Request):
 
 
 @pytest.mark.asyncio
+async def test_issuer_metadata_no_auth_server():
+    """Credential issuer metadata without external auth server.
+
+    When no auth_server_url is configured, the response must omit both
+    ``authorization_servers`` and ``token_endpoint``.  Wallets that need the
+    token endpoint should discover it via /.well-known/oauth-authorization-server.
+    """
+    from acapy_agent.config.settings import Settings
+    from acapy_agent.resolver.did_resolver import DIDResolver
+    from acapy_agent.utils.testing import create_test_profile
+    from acapy_agent.wallet.default_verification_key_strategy import (
+        BaseVerificationKeyStrategy,
+        DefaultVerificationKeyStrategy,
+    )
+
+    from jwt_vc_json import JwtVcJsonCredProcessor
+    from oid4vc.config import Config
+    from oid4vc.cred_processor import CredProcessors
+    from oid4vc.jwk_resolver import JwkResolver
+
+    no_auth_settings = {
+        "admin.admin_insecure_mode": True,
+        "wallet.id": "538451fa-11ab-41de-b6e3-7ae3df7356d6",
+        "plugin_config": {
+            "oid4vci": {
+                "host": "localhost",
+                "port": 8020,
+                "endpoint": "http://localhost:8020",
+            }
+        },
+    }
+    processors = CredProcessors(
+        {"jwt_vc_json": JwtVcJsonCredProcessor()},
+        {"sd_jwt_vc": SdJwtCredIssueProcessor()},
+    )
+    profile = await create_test_profile(no_auth_settings)
+    profile.context.injector.bind_instance(DIDResolver, DIDResolver([JwkResolver()]))
+    profile.context.injector.bind_instance(
+        BaseVerificationKeyStrategy, DefaultVerificationKeyStrategy()
+    )
+    profile.context.injector.bind_instance(CredProcessors, processors)
+
+    ctx = AdminRequestContext(profile)
+
+    supported = SupportedCredential(
+        format="jwt_vc_json",
+        identifier="TestCred",
+        format_data={"credentialSubject": {"name": "bob"}},
+    )
+    async with ctx.session() as session:
+        await supported.save(session)
+
+    items = {"context": ctx, "wallet_id": "538451fa-11ab-41de-b6e3-7ae3df7356d6"}
+    mock_req = MagicMock()
+    mock_req.__getitem__ = lambda _, k: items[k]
+    mock_req.match_info = {"wallet_id": items["wallet_id"]}
+    mock_req.headers = {}
+
+    with patch("aiohttp.web.json_response") as mock_json_response:
+        await credential_issuer_metadata(mock_req)
+        response_data = mock_json_response.call_args[0][0]
+        assert "authorization_servers" not in response_data
+        assert "token_endpoint" not in response_data
+        wallet_id = items["wallet_id"]
+        assert response_data["credential_issuer"] == f"http://localhost:8020/tenant/{wallet_id}"
+        assert response_data["credential_endpoint"] == f"http://localhost:8020/tenant/{wallet_id}/credential"
+        assert response_data["nonce_endpoint"] == f"http://localhost:8020/tenant/{wallet_id}/nonce"
+
+
+@pytest.mark.asyncio
 async def test_get_token(context: AdminRequestContext, req: web.Request):
     """Test token issuance endpoint."""
 

@@ -186,6 +186,8 @@ config = {
                 "issuing_country":   {"mandatory": True},
                 "issuing_authority": {"mandatory": True},
                 "document_number":   {"mandatory": True},
+                "un_distinguishing_sign": {"mandatory": True},
+                "portrait":          {"mandatory": True},
                 "issue_date":        {"mandatory": False},
                 "expiry_date":       {"mandatory": False},
                 "driving_privileges":{"mandatory": False}
