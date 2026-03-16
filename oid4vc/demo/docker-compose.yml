@@ -170,7 +170,7 @@ services:
       - DB_PASSWORD=waltid
       # Tells the wallet which URL to trust for did:web resolution (no HTTPS required
       # for local demos — dev-mode.conf sets enableDidWebResolverHttps=false)
-      - DEMO_WALLET_FRONTEND_PORT=7201
+      - DEMO_WALLET_FRONTEND_PORT=7101
     volumes:
       - ./waltid-config:/waltid-wallet-api/config:ro
     healthcheck:

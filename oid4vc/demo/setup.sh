@@ -13,9 +13,9 @@
 #   6. Prints out wallet URL and Playwright instructions.
 #
 # Environment variables (from .env or shell):
-#   ACAPY_ISSUER_ADMIN_URL   default http://localhost:8121
+#   ACAPY_ISSUER_ADMIN_URL   default http://localhost:8021
 #   ACAPY_VERIFIER_ADMIN_URL default http://localhost:8031
-#   WALLET_URL               default http://localhost:7201
+#   WALLET_URL               default http://localhost:7101
 set -euo pipefail
 
 # Load .env from the same directory as this script so port overrides are honoured.
@@ -27,9 +27,9 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
   set +a
 fi
 
-ISSUER_ADMIN="${ACAPY_ISSUER_ADMIN_URL:-http://localhost:8121}"
+ISSUER_ADMIN="${ACAPY_ISSUER_ADMIN_URL:-http://localhost:8021}"
 VERIFIER_ADMIN="${ACAPY_VERIFIER_ADMIN_URL:-http://localhost:8031}"
-WALLET_URL="${WALTID_WALLET_URL:-${WALLET_URL:-http://localhost:7201}}"
+WALLET_URL="${WALTID_WALLET_URL:-${WALLET_URL:-http://localhost:7101}}"
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'

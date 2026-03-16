@@ -45,9 +45,9 @@ import {
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const WALTID_WALLET_URL = process.env.WALTID_WALLET_URL || 'http://localhost:7201';
-const WALTID_WALLET_API_URL = process.env.WALTID_WALLET_API_URL || 'http://localhost:7201';
-const ACAPY_ISSUER_ADMIN_URL = process.env.ACAPY_ISSUER_ADMIN_URL || 'http://localhost:8121';
+const WALTID_WALLET_URL = process.env.WALTID_WALLET_URL || 'http://localhost:7101';
+const WALTID_WALLET_API_URL = process.env.WALTID_WALLET_API_URL || 'http://localhost:7101';
+const ACAPY_ISSUER_ADMIN_URL = process.env.ACAPY_ISSUER_ADMIN_URL || 'http://localhost:8021';
 const ACAPY_VERIFIER_ADMIN_URL = process.env.ACAPY_VERIFIER_ADMIN_URL || 'http://localhost:8031';
 
 // ── Shared demo state ─────────────────────────────────────────────────────────
