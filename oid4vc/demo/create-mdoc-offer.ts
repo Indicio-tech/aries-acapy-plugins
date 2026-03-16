@@ -19,7 +19,7 @@
  *     --subject '{"org.iso.18013.5.1":{"given_name":"Bob","family_name":"Builder","birth_date":"1985-03-20","issuing_country":"US","issuing_authority":"Demo DMV","document_number":"DL-DEMO-002","issue_date":"2024-01-01","expiry_date":"2034-01-01"}}'
  *
  * Environment variables:
- *   ACAPY_ISSUER_ADMIN_URL - ACA-Py issuer admin URL (default: http://localhost:8121)
+ *   ACAPY_ISSUER_ADMIN_URL - ACA-Py issuer admin URL (default: http://localhost:8021)
  *   ACAPY_ISSUER_OID4VCI_URL - ACA-Py issuer OID4VCI public URL (default: http://localhost:8022)
  */
 
@@ -27,7 +27,7 @@ const axios = require('axios');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const ISSUER_ADMIN_URL = process.env.ACAPY_ISSUER_ADMIN_URL || 'http://localhost:8121';
+const ISSUER_ADMIN_URL = process.env.ACAPY_ISSUER_ADMIN_URL || 'http://localhost:8021';
 const ISSUER_OID4VCI_URL = process.env.ACAPY_ISSUER_OID4VCI_URL || 'http://localhost:8022';
 
 // Default credential subject (Alice Holder with mDL)
@@ -153,7 +153,7 @@ Examples:
   npx ts-node create-mdoc-offer.ts \\    --config-id org.iso.18013.5.1.mDL_demo \    --subject '{"org.iso.18013.5.1":{"given_name":"Bob","family_name":"Builder","birth_date":"1985-03-20","issuing_country":"US","issuing_authority":"Demo DMV","document_number":"DL-DEMO-002"}}'
 
 Environment variables:
-  ACAPY_ISSUER_ADMIN_URL    - ACA-Py issuer admin API (default: http://localhost:8121)
+  ACAPY_ISSUER_ADMIN_URL    - ACA-Py issuer admin API (default: http://localhost:8021)
   ACAPY_ISSUER_OID4VCI_URL  - ACA-Py issuer OID4VCI endpoint (default: http://localhost:8022)
   `);
 }
