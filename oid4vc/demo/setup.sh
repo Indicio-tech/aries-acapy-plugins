@@ -32,6 +32,7 @@ VERIFIER_ADMIN="${ACAPY_VERIFIER_ADMIN_URL:-http://localhost:8031}"
 WALLET_URL="${WALTID_WALLET_URL:-${WALLET_URL:-http://localhost:7201}}"
 
 GREEN='\033[0;32m'
+RED='\033[0;31m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 RESET='\033[0m'
@@ -39,6 +40,7 @@ RESET='\033[0m'
 info()    { echo -e "${CYAN}[demo]${RESET} $*"; }
 success() { echo -e "${GREEN}[demo] ✓${RESET} $*"; }
 warn()    { echo -e "${YELLOW}[demo] !${RESET} $*"; }
+error()   { echo -e "${RED}[demo] ✗${RESET} $*"; }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -67,6 +69,75 @@ post_json() {
 get_json() {
   curl -sf "$1"
 }
+
+# ── Check external endpoint reachability ─────────────────────────────────────
+#
+# If ISSUER_OID4VCI_ENDPOINT or VERIFIER_OID4VP_ENDPOINT is set to an
+# external tunnel (zrok, ngrok, …), verify each is actually live.  A dead
+# tunnel proxy typically returns an HTML error page instead of JSON.
+#
+# When a tunnel is stale the variable is automatically commented out in .env
+# and the affected container is restarted so all credential-offer and
+# presentation-request URLs embed the docker-internal hostname instead.  A
+# one-time .env.bak backup is created before editing.
+
+_check_and_restart_if_stale() {
+  # Usage: _check_and_restart_if_stale ENV_VAR SERVICE_NAME
+  local env_var="$1"
+  local service="$2"
+  local value="${!env_var:-}"
+
+  # Nothing to do when the variable is unset or already points to a local URL.
+  if [[ -z "$value" ]] || [[ "$value" == http://acapy-* ]] || [[ "$value" == http://localhost* ]]; then
+    return 0
+  fi
+
+  info "Checking external endpoint ${env_var}=${value}"
+
+  # Probe the root.  A live ACA-Py server returns JSON; a dead tunnel proxy
+  # (e.g. the zrok "tunnel not found" page) returns HTML.
+  local body
+  body=$(curl -s --max-time 5 "${value}/" 2>/dev/null) || body=""
+  local first_char
+  first_char=$(python3 -c "import sys; s=sys.stdin.read().strip(); print(s[:1] if s else '')" <<< "$body" 2>/dev/null) || first_char=""
+
+  if [[ -n "$first_char" && "$first_char" != "<" ]]; then
+    success "External endpoint is live: ${value}"
+    return 0
+  fi
+
+  warn "Tunnel ${value} is down (no response or HTML error page)."
+  warn "Commenting out ${env_var} in .env and restarting ${service} to use"
+  warn "the docker-internal hostname.  Backup saved as .env.bak (first time only)."
+
+  # Comment out the variable in .env using Python for cross-platform compat.
+  python3 - <<PYEOF
+import re, shutil, pathlib
+p = pathlib.Path("${SCRIPT_DIR}/.env")
+bak = p.parent / ".env.bak"
+if not bak.exists():
+    shutil.copy(p, bak)
+content = p.read_text()
+content = re.sub(
+    r'^(${env_var}=)',
+    r'# [auto-disabled: tunnel unreachable — re-enable when active] \1',
+    content,
+    flags=re.MULTILINE,
+)
+p.write_text(content)
+PYEOF
+
+  # Remove from the current shell so docker compose reads the updated .env.
+  unset "${env_var}"
+
+  # Recreate the container with the corrected environment.
+  info "Restarting ${service}…"
+  (cd "${SCRIPT_DIR}" && docker compose up -d --force-recreate "${service}")
+  success "${service} restarted — URLs will now use the docker-internal hostname."
+}
+
+_check_and_restart_if_stale ISSUER_OID4VCI_ENDPOINT  acapy-issuer
+_check_and_restart_if_stale VERIFIER_OID4VP_ENDPOINT acapy-verifier
 
 # ── Wait for services ─────────────────────────────────────────────────────────
 
@@ -133,8 +204,20 @@ print(json.dumps(config))
 PYEOF
 )
 
-MDL_RESP=$(post_json "$ISSUER_ADMIN/oid4vci/credential-supported/create" "$MDL_CONFIG")
-MDL_CRED_ID=$(echo "$MDL_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin)['supported_cred_id'])")
+MDL_CRED_ID=$(get_json "$ISSUER_ADMIN/oid4vci/credential-supported/records" | \
+  python3 -c "
+import json, sys
+records = json.load(sys.stdin).get('results', [])
+match = next((r['supported_cred_id'] for r in records if r.get('identifier') == '$MDL_CONFIG_ID'), '')
+print(match)
+" 2>/dev/null)
+
+if [[ -n "$MDL_CRED_ID" ]]; then
+  info "mDL credential config already exists, reusing it…"
+else
+  MDL_RESP=$(post_json "$ISSUER_ADMIN/oid4vci/credential-supported/create" "$MDL_CONFIG")
+  MDL_CRED_ID=$(echo "$MDL_RESP" | python3 -c "import json,sys; print(json.load(sys.stdin)['supported_cred_id'])")
+fi
 success "mDL credential config: $MDL_CRED_ID"
 
 # ── Step 4: Store config for Playwright ──────────────────────────────────────

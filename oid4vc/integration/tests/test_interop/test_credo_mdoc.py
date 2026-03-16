@@ -18,6 +18,7 @@ import pytest
 import pytest_asyncio
 
 from credo_wrapper import CredoWrapper
+from tests.helpers.constants import MDL_MANDATORY_FIELDS
 
 # Import shared fixtures from parent conftest
 # Note: setup_all_trust_anchors is defined in tests/conftest.py
@@ -155,6 +156,7 @@ async def mdoc_issuer_key(acapy_issuer: httpx.AsyncClient) -> dict[str, Any]:
 async def mdoc_offer_did_based(
     acapy_issuer: httpx.AsyncClient,
     mdoc_credential_config: dict[str, Any],
+    setup_issuer_certs,  # noqa: ARG001 - ensures default signing key exists
 ) -> str:
     """Create an mDOC credential offer using DID-based signing.
 
@@ -172,6 +174,7 @@ async def mdoc_offer_did_based(
             "issuing_country": "US",
             "issuing_authority": "State DMV",
             "document_number": "DL123456789",
+            **MDL_MANDATORY_FIELDS,
         }
     }
 
@@ -223,6 +226,7 @@ async def mdoc_offer_verification_method(
             "issuing_country": "US",
             "issuing_authority": "State DMV",
             "document_number": "DL987654321",
+            **MDL_MANDATORY_FIELDS,
         }
     }
 

@@ -52,9 +52,9 @@ Register a new account in the wallet and you're ready to go.
 
 | Service | URL | Purpose |
 |---|---|---|
-| walt.id Web Wallet | <http://localhost:7101> | Holder wallet (browser) |
+| walt.id Web Wallet | <http://localhost:7201> | Holder wallet (browser) |
 | ACA-Py Issuer admin | <http://localhost:8121> | Issue credentials |
-| ACA-Py Issuer OID4VCI | <http://localhost:8022> | OID4VCI v1 endpoint |
+| ACA-Py Issuer OID4VCI | <http://localhost:8122> | OID4VCI v1 endpoint |
 | ACA-Py Verifier admin | <http://localhost:8031> | Verify presentations |
 | ACA-Py Verifier OID4VP | <http://localhost:8032> | OID4VP v1 endpoint |
 
@@ -106,9 +106,9 @@ an HTTPS endpoint — useful for testing with real mobile wallets.
 # https://docs.zrok.io/docs/getting-started
 
 # Reserve permanent tunnel names (one time)
-zrok reserve public --unique-name "myissuerapi"   http://localhost:8022
+zrok reserve public --unique-name "myissuerapi"   http://localhost:8122
 zrok reserve public --unique-name "myverifierapi" http://localhost:8032
-zrok reserve public --unique-name "mydemowallet"  http://localhost:7101
+zrok reserve public --unique-name "mydemowallet"  http://localhost:7201
 
 # Activate tunnels (each session, in separate terminals)
 zrok share reserved myissuerapi
@@ -141,7 +141,7 @@ Restart the stack: `docker compose up -d` and re-run `./setup.sh`.
 │  ┌─────────────────┐     OID4VCI v1    ┌─────────────┐  │
 │  │  ACA-Py Issuer  │ ◄──────────────── │  walt.id    │  │
 │  │  :8121 admin    │                   │  wallet-api │  │
-│  │  :8022 OID4VCI  │                   │  :7001      │  │
+│  │  :8122 OID4VCI  │                   │  :7001      │  │
 │  └─────────────────┘                   └─────────────┘  │
 │                                              │           │
 │  ┌─────────────────┐     OID4VP v1           │           │
@@ -258,7 +258,7 @@ curl -s -X POST http://localhost:8121/oid4vci/exchange/create \
 ```
 
 Then paste the `credential_offer` URL into the wallet at
-`http://localhost:7101`.
+`http://localhost:7201`.
 
 ---
 

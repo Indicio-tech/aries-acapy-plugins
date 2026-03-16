@@ -485,9 +485,7 @@ async def test_proof_aud_with_explicit_default_port_accepted(profile):
 
     with patch(
         "oid4vc.public_routes.token.Config.from_settings",
-        return_value=MagicMock(
-            endpoint="https://myissuerapi.zrok.dev.indicioctech.io"
-        ),
+        return_value=MagicMock(endpoint="https://myissuerapi.zrok.dev.indicioctech.io"),
     ):
         result = await handle_proof_of_posession(profile, proof, nonce)
 

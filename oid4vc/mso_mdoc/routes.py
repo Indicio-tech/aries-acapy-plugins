@@ -12,8 +12,6 @@ Protocol Compliance:
 """
 
 import logging
-import uuid
-from datetime import UTC, datetime, timedelta
 
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.messaging.models.openapi import OpenAPISchema
@@ -23,8 +21,9 @@ from aiohttp_apispec import docs, request_schema, response_schema
 from marshmallow import fields
 
 from .cred_processor import MsoMdocCredProcessor
-from .key_generation import generate_self_signed_certificate, pem_from_jwk
-from .key_routes import register_key_management_routes
+from .key_generation import pem_from_jwk
+from .key_routes import register_key_routes
+from .trust_anchor_routes import register_trust_anchor_routes
 from .mdoc import isomdl_mdoc_sign
 from .mdoc import mdoc_verify as mso_mdoc_verify
 from .storage import MdocStorageManager
@@ -177,7 +176,7 @@ async def mdoc_sign(request: web.BaseRequest):
             private_key_pem = key_data.get("metadata", {}).get("private_key_pem")
 
             if not private_key_pem:
-                # C-1: reconstruct PEM from the JWK 'd' parameter instead of
+                # Reconstruct PEM from the JWK 'd' parameter instead of
                 # relying on a redundant PEM blob stored in metadata.
                 signing_jwk = key_data.get("jwk", {})
                 if signing_jwk.get("d"):
@@ -192,23 +191,9 @@ async def mdoc_sign(request: web.BaseRequest):
             )
 
             if not certificate_pem:
-                LOGGER.info("Certificate not found for key %s, generating one", key_id)
-                certificate_pem = generate_self_signed_certificate(private_key_pem)
-
-                # Store the generated certificate
-                cert_id = f"mdoc-cert-{uuid.uuid4().hex[:8]}"
-                await storage_manager.store_certificate(
-                    session,
-                    cert_id=cert_id,
-                    certificate_pem=certificate_pem,
-                    key_id=key_id,
-                    metadata={
-                        "self_signed": True,
-                        "purpose": "mdoc_issuing",
-                        "generated_on_demand": True,
-                        "valid_from": datetime.now(UTC).isoformat(),
-                        "valid_to": (datetime.now(UTC) + timedelta(days=365)).isoformat(),
-                    },
+                raise ValueError(
+                    f"Certificate not found for key {key_id!r}. "
+                    "Keys must be registered with a certificate before use."
                 )
 
         mso_mdoc = isomdl_mdoc_sign(
@@ -217,9 +202,6 @@ async def mdoc_sign(request: web.BaseRequest):
     except ValueError as err:
         raise web.HTTPBadRequest(reason=str(err)) from err
     except Exception as err:
-        # M-6: catch all errors from signing (StorageError, CredProcessorError,
-        # isomdl_uniffi exceptions, etc.) so callers always get a structured
-        # HTTP error instead of a 500 with an unformatted traceback.
         LOGGER.exception("mdoc_sign failed: %s", err)
         raise web.HTTPInternalServerError(reason=f"mDoc signing failed: {err}") from err
 
@@ -287,8 +269,10 @@ async def register(app: web.Application):
         ]
     )
 
-    # Register key management routes
-    register_key_management_routes(app)
+    # Register key and certificate management routes
+    register_key_routes(app)
+    # Register trust anchor management routes
+    register_trust_anchor_routes(app)
 
 
 def post_process_routes(app: web.Application):

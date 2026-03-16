@@ -25,6 +25,14 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 
+# Algorithms supported by jwt_sign / jwt_verify.
+# Entries map directly to the wallet key types handled by jwt_sign:
+#   ED25519 → EdDSA (RFC 8037)
+#   P256    → ES256 (RFC 7518 §3.4)
+# Update this tuple whenever a new key type is added to jwt_sign.
+SUPPORTED_ALGS: tuple[str, ...] = ("EdDSA", "ES256")
+
+
 @dataclass
 class JWTVerifyResult:
     """JWT Verification Result."""
@@ -182,24 +190,63 @@ async def jwt_verify(
     encoded_headers, encoded_payload, encoded_signature = jwt.split(".", 3)
     headers = b64_to_dict(encoded_headers)
     payload = b64_to_dict(encoded_payload)
+
+    # RFC 7515 §4.1.1: alg is a REQUIRED JWS header parameter.
+    alg = headers.get("alg")
+    if not alg:
+        raise BadJWSHeaderError(
+            "JWT header is missing the required 'alg' parameter (RFC 7515 §4.1.1)"
+        )
+
+    if alg not in SUPPORTED_ALGS:
+        raise BadJWSHeaderError(
+            f"JWT header 'alg' value '{alg}' is not supported; "
+            f"expected one of: {', '.join(SUPPORTED_ALGS)}"
+        )
+
+    # kid, jwk, and x5c are mutually exclusive key-identification header parameters.
+    # Exactly one must be present; having multiple is ambiguous (RFC 7515 §4.1).
+    key_id_params = [p for p in ("kid", "jwk", "x5c") if p in headers]
+    if len(key_id_params) > 1:
+        raise BadJWSHeaderError(
+            f"JWT header contains multiple mutually exclusive key-identification "
+            f"parameters: {', '.join(key_id_params)}. Exactly one of 'kid', 'jwk', "
+            f"or 'x5c' is permitted (RFC 7515 §4.1)."
+        )
+
     if cnf:
         if "jwk" in cnf:
             key = Key.from_jwk(cnf["jwk"])
         elif "kid" in cnf:
-            verification_method = headers["kid"]
-            key = await key_material_for_kid(profile, verification_method)
+            if "kid" not in headers:
+                raise BadJWSHeaderError(
+                    "JWT header is missing the required 'kid' parameter "
+                    "when cnf contains a kid binding (RFC 7515 §4.1.4)"
+                )
+            key = await key_material_for_kid(profile, headers["kid"])
         else:
             raise ValueError("Unsupported cnf")
+    elif "jwk" in headers:
+        key = Key.from_jwk(headers["jwk"])
+    elif "kid" in headers:
+        key = await key_material_for_kid(profile, headers["kid"])
+    elif "x5c" in headers:
+        key = key_from_x5c(headers["x5c"])
     else:
-        verification_method = headers["kid"]
-        key = await key_material_for_kid(profile, verification_method)
+        raise BadJWSHeaderError(
+            "JWT header is missing a key-identification parameter. "
+            "Exactly one of 'kid', 'jwk', or 'x5c' is required (RFC 7515 §4.1)."
+        )
 
     decoded_signature = b64_to_bytes(encoded_signature, urlsafe=True)
-    alg = headers.get("alg")
     if alg == "EdDSA" and key.algorithm != KeyAlg.ED25519:
-        raise BadJWSHeaderError("Expected ed25519 key")
+        raise BadJWSHeaderError(
+            "JWT header 'alg' is 'EdDSA' but the resolved key is not an Ed25519 key"
+        )
     elif alg == "ES256" and key.algorithm != KeyAlg.P256:
-        raise BadJWSHeaderError("Expected p256 key")
+        raise BadJWSHeaderError(
+            "JWT header 'alg' is 'ES256' but the resolved key is not a P-256 key"
+        )
 
     valid = key.verify_signature(
         f"{encoded_headers}.{encoded_payload}".encode(),

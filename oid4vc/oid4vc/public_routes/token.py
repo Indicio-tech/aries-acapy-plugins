@@ -334,8 +334,11 @@ async def handle_proof_of_posession(
         payload_for_iss = b64_to_dict(encoded_payload)
         iss = payload_for_iss.get("iss")
         if iss:
+            # key_material_for_kid expects a DID URL (with fragment), not a bare
+            # DID.  For did:jwk and did:key the first verification method is #0.
+            kid_url = iss if "#" in iss else f"{iss}#0"
             try:
-                key = await key_material_for_kid(profile, iss)
+                key = await key_material_for_kid(profile, kid_url)
                 LOGGER.debug("Resolved proof key from payload iss: %s", iss)
             except (ValueError, Exception) as exc:
                 LOGGER.debug("Could not resolve key from iss '%s': %s", iss, exc)
@@ -443,9 +446,9 @@ async def handle_proof_of_posession(
     # JWK from the resolved key so credential processors that need the raw JWK
     # (e.g. mso_mdoc for holder key binding in DeviceKey) can access it.
     holder_jwk = headers.get("jwk")
-    if holder_jwk is None and ("kid" in headers or not any(
-        k in headers for k in ("jwk", "kid", "x5c")
-    )):
+    if holder_jwk is None and (
+        "kid" in headers or not any(k in headers for k in ("jwk", "kid", "x5c"))
+    ):
         try:
             holder_jwk = json.loads(key.get_jwk_public())
         except Exception:

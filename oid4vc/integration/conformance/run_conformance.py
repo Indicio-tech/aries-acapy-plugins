@@ -557,6 +557,15 @@ class ConformanceSuiteClient:
                 if entry.get("result") == "FAILURE"
             ]
 
+            # Log details for failed modules to aid debugging
+            if result not in (RESULT_PASSED, RESULT_WARNING):
+                for entry in logs:
+                    entry_result = entry.get("result", "INFO")
+                    entry_msg = entry.get("msg", "")
+                    entry_src = entry.get("src", "")
+                    if entry_result in ("FAILURE", "WARNING"):
+                        logger.error(f"  [{entry_result}] {entry_src}: {entry_msg}")
+
             results.append(
                 TestResult(
                     plan_id=plan_id,
