@@ -136,10 +136,22 @@ async def test_issuer_metadata_no_auth_server():
         response_data = mock_json_response.call_args[0][0]
         wallet_id = items["wallet_id"]
         assert "authorization_servers" not in response_data
-        assert response_data["token_endpoint"] == f"http://localhost:8020/tenant/{wallet_id}/token"
-        assert response_data["credential_issuer"] == f"http://localhost:8020/tenant/{wallet_id}"
-        assert response_data["credential_endpoint"] == f"http://localhost:8020/tenant/{wallet_id}/credential"
-        assert response_data["nonce_endpoint"] == f"http://localhost:8020/tenant/{wallet_id}/nonce"
+        assert (
+            response_data["token_endpoint"]
+            == f"http://localhost:8020/tenant/{wallet_id}/token"
+        )
+        assert (
+            response_data["credential_issuer"]
+            == f"http://localhost:8020/tenant/{wallet_id}"
+        )
+        assert (
+            response_data["credential_endpoint"]
+            == f"http://localhost:8020/tenant/{wallet_id}/credential"
+        )
+        assert (
+            response_data["nonce_endpoint"]
+            == f"http://localhost:8020/tenant/{wallet_id}/nonce"
+        )
 
 
 @pytest.mark.asyncio
