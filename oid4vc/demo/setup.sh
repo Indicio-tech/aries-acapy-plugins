@@ -222,7 +222,30 @@ else
 fi
 success "mDL credential config: $MDL_CRED_ID"
 
-# ── Step 4: Store config for Playwright ──────────────────────────────────────
+# ── Step 4: Register issuer certificate as trust anchor on verifier ──────────
+
+info "Fetching issuer mDOC certificate for trust anchor registration…"
+ISSUER_CERT_PEM=$(get_json "$ISSUER_ADMIN/mso_mdoc/certificates/default" | \
+  python3 -c "import json,sys; print(json.load(sys.stdin)['certificate_pem'])")
+
+if [[ -z "$ISSUER_CERT_PEM" ]]; then
+  warn "Could not retrieve issuer certificate — skipping trust anchor registration."
+  warn "Run 'POST $VERIFIER_ADMIN/mso_mdoc/trust-anchors' manually after setup."
+else
+  TRUST_ANCHOR_BODY=$(python3 -c "
+import json, sys
+print(json.dumps({
+    'certificate_pem': sys.stdin.read(),
+    'anchor_id': 'demo-issuer',
+    'metadata': {'source': 'demo-issuer'},
+}))
+" <<< "$ISSUER_CERT_PEM")
+
+  post_json "$VERIFIER_ADMIN/mso_mdoc/trust-anchors" "$TRUST_ANCHOR_BODY" > /dev/null
+  success "Issuer certificate registered as trust anchor on verifier"
+fi
+
+# ── Step 5: Store config for Playwright ──────────────────────────────────────
 #
 # NOTE: The SD-JWT credential configuration is intentionally skipped here.
 # ACA-Py serialises vc+sd-jwt claims in path-based array format in the

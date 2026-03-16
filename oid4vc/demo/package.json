@@ -4,7 +4,8 @@
   "description": "Standalone CLI tool for generating mDoc OID4VCI credential offer URLs",
   "main": "create-mdoc-offer.ts",
   "scripts": {
-    "offer": "ts-node create-mdoc-offer.ts"
+    "offer": "ts-node create-mdoc-offer.ts",
+    "request": "ts-node create-mdoc-request.ts"
   },
   "dependencies": {
     "axios": "^1.6.0"
