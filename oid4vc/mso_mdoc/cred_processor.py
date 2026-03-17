@@ -524,6 +524,28 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
         if not isinstance(subject, dict):
             raise CredProcessorError("Credential subject must be a dictionary")
 
+        # For mDL doctypes, validate mandatory ISO 18013-5 fields early so
+        # that the API caller gets an actionable error at exchange-creation
+        # time rather than an opaque FFI error at issuance time.
+        from .mdoc.issuer import MDL_MANDATORY_FIELDS
+
+        doctype = (supported.format_data or {}).get("doctype", "")
+        if doctype == "org.iso.18013.5.1.mDL":
+            # The subject may be namespace-wrapped or flat.
+            claims = subject.get("org.iso.18013.5.1", subject)
+            # driving_privileges defaults to [] at issuance time, so
+            # exclude it from the early check.
+            missing = [
+                f
+                for f in MDL_MANDATORY_FIELDS
+                if f != "driving_privileges" and f not in claims
+            ]
+            if missing:
+                raise CredProcessorError(
+                    f"mDL credential_subject is missing mandatory ISO 18013-5 "
+                    f"data element(s): {', '.join(missing)}"
+                )
+
         return True
 
     def validate_supported_credential(self, supported: SupportedCredential):
