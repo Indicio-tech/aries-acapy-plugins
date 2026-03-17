@@ -107,14 +107,16 @@ VALIDATION_MAX_ATTEMPTS: Final[int] = 20
 
 # ISO 18013-5 mDL mandatory fields required by create_and_sign_mdl
 # All mandatory fields per ISO 18013-5 OrgIso1801351 struct:
-# family_name, given_name, birth_date are provided by each test individually.
-# The remaining 8 mandatory fields are collected here.
+# family_name, given_name are provided by each test individually.
+# All remaining mandatory fields are collected here (including birth_date).
 MDL_PORTRAIT: Final[str] = "SGVsbG8gV29ybGQ="  # base64("Hello World") placeholder
 MDL_DRIVING_PRIVILEGES: Final[list] = []
 MDL_UN_DISTINGUISHING_SIGN: Final[str] = "USA"
 
-# Merge these into any mDL credential_subject["org.iso.18013.5.1"] dict
+# Merge these into any mDL credential_subject["org.iso.18013.5.1"] dict.
+# Tests that need a dynamic birth_date should override it after spreading.
 MDL_MANDATORY_FIELDS: Final[dict] = {
+    "birth_date": "1990-01-15",
     "issue_date": "2024-01-01",
     "expiry_date": "2029-01-01",
     "issuing_country": "US",
