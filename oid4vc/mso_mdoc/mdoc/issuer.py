@@ -39,6 +39,24 @@ from .utils import extract_signing_cert
 LOGGER = logging.getLogger(__name__)
 
 
+# ISO 18013-5 mandatory data elements for the org.iso.18013.5.1 namespace.
+# These are non-Option fields in the upstream isomdl OrgIso1801351 struct;
+# omitting any of them causes a GeneralConstructionError from the Rust FFI.
+MDL_MANDATORY_FIELDS = (
+    "family_name",
+    "given_name",
+    "birth_date",
+    "issue_date",
+    "expiry_date",
+    "issuing_country",
+    "issuing_authority",
+    "document_number",
+    "portrait",
+    "driving_privileges",
+    "un_distinguishing_sign",
+)
+
+
 def _prepare_mdl_namespaces(
     payload: Mapping[str, Any],
 ) -> tuple[str, Optional[str]]:
@@ -51,6 +69,9 @@ def _prepare_mdl_namespaces(
         Tuple of (mdl_items_json, aamva_items_json) where aamva_items_json
         may be None. Both are JSON-serialized dicts; isomdl-uniffi handles
         CBOR encoding internally.
+
+    Raises:
+        ValueError: If any ISO 18013-5 mandatory data element is missing.
     """
     mdl_payload = payload.get("org.iso.18013.5.1", payload)
     mdl_items = {k: v for k, v in mdl_payload.items() if k != "org.iso.18013.5.1.aamva"}
@@ -59,6 +80,16 @@ def _prepare_mdl_namespaces(
     # when none are granted — default to an empty array so callers that omit
     # the field don't hit a GeneralConstructionError.
     mdl_items.setdefault("driving_privileges", [])
+
+    # Validate mandatory fields before calling into the Rust FFI so that
+    # callers get a clear error message instead of an opaque
+    # GeneralConstructionError.
+    missing = [f for f in MDL_MANDATORY_FIELDS if f not in mdl_items]
+    if missing:
+        raise ValueError(
+            f"mDL credential_subject is missing mandatory ISO 18013-5 "
+            f"data element(s): {', '.join(missing)}"
+        )
 
     aamva_payload = payload.get("org.iso.18013.5.1.aamva")
     aamva_items_json = json.dumps(aamva_payload) if aamva_payload else None

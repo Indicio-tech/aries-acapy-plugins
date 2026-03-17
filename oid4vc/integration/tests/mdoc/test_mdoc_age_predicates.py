@@ -19,6 +19,8 @@ from datetime import date, timedelta
 
 import pytest
 
+from tests.helpers.constants import MDL_MANDATORY_FIELDS
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -97,7 +99,8 @@ class TestMdocAgePredicates:
             "org.iso.18013.5.1": {
                 "given_name": "Alice",
                 "family_name": "Smith",
-                "birth_date": birth_date,
+                **MDL_MANDATORY_FIELDS,
+                "birth_date": birth_date,  # override with computed age-based date
                 "age_over_18": True,
                 "age_over_21": True,
             }
