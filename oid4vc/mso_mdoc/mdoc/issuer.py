@@ -55,6 +55,11 @@ def _prepare_mdl_namespaces(
     mdl_payload = payload.get("org.iso.18013.5.1", payload)
     mdl_items = {k: v for k, v in mdl_payload.items() if k != "org.iso.18013.5.1.aamva"}
 
+    # isomdl-uniffi's create_and_sign_mdl requires driving_privileges even
+    # when none are granted — default to an empty array so callers that omit
+    # the field don't hit a GeneralConstructionError.
+    mdl_items.setdefault("driving_privileges", [])
+
     aamva_payload = payload.get("org.iso.18013.5.1.aamva")
     aamva_items_json = json.dumps(aamva_payload) if aamva_payload else None
 

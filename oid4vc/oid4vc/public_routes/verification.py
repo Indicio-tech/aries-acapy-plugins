@@ -345,6 +345,21 @@ async def post_response(request: web.Request):
 
     form = await request.post()
 
+    # DEBUG: log raw POST form body
+    LOGGER.debug("OID4VP POST form keys: %s", list(form.keys()))
+    raw_vp_token = form.get("vp_token")
+    LOGGER.debug(
+        "OID4VP POST vp_token (first 200 chars): %r",
+        raw_vp_token[:200] if isinstance(raw_vp_token, str) else raw_vp_token,
+    )
+    LOGGER.debug(
+        "OID4VP POST presentation_submission (first 500 chars): %r",
+        form.get("presentation_submission", "<MISSING>")[:500]
+        if isinstance(form.get("presentation_submission"), str)
+        else form.get("presentation_submission", "<MISSING>"),
+    )
+    LOGGER.debug("OID4VP POST state: %r", form.get("state"))
+
     # presentation_submission is only present for PEX (pres_def) presentations;
     # DCQL presentations omit it and send vp_token as a JSON object instead.
     raw_submission = form.get("presentation_submission")

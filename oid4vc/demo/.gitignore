@@ -9,3 +9,11 @@ playwright-report/
 playwright/node_modules/
 playwright/dist/
 playwright/.playwright/
+
+node_modules/
+
+# mDoc CLI test artifacts
+*.jar
+license.txt
+*-cli.db*
+*-cli-logs.txt

@@ -82,6 +82,7 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
         3. ``display`` — moves the credential display array into
            ``credential_metadata`` per OID4VCI 1.0 Section 12.2.4.
         """
+        # Convert algorithm names to COSE integer identifiers
         algs = metadata.get("credential_signing_alg_values_supported")
         if algs:
             metadata["credential_signing_alg_values_supported"] = [
