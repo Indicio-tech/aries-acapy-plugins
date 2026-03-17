@@ -27,7 +27,7 @@ from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.pop_result import PopResult
 
 from .key_generation import generate_self_signed_certificate, pem_from_jwk, pem_to_jwk  # noqa: F401
-from .mdoc.issuer import isomdl_mdoc_sign
+from .mdoc.issuer import MDL_MANDATORY_FIELDS, isomdl_mdoc_sign
 from .mdoc.cred_verifier import MsoMdocCredVerifier
 from .mdoc.pres_verifier import MsoMdocPresVerifier
 from .mdoc.trust_store import WalletTrustStore
@@ -527,8 +527,6 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
         # For mDL doctypes, validate mandatory ISO 18013-5 fields early so
         # that the API caller gets an actionable error at exchange-creation
         # time rather than an opaque FFI error at issuance time.
-        from .mdoc.issuer import MDL_MANDATORY_FIELDS
-
         doctype = (supported.format_data or {}).get("doctype", "")
         if doctype == "org.iso.18013.5.1.mDL":
             # The subject may be namespace-wrapped or flat.
