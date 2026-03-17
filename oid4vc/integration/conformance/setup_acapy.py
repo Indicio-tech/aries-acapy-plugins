@@ -237,16 +237,19 @@ async def create_credential_offer(
     credential_config_id: str,
     issuer_did: str,
     pin: str | None = None,
+    credential_subject: dict | None = None,
 ) -> dict:
     """Create a pre-authorized credential offer and return offer details."""
-    exchange_body: dict[str, Any] = {
-        "supported_cred_id": credential_config_id,
-        "credential_subject": {
+    if credential_subject is None:
+        credential_subject = {
             "given_name": "Alice",
             "family_name": "Smith",
             "email": "alice@example.com",
             "birthdate": "1990-01-15",
-        },
+        }
+    exchange_body: dict[str, Any] = {
+        "supported_cred_id": credential_config_id,
+        "credential_subject": credential_subject,
         # verification_method format: {did}#0  (selects the first key on the DID)
         "verification_method": f"{issuer_did}#0",
     }
@@ -773,6 +776,19 @@ async def main() -> None:
             ISSUER_ADMIN_URL,
             mdoc_config["supported_cred_id"],
             p256_did,
+            credential_subject={
+                "family_name": "Smith",
+                "given_name": "Alice",
+                "birth_date": "1990-01-15",
+                "issue_date": "2024-01-01",
+                "expiry_date": "2029-01-01",
+                "issuing_country": "US",
+                "issuing_authority": "US DMV",
+                "document_number": "DL-12345678",
+                "portrait": "bXVzdGFjaGlv",
+                "driving_privileges": [],
+                "un_distinguishing_sign": "USA",
+            },
         )
 
         setup_output["issuer"] = {
