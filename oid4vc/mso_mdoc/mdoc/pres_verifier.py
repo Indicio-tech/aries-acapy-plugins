@@ -170,7 +170,9 @@ class MsoMdocPresVerifier(PresVerifier):
         """
         try:
             # 1. Prepare Trust Anchors
-            trust_anchors = flatten_trust_anchors(self.trust_anchors) if self.trust_anchors else []
+            trust_anchors = (
+                flatten_trust_anchors(self.trust_anchors) if self.trust_anchors else []
+            )
             LOGGER.debug(
                 "Trust anchors loaded: %d cert(s)",
                 len(trust_anchors),

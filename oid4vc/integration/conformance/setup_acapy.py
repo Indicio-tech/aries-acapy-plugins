@@ -541,6 +541,9 @@ async def upload_trust_anchor(
             base,
             f"/oid4vci/credential-supported/records/mso-mdoc/{supported_cred_id}",
             {
+                "format": result.get("format"),
+                "id": result.get("identifier"),
+                "doctype": result.get("format_data", {}).get("doctype"),
                 "trust_anchors": existing_anchors,
             },
         )
@@ -562,6 +565,9 @@ async def upload_trust_anchor(
                     base,
                     f"/oid4vci/credential-supported/records/mso-mdoc/{rec_id}",
                     {
+                        "format": rec.get("format"),
+                        "id": rec.get("identifier"),
+                        "doctype": rec.get("format_data", {}).get("doctype"),
                         "trust_anchors": existing_anchors,
                     },
                 )

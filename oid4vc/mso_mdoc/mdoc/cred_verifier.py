@@ -162,7 +162,9 @@ class MsoMdocCredVerifier(CredVerifier):
                 return VerifyResult(verified=False, payload={"error": error_msg})
 
             # Flatten any concatenated PEM chains into individual cert PEMs.
-            trust_anchors = flatten_trust_anchors(self.trust_anchors) if self.trust_anchors else []
+            trust_anchors = (
+                flatten_trust_anchors(self.trust_anchors) if self.trust_anchors else []
+            )
 
             # Fail-closed guard: refuse to verify without at least one trust
             # anchor.  An empty list causes the Rust library to accept any

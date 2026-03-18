@@ -11,6 +11,8 @@ import logging
 import os
 import re
 from datetime import UTC, datetime
+
+from cryptography import x509 as _x509
 from typing import Any, Dict, List, Optional
 
 from acapy_agent.admin.request_context import AdminRequestContext
@@ -37,8 +39,6 @@ LOGGER = logging.getLogger(__name__)
 
 def check_certificate_not_expired(cert_pem: str) -> None:
     """Validate that a PEM-encoded X.509 certificate is currently valid."""
-    from cryptography import x509 as _x509
-
     if not cert_pem or not cert_pem.strip():
         raise CredProcessorError("Empty certificate PEM string")
 
