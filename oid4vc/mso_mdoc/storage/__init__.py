@@ -19,7 +19,9 @@ Storage Types:
 """
 
 from datetime import UTC, datetime
+import hashlib
 import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from acapy_agent.core.profile import Profile, ProfileSession
@@ -389,10 +391,6 @@ class MdocStorageManager:
         Returns:
             List of anchor IDs that were newly created.
         """
-        import hashlib
-        import re
-        import uuid as _uuid
-
         _PEM_RE = re.compile(
             r"-----BEGIN CERTIFICATE-----[A-Za-z0-9+/=\s]+?"
             r"-----END CERTIFICATE-----\n?",

@@ -10,11 +10,11 @@ These tests verify that:
 
 import json
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from acapy_agent.storage.base import StorageRecord
-from acapy_agent.storage.error import StorageDuplicateError, StorageNotFoundError
+
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
