@@ -31,7 +31,7 @@ services:
       context: ../..
       args:
         ACAPY_VERSION: 1.4.0
-        ISOMDL_BRANCH: fix/python-build-system
+        ISOMDL_BRANCH: main
     ports:
       - "${ACAPY_ISSUER_ADMIN_PORT:-8121}:8021"
       - "${ACAPY_ISSUER_OID4VCI_PORT:-8122}:8022"
@@ -83,7 +83,7 @@ services:
       context: ../..
       args:
         ACAPY_VERSION: 1.4.0
-        ISOMDL_BRANCH: fix/python-build-system
+        ISOMDL_BRANCH: main
     ports:
       - "${ACAPY_VERIFIER_ADMIN_PORT:-8031}:8031"
       - "${ACAPY_VERIFIER_OID4VP_PORT:-8032}:8032"
