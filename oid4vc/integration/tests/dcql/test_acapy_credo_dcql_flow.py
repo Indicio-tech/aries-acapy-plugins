@@ -355,7 +355,7 @@ class TestDCQLMdocFlow:
         acapy_issuer_admin,
         acapy_verifier_admin,
         credo_client,
-        setup_all_trust_anchors,  # noqa: ARG002 - required fixture for mDOC trust
+        setup_all_trust_anchors,
     ):
         """Test DCQL flow with mDOC: issue → receive → present with DCQL → verify.
 
@@ -391,6 +391,10 @@ class TestDCQLMdocFlow:
                         "description": "A mobile driver's license for DCQL testing",
                     }
                 ],
+            },
+            "vc_additional_data": {
+                "signing_key_pem": setup_all_trust_anchors["issuer_key_pem"],
+                "signing_cert_pem": setup_all_trust_anchors["issuer_cert_pem"],
             },
         }
 

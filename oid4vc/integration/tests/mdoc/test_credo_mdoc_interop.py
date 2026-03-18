@@ -141,6 +141,10 @@ class TestCredoMdocInterop(BaseMdocTest):
                     }
                 },
             },
+            "vc_additional_data": {
+                "signing_key_pem": setup_all_trust_anchors["issuer_key_pem"],
+                "signing_cert_pem": setup_all_trust_anchors["issuer_cert_pem"],
+            },
         }
 
         config = await acapy_issuer_admin.post(
@@ -257,6 +261,10 @@ class TestCredoMdocInterop(BaseMdocTest):
                         "age_over_18": {"mandatory": False},
                     }
                 },
+            },
+            "vc_additional_data": {
+                "signing_key_pem": setup_all_trust_anchors["issuer_key_pem"],
+                "signing_cert_pem": setup_all_trust_anchors["issuer_cert_pem"],
             },
         }
 

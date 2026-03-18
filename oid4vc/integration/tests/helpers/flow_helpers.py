@@ -19,15 +19,25 @@ from .constants import (
 class CredentialFlowHelper:
     """Helper for credential issuance flows."""
 
-    def __init__(self, issuer_admin, holder_client):
+    def __init__(
+        self,
+        issuer_admin,
+        holder_client,
+        signing_key_pem: str | None = None,
+        signing_cert_pem: str | None = None,
+    ):
         """Initialize with admin controller and holder client.
 
         Args:
             issuer_admin: ACA-Py issuer admin controller
             holder_client: HTTP client for holder (Credo/Sphereon)
+            signing_key_pem: Optional PEM-encoded EC private key for mDOC signing
+            signing_cert_pem: Optional PEM-encoded X.509 certificate for mDOC signing
         """
         self.issuer_admin = issuer_admin
         self.holder_client = holder_client
+        self.signing_key_pem = signing_key_pem
+        self.signing_cert_pem = signing_cert_pem
 
     async def issue_sd_jwt(
         self,
@@ -236,6 +246,12 @@ class CredentialFlowHelper:
             credential_id = f"mDOC_{uuid.uuid4().hex[:8]}"
 
         # Create credential configuration
+        vc_additional_data: dict[str, Any] = {}
+        if self.signing_key_pem:
+            vc_additional_data["signing_key_pem"] = self.signing_key_pem
+        if self.signing_cert_pem:
+            vc_additional_data["signing_cert_pem"] = self.signing_cert_pem
+
         credential_config = {
             "id": credential_id,
             "format": CredentialFormat.MDOC.value,
@@ -249,6 +265,7 @@ class CredentialFlowHelper:
                 "doctype": doctype,
                 "claims": claims_config,
             },
+            "vc_additional_data": vc_additional_data,
         }
 
         config_response = await self.issuer_admin.post(

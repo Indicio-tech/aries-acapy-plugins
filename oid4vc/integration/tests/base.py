@@ -113,6 +113,18 @@ class BaseMdocTest(BaseOID4VCTest):
             },
         }
 
+    @pytest_asyncio.fixture
+    async def credential_flow(
+        self, acapy_issuer_admin, credo_client, setup_issuer_certs
+    ):
+        """Credential issuance flow helper with mDOC signing keys pre-configured."""
+        return CredentialFlowHelper(
+            acapy_issuer_admin,
+            credo_client,
+            signing_key_pem=setup_issuer_certs["private_key_pem"],
+            signing_cert_pem=setup_issuer_certs["certificate_pem"],
+        )
+
 
 class BaseDCQLTest(BaseOID4VCTest):
     """Base class for DCQL (Digital Credentials Query Language) tests.
