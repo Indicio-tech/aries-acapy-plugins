@@ -253,6 +253,19 @@ async def generate_keys(request: web.BaseRequest):
                             cert_id = cert.get("cert_id")
                             break
 
+                    # Back-fill trust registry for pre-existing keys (idempotent).
+                    # Deployments that had keys before the auto-register feature
+                    # was added would otherwise have an empty trust registry,
+                    # causing all OID4VP presentations to fail with
+                    # "IACA certificate error: no valid trust anchor found".
+                    certificate_pem = await storage_manager.get_certificate_for_key(
+                        session, key_id
+                    )
+                    if certificate_pem:
+                        await storage_manager.auto_register_trust_anchors(
+                            session, certificate_pem
+                        )
+
                     return web.json_response(
                         {
                             "key_id": key_id,

@@ -6,11 +6,13 @@ These tests verify that:
 3. Certificate chains are split and each cert is registered individually.
 4. Duplicate certificates are not re-registered.
 5. Key generation auto-populates the trust registry.
+6. [BUG] generate_keys early-return path (existing key) also back-fills the
+   trust registry so deployments upgraded from pre-auto-register are healed.
 """
 
 import json
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from acapy_agent.storage.base import StorageRecord
@@ -327,3 +329,73 @@ async def test_generate_keys_auto_registers_trust_anchor(session, storage):
             assert "-----BEGIN CERTIFICATE-----" in payload["certificate_pem"]
             assert payload["metadata"]["auto_registered"] is True
             break
+
+
+# =========================================================================
+# BUG: generate_keys early-return path skips trust-anchor back-fill
+# =========================================================================
+
+
+@pytest.mark.asyncio
+async def test_generate_keys_existing_key_still_backfills_trust_registry():
+    """When generate_keys finds a pre-existing key it MUST still register the
+    cert as a trust anchor.
+
+    REGRESSION: Before the fix, the early-return path returned immediately
+    after finding an existing key without calling auto_register_trust_anchors.
+    This left the trust registry empty for any deployment that had keys created
+    before the auto-register feature was merged, causing every presentation
+    verification to fail with:
+        "IACA certificate error: no valid trust anchor found"
+
+    This test FAILS before the fix and PASSES after.
+    """
+    from contextlib import asynccontextmanager
+
+    from ..key_routes import generate_keys
+
+    cert_pem = _gen_self_signed_pem()
+    key_id = "existing-key-001"
+    cert_id = "existing-cert-001"
+
+    manager_mock = MagicMock()
+    manager_mock.get_default_signing_key = AsyncMock(
+        return_value={
+            "key_id": key_id,
+            "purpose": "signing",
+            "metadata": {"is_default": True},
+        }
+    )
+    # list_certificates returns certs WITHOUT PEM (default include_pem=False)
+    manager_mock.list_certificates = AsyncMock(
+        return_value=[{"key_id": key_id, "cert_id": cert_id}]
+    )
+    # get_certificate_for_key returns the actual PEM
+    manager_mock.get_certificate_for_key = AsyncMock(return_value=cert_pem)
+    manager_mock.auto_register_trust_anchors = AsyncMock(return_value=["auto-anchor-1"])
+
+    session_mock = MagicMock()
+
+    @asynccontextmanager
+    async def _mock_session():
+        yield session_mock
+
+    mock_profile = MagicMock()
+    mock_profile.session = _mock_session
+    mock_context = MagicMock()
+    mock_context.profile = mock_profile
+
+    mock_request = MagicMock()
+    mock_request.query.get = MagicMock(return_value="")  # force=false
+    mock_request.__getitem__ = MagicMock(return_value=mock_context)
+
+    with patch("mso_mdoc.key_routes.MdocStorageManager", return_value=manager_mock):
+        response = await generate_keys(mock_request)
+
+    assert response.status == 200
+
+    # The critical assertion: auto_register_trust_anchors MUST be called even
+    # when the route returns early (existing key found).
+    manager_mock.auto_register_trust_anchors.assert_awaited_once_with(
+        session_mock, cert_pem
+    )
