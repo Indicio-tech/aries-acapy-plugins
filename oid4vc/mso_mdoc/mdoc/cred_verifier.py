@@ -4,14 +4,13 @@ import base64
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 import isomdl_uniffi
 from acapy_agent.core.profile import Profile
 
 from oid4vc.cred_processor import CredVerifier, VerifyResult
 
-from .trust_store import TrustStore, WalletTrustStore
 from .utils import flatten_trust_anchors
 
 LOGGER = logging.getLogger(__name__)
@@ -111,9 +110,13 @@ def _extract_mdoc_claims(mdoc: Any) -> dict:
 class MsoMdocCredVerifier(CredVerifier):
     """Verifier for mso_mdoc credentials."""
 
-    def __init__(self, trust_store: Optional[TrustStore] = None):
-        """Initialize the credential verifier."""
-        self.trust_store = trust_store
+    def __init__(self, trust_anchors: Optional[List[str]] = None):
+        """Initialize the credential verifier.
+
+        Args:
+            trust_anchors: PEM-encoded trust anchor certificates.
+        """
+        self.trust_anchors = trust_anchors or []
 
     async def verify_credential(
         self,
@@ -158,20 +161,8 @@ class MsoMdocCredVerifier(CredVerifier):
                     error_msg = "Invalid credential format"
                 return VerifyResult(verified=False, payload={"error": error_msg})
 
-            # Refresh trust store cache if needed
-            if self.trust_store and isinstance(self.trust_store, WalletTrustStore):
-                await self.trust_store.refresh_cache()
-
-            trust_anchors = (
-                self.trust_store.get_trust_anchors() if self.trust_store else []
-            )
-
             # Flatten any concatenated PEM chains into individual cert PEMs.
-            # isomdl_uniffi (x509_cert) reads only the first certificate in a
-            # PEM string; passing a chain as one element silently drops all
-            # certs after the first, breaking trust-anchor validation.
-            if trust_anchors:
-                trust_anchors = flatten_trust_anchors(trust_anchors)
+            trust_anchors = flatten_trust_anchors(self.trust_anchors) if self.trust_anchors else []
 
             # Fail-closed guard: refuse to verify without at least one trust
             # anchor.  An empty list causes the Rust library to accept any

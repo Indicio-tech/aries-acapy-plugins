@@ -22,7 +22,7 @@ HOW TO RUN:
 import sys
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -197,9 +197,9 @@ def _make_profile():
 class TestIssueRejectsExpiredCertificate:
     """MsoMdocCredProcessor.issue() must not sign with an expired certificate.
 
-    CURRENT STATE: these tests are expected to FAIL until the expiry check is
-    added to the issuance flow (``cred_processor.py``), at which point they
-    will PASS, confirming the gap is closed.
+    The signing key and certificate are provided via
+    ``SupportedCredential.vc_additional_data``.  The expiry check in
+    ``check_certificate_not_expired()`` runs before calling the Rust signer.
     """
 
     def _make_ex_record(self, verification_method="did:key:test#0"):
@@ -215,11 +215,15 @@ class TestIssueRejectsExpiredCertificate:
         ex.state = "offer_created"
         return ex
 
-    def _make_supported(self):
+    def _make_supported(self, cert_pem=None, key_pem=None):
         sup = MagicMock()
         sup.format = "mso_mdoc"
         sup.format_data = {"doctype": "org.iso.18013.5.1.mDL"}
         sup.identifier = "mDL"
+        sup.vc_additional_data = {
+            "signing_key_pem": key_pem,
+            "signing_cert_pem": cert_pem,
+        }
         return sup
 
     def _make_pop(self):
@@ -237,39 +241,20 @@ class TestIssueRejectsExpiredCertificate:
 
     @pytest.mark.asyncio
     async def test_issue_raises_when_certificate_is_expired(self):
-        """issue() must raise CredProcessorError when the stored cert is expired.
-
-        The test wires up a full mock chain so that all storage lookups return
-        a real expired certificate (not a MagicMock string).  The Rust signer
-        is patched so it never runs — the Python guard must trigger first.
-        """
+        """issue() must raise CredProcessorError when the cert is expired."""
         private_key_pem, expired_cert_pem = _expired_cert_pem()
-        _, valid_jwk = _generate_test_jwk()
 
         profile, _ = _make_profile()
         context = self._make_admin_context(profile)
-        supported = self._make_supported()
+        supported = self._make_supported(
+            cert_pem=expired_cert_pem, key_pem=private_key_pem
+        )
         ex_record = self._make_ex_record()
         pop = self._make_pop()
 
-        with (
-            patch("mso_mdoc.cred_processor.MdocStorageManager") as MockStorage,
-            patch("mso_mdoc.cred_processor.pem_from_jwk", return_value=private_key_pem),
-            patch("mso_mdoc.cred_processor.isomdl_mdoc_sign") as mock_sign,
-        ):
-            mgr = MockStorage.return_value
-            mgr.get_default_signing_key = AsyncMock(
-                return_value={
-                    "jwk": valid_jwk,
-                    "key_id": "key-001",
-                    "metadata": {},
-                }
-            )
-            mgr.get_signing_key = AsyncMock(return_value=None)
-            mgr.get_certificate_for_key = AsyncMock(return_value=expired_cert_pem)
-            mgr.store_certificate = AsyncMock()
-            mgr.store_config = AsyncMock()
-
+        with patch(
+            "mso_mdoc.cred_processor.isomdl_mdoc_sign"
+        ) as mock_sign:
             processor = MsoMdocCredProcessor()
 
             with pytest.raises(CredProcessorError, match=r"(?i)expir"):
@@ -282,112 +267,25 @@ class TestIssueRejectsExpiredCertificate:
                 )
 
             # The Rust signer must NEVER have been called with an expired cert.
-            (
-                mock_sign.assert_not_called(),
-                (
-                    "SECURITY BUG: isomdl_mdoc_sign was called with an expired "
-                    "certificate. The expiry check must run before the Rust call."
-                ),
-            )
+            mock_sign.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_issue_succeeds_when_certificate_is_valid(self):
-        """issue() must NOT raise when the stored certificate is currently valid.
-
-        This is the positive control to confirm the expiry guard does not break
-        the happy path.
-        """
+        """issue() must NOT raise when the certificate is currently valid."""
         private_key_pem, valid_cert_pem = _valid_cert_pem()
-        _, valid_jwk = _generate_test_jwk()
 
         profile, _ = _make_profile()
         context = self._make_admin_context(profile)
-        supported = self._make_supported()
+        supported = self._make_supported(
+            cert_pem=valid_cert_pem, key_pem=private_key_pem
+        )
         ex_record = self._make_ex_record()
         pop = self._make_pop()
 
-        with (
-            patch("mso_mdoc.cred_processor.MdocStorageManager") as MockStorage,
-            patch("mso_mdoc.cred_processor.pem_from_jwk", return_value=private_key_pem),
-            patch(
-                "mso_mdoc.cred_processor.isomdl_mdoc_sign", return_value="mock-mdoc-b64"
-            ),
+        with patch(
+            "mso_mdoc.cred_processor.isomdl_mdoc_sign",
+            return_value="mock-mdoc-b64",
         ):
-            mgr = MockStorage.return_value
-            mgr.get_default_signing_key = AsyncMock(
-                return_value={
-                    "jwk": valid_jwk,
-                    "key_id": "key-001",
-                    "metadata": {},
-                }
-            )
-            mgr.get_signing_key = AsyncMock(return_value=None)
-            mgr.get_certificate_for_key = AsyncMock(return_value=valid_cert_pem)
-            mgr.store_certificate = AsyncMock()
-            mgr.store_config = AsyncMock()
-
-            processor = MsoMdocCredProcessor()
-
-            # Should not raise any CredProcessorError due to cert expiry
-            try:
-                result = await processor.issue(
-                    body={"doctype": "org.iso.18013.5.1.mDL"},
-                    supported=supported,
-                    ex_record=ex_record,
-                    pop=pop,
-                    context=context,
-                )
-                # If it raises for another reason (e.g., missing holder key)
-                # that's a different issue; we just care expiry didn't fire.
-            except CredProcessorError as exc:
-                # Accept errors that are NOT about certificate expiry.
-                assert "expir" not in str(exc).lower(), (
-                    f"Valid certificate incorrectly triggered expiry check: {exc}"
-                )
-
-    @pytest.mark.asyncio
-    async def test_auto_generated_certificate_is_always_valid(self):
-        """When no stored cert exists and one is auto-generated, it must be valid.
-
-        The auto-generation path in ``generate_self_signed_certificate`` uses
-        the current time, so the generated cert should always be valid at the
-        moment of issuance.  This test confirms the guard does not fire for
-        freshly generated certs.
-        """
-        private_key_pem, _ = _valid_cert_pem()
-        _, valid_jwk = _generate_test_jwk()
-
-        profile, _ = _make_profile()
-        context = self._make_admin_context(profile)
-        supported = self._make_supported()
-        ex_record = self._make_ex_record()
-        pop = self._make_pop()
-
-        with (
-            patch("mso_mdoc.cred_processor.MdocStorageManager") as MockStorage,
-            patch("mso_mdoc.cred_processor.pem_from_jwk", return_value=private_key_pem),
-            patch(
-                "mso_mdoc.cred_processor.generate_self_signed_certificate"
-            ) as mock_gen_cert,
-            patch("mso_mdoc.cred_processor.isomdl_mdoc_sign", return_value="mock-mdoc"),
-        ):
-            _, fresh_cert = _valid_cert_pem()
-            mock_gen_cert.return_value = fresh_cert
-
-            mgr = MockStorage.return_value
-            mgr.get_default_signing_key = AsyncMock(
-                return_value={
-                    "jwk": valid_jwk,
-                    "key_id": "key-001",
-                    "metadata": {},
-                }
-            )
-            mgr.get_signing_key = AsyncMock(return_value=None)
-            # No stored cert → triggers auto-generation
-            mgr.get_certificate_for_key = AsyncMock(return_value=None)
-            mgr.store_certificate = AsyncMock()
-            mgr.store_config = AsyncMock()
-
             processor = MsoMdocCredProcessor()
 
             try:
@@ -399,82 +297,8 @@ class TestIssueRejectsExpiredCertificate:
                     context=context,
                 )
             except CredProcessorError as exc:
+                # Accept errors that are NOT about certificate expiry.
                 assert "expir" not in str(exc).lower(), (
-                    f"Auto-generated certificate triggered expiry check: {exc}"
+                    f"Valid certificate incorrectly triggered expiry check: {exc}"
                 )
 
-
-# ---------------------------------------------------------------------------
-# Direct expiry check of the certificate storage layer
-# ---------------------------------------------------------------------------
-
-
-class TestCertificateExpiryInStorage:
-    """get_certificate_for_key should not return expired certificates.
-
-    CURRENT STATE: this behaviour is NOT implemented. The tests below document
-    the DESIRED behaviour and are expected to xfail until a post-retrieval
-    expiry check is added to the storage layer or to the callers.
-    """
-
-    @pytest.mark.asyncio
-    async def test_get_certificate_for_key_skips_expired_cert(self):
-        """Storage lookup should skip (or error on) expired certificates.
-
-        XFAIL: This test documents the desired behaviour. Currently
-        ``get_certificate_for_key`` returns whatever is stored without
-        checking validity dates.
-        """
-        pytest.xfail(
-            "get_certificate_for_key() does not currently validate certificate "
-            "expiry. Add a validity-date check after retrieval so that callers "
-            "never receive an expired PEM string."
-        )
-
-    def test_expired_cert_can_be_detected_with_cryptography_library(self):
-        """Prove that detecting an expired cert is straightforward (no xfail).
-
-        This is a reference implementation that can be copied verbatim into
-        production code to implement the expiry check.
-        """
-        _, expired_pem = _expired_cert_pem()
-        _, valid_pem = _valid_cert_pem()
-
-        def is_expired(cert_pem: str) -> bool:
-            cert = x509.load_pem_x509_certificate(cert_pem.encode())
-            return cert.not_valid_after_utc < datetime.now(UTC)
-
-        assert is_expired(expired_pem) is True, "Expired cert should be detected"
-        assert is_expired(valid_pem) is False, "Valid cert must not be flagged"
-
-
-# ---------------------------------------------------------------------------
-# Helpers used by integration tests
-# ---------------------------------------------------------------------------
-
-
-def _generate_test_jwk() -> tuple[str, dict]:
-    """Return (private_key_pem, public_jwk) for test key binding."""
-    import base64
-
-    key = ec.generate_private_key(ec.SECP256R1())
-    private_pem = key.private_bytes(
-        serialization.Encoding.PEM,
-        serialization.PrivateFormat.PKCS8,
-        serialization.NoEncryption(),
-    ).decode()
-
-    nums = key.private_numbers()
-    pub = nums.public_numbers
-
-    def _b64(n: int) -> str:
-        return base64.urlsafe_b64encode(n.to_bytes(32, "big")).decode().rstrip("=")
-
-    jwk = {
-        "kty": "EC",
-        "crv": "P-256",
-        "x": _b64(pub.x),
-        "y": _b64(pub.y),
-        "d": _b64(nums.private_value),
-    }
-    return private_pem, jwk

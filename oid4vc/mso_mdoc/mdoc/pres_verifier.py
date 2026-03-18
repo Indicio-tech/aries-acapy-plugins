@@ -13,7 +13,6 @@ from oid4vc.cred_processor import PresVerifier, VerifyResult
 from oid4vc.did_utils import retrieve_or_create_did_jwk
 from oid4vc.models.presentation import OID4VPPresentation
 
-from .trust_store import TrustStore, WalletTrustStore
 from .utils import flatten_trust_anchors
 from .cred_verifier import PreverifiedMdocClaims
 from .mdoc_item import (
@@ -129,9 +128,13 @@ def _verify_single_presentation(
 class MsoMdocPresVerifier(PresVerifier):
     """Verifier for mso_mdoc presentations (OID4VP)."""
 
-    def __init__(self, trust_store: Optional[TrustStore] = None):
-        """Initialize the presentation verifier."""
-        self.trust_store = trust_store
+    def __init__(self, trust_anchors: Optional[List[str]] = None):
+        """Initialize the presentation verifier.
+
+        Args:
+            trust_anchors: PEM-encoded trust anchor certificates.
+        """
+        self.trust_anchors = trust_anchors or []
 
     def _parse_jsonpath(self, path: str) -> List[str]:
         """Parse JSONPath to extract segments."""
@@ -167,17 +170,12 @@ class MsoMdocPresVerifier(PresVerifier):
         """
         try:
             # 1. Prepare Trust Anchors
-            if self.trust_store and isinstance(self.trust_store, WalletTrustStore):
-                await self.trust_store.refresh_cache()
-
-            trust_anchors = (
-                self.trust_store.get_trust_anchors() if self.trust_store else []
-            )
+            trust_anchors = flatten_trust_anchors(self.trust_anchors) if self.trust_anchors else []
             LOGGER.debug(
                 "Trust anchors loaded: %d cert(s)",
-                len(trust_anchors) if trust_anchors else 0,
+                len(trust_anchors),
             )
-            for i, pem in enumerate(trust_anchors or []):
+            for i, pem in enumerate(trust_anchors):
                 pem_stripped = pem.strip() if pem else ""
                 LOGGER.debug(
                     "Trust anchor %d: len=%d",
@@ -195,12 +193,7 @@ class MsoMdocPresVerifier(PresVerifier):
                         pem_err,
                     )
 
-            # Flatten concatenated PEM chains into individual certs BEFORE
-            # building the registry.  Rust (x509_cert) only reads the first
-            # PEM block from a string; any additional certs in a chain string
-            # are silently dropped, breaking trust-anchor validation.
             if trust_anchors:
-                trust_anchors = flatten_trust_anchors(trust_anchors)
                 LOGGER.debug(
                     "Trust anchors after chain-splitting: %d individual cert(s)",
                     len(trust_anchors),

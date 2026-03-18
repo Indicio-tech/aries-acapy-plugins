@@ -1,303 +1,246 @@
-"""mso_mdoc admin routes.
+"""mso_mdoc extra routes.
 
-Provides REST API endpoints for ISO/IEC 18013-5:2021 compliant mobile document
-(mDoc) operations including signing and verification. These endpoints implement
-the mobile security object (MSO) format for secure credential issuance and
-verification as specified in the ISO 18013-5 standard.
-
-Protocol Compliance:
-- ISO/IEC 18013-5:2021: Mobile driving licence (mDL) application
-- RFC 8152: CBOR Object Signing and Encryption (COSE)
-- RFC 8949: Concise Binary Object Representation (CBOR)
+Format-specific routes for creating and updating mso_mdoc SupportedCredential
+records.  Follows the same pattern as sd_jwt_vc/routes.py.
 """
 
 import logging
+from typing import Any, Dict
 
-from acapy_agent.admin.request_context import AdminRequestContext
-from acapy_agent.messaging.models.openapi import OpenAPISchema
-from acapy_agent.messaging.valid import GENERIC_DID_EXAMPLE, GENERIC_DID_VALIDATE, Uri
 from aiohttp import web
-from aiohttp_apispec import docs, request_schema, response_schema
+from aiohttp_apispec import (
+    docs,
+    match_info_schema,
+    request_schema,
+    response_schema,
+)
+from acapy_agent.admin.decorators.auth import tenant_authentication
+from acapy_agent.admin.request_context import AdminRequestContext
+from acapy_agent.askar.profile import AskarProfileSession
+from acapy_agent.storage.error import StorageError, StorageNotFoundError
+from acapy_agent.messaging.models.base import BaseModelError
+from acapy_agent.messaging.models.openapi import OpenAPISchema
 from marshmallow import fields
 
-from .cred_processor import MsoMdocCredProcessor
-from .key_generation import pem_from_jwk
-from .key_routes import register_key_routes
-from .trust_anchor_routes import register_trust_anchor_routes
-from .mdoc import isomdl_mdoc_sign
-from .mdoc import mdoc_verify as mso_mdoc_verify
-from .storage import MdocStorageManager
+from oid4vc.cred_processor import CredProcessors
+from oid4vc.models.supported_cred import SupportedCredential, SupportedCredentialSchema
+from oid4vc.utils import supported_cred_is_unique
 
-# OpenID4VCI 1.0 § E.1.1: mso_mdoc Credential Format
-# https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#appendix-E.1.1
-# ISO/IEC 18013-5:2021 official specification URI
-SPEC_URI = "https://www.iso.org/obp/ui/#iso:std:iso-iec:18013:-5:dis:ed-1:v1:en"
-OID4VCI_SPEC_URI = (
-    "https://openid.net/specs/openid-4-verifiable-credential-issuance-"
-    "1_0.html#appendix-E.1.1"
-)
 LOGGER = logging.getLogger(__name__)
 
 
-class MdocPluginResponseSchema(OpenAPISchema):
-    """Response schema for mso_mdoc Plugin."""
+class MsoMdocSupportedCredCreateReq(OpenAPISchema):
+    """Schema for creating an mso_mdoc SupportedCredential."""
 
-
-class MdocCreateSchema(OpenAPISchema):
-    """Request schema to create a jws with a particular DID."""
-
-    headers = fields.Dict()
-    payload = fields.Dict(required=True)
-    did = fields.Str(
-        required=False,
-        validate=GENERIC_DID_VALIDATE,
+    format = fields.Str(required=True, metadata={"example": "mso_mdoc"})
+    identifier = fields.Str(
+        data_key="id",
+        required=True,
+        metadata={"example": "org.iso.18013.5.1.mDL"},
+    )
+    cryptographic_binding_methods_supported = fields.List(
+        fields.Str(), metadata={"example": ["cose_key"]}
+    )
+    cryptographic_suites_supported = fields.List(
+        fields.Str(), metadata={"example": ["ES256"]}
+    )
+    display = fields.List(fields.Dict(), required=False)
+    doctype = fields.Str(
+        required=True,
         metadata={
-            "description": "DID of interest",
-            "example": GENERIC_DID_EXAMPLE,
+            "description": "ISO 18013-5 document type identifier.",
+            "example": "org.iso.18013.5.1.mDL",
         },
     )
-    verification_method = fields.Str(
-        data_key="verificationMethod",
+    claims = fields.Dict(
+        keys=fields.Str,
         required=False,
-        validate=Uri(),
         metadata={
-            "description": "Information used for proof verification",
-            "example": (
-                "did:key:z6Mkgg342Ycpuk263R9d8Aq6MUaxPn1DDeHyGo38EefXmgDL#z6Mkgg34"
-                "2Ycpuk263R9d8Aq6MUaxPn1DDeHyGo38EefXmgDL"
+            "description": (
+                "Namespace-keyed claims: {namespace: {claim_name: descriptor}}"
+            ),
+        },
+    )
+    trust_anchors = fields.List(
+        fields.Str,
+        required=False,
+        metadata={
+            "description": "PEM-encoded X.509 root CA certificates for verification.",
+        },
+    )
+    signing_key_pem = fields.Str(
+        required=False,
+        metadata={
+            "description": (
+                "PEM-encoded EC private key for credential signing. "
+                "Alternative to OID4VC_MDOC_SIGNING_KEY_PATH env var."
+            ),
+        },
+    )
+    signing_cert_pem = fields.Str(
+        required=False,
+        metadata={
+            "description": (
+                "PEM-encoded X.509 certificate for credential signing. "
+                "Alternative to OID4VC_MDOC_SIGNING_CERT_PATH env var."
             ),
         },
     )
 
 
-class MdocVerifySchema(OpenAPISchema):
-    """Request schema to verify a mso_mdoc."""
+class SupportedCredentialMatchSchema(OpenAPISchema):
+    """Match info for request taking credential supported id."""
 
-    mso_mdoc = fields.Str(
-        validate=None, metadata={"example": "a36776657273696f6e63312e..."}
-    )
-
-
-class MdocVerifyResponseSchema(OpenAPISchema):
-    """Response schema for mso_mdoc verification result."""
-
-    valid = fields.Bool(required=True)
-    error = fields.Str(required=False, metadata={"description": "Error text"})
-    kid = fields.Str(required=True, metadata={"description": "kid of signer"})
-    headers = fields.Dict(
+    supported_cred_id = fields.Str(
         required=True,
-        metadata={"description": "Headers from verified mso_mdoc."},
-    )
-    payload = fields.Dict(
-        required=True,
-        metadata={"description": "Payload from verified mso_mdoc"},
+        metadata={"description": "Credential supported identifier"},
     )
 
 
 @docs(
-    tags=["mso_mdoc"],
-    summary=(
-        "Creates mso_mdoc CBOR encoded binaries according to ISO 18013-5 and"
-        " OpenID4VCI 1.0"
-    ),
+    tags=["oid4vci"],
+    summary="Register a configuration for a supported mso_mdoc credential",
 )
-@request_schema(MdocCreateSchema)
-@response_schema(MdocPluginResponseSchema(), description="")
-async def mdoc_sign(request: web.BaseRequest):
-    """Request handler for ISO 18013-5 mDoc credential signing.
+@request_schema(MsoMdocSupportedCredCreateReq())
+@response_schema(SupportedCredentialSchema())
+@tenant_authentication
+async def supported_credential_create(request: web.Request):
+    """Create a SupportedCredential record for mso_mdoc format."""
+    context = request["context"]
+    assert isinstance(context, AdminRequestContext)
+    profile = context.profile
 
-    Creates and signs a mobile document (mDoc) credential following both
-    ISO 18013-5 mobile document format and OpenID4VCI 1.0 mso_mdoc credential format.
+    body: Dict[str, Any] = await request.json()
 
-    This endpoint implements the complete mDoc issuance workflow including:
-    - Credential payload validation and formatting
-    - ECDSA key resolution and validation
-    - MSO (Mobile Security Object) creation
-    - COSE signing with ES256 algorithm
-    - CBOR encoding for compact binary representation
-
-    Protocol Compliance:
-    - OpenID4VCI 1.0 § E.1.1: mso_mdoc Credential Format
-      https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#appendix-E.1.1
-    - ISO 18013-5 § 8.3: Mobile document structure
-    - ISO 18013-5 § 9.1.2: IssuerSigned data structure
-    - RFC 8152: COSE signing for cryptographic protection
-    - RFC 8949: CBOR encoding for compact binary representation
-
-    Request Body:
-        {
-            "headers": { Optional headers for the mDoc MSO },
-            "payload": { The credential claims per ISO 18013-5 § 8.3 },
-            "did": { Optional DID for issuer identification },
-            "verificationMethod": { Optional verification method URI }
-        }
-
-    Returns:
-        JSON response with signed mDoc credential or error details
-
-    Raises:
-        web.HTTPBadRequest: If request payload is invalid or malformed
-        web.HTTPUnprocessableEntity: If credential data validation fails
-        web.HTTPInternalServerError: If signing operation fails
-
-    Example:
-        POST /oid4vc/mdoc/sign
-        {
-            "payload": {
-                "doctype": "org.iso.18013.5.1.mDL",
-                "claims": {
-                    "org.iso.18013.5.1": {
-                        "family_name": "Doe",
-                        "given_name": "John"
-                    }
-                }
-            }
-        }
-    """
-    context: AdminRequestContext = request["context"]
-    body = await request.json()
-    verification_method = body.get("verificationMethod")
-    headers = body.get("headers", {})
-    payload = body.get("payload", {})
-
-    try:
-        # Delegate key resolution entirely to the credential processor, which
-        # handles env-var static keys, verification-method lookup, default-key
-        # fallback, and on-demand generation — avoiding duplicated logic.
-        processor = MsoMdocCredProcessor()
-        storage_manager = MdocStorageManager(context.profile)
-
-        async with context.profile.session() as session:
-            key_data = await processor._resolve_signing_key(
-                context, session, verification_method
-            )
-            signing_jwk = key_data.get("jwk")
-            key_id = key_data.get("key_id")
-            private_key_pem = key_data.get("metadata", {}).get("private_key_pem")
-
-            if not private_key_pem:
-                # Reconstruct PEM from the JWK 'd' parameter instead of
-                # relying on a redundant PEM blob stored in metadata.
-                signing_jwk = key_data.get("jwk", {})
-                if signing_jwk.get("d"):
-                    private_key_pem = pem_from_jwk(signing_jwk)
-
-            if not private_key_pem:
-                raise ValueError("Private key PEM not found for signing key")
-
-            # Fetch or generate certificate
-            certificate_pem = await storage_manager.get_certificate_for_key(
-                session, key_id
-            )
-
-            if not certificate_pem:
-                raise ValueError(
-                    f"Certificate not found for key {key_id!r}. "
-                    "Keys must be registered with a certificate before use."
-                )
-
-        mso_mdoc = isomdl_mdoc_sign(
-            signing_jwk, headers, payload, certificate_pem, private_key_pem
+    if not await supported_cred_is_unique(body["id"], profile):
+        raise web.HTTPBadRequest(
+            reason=f"Record with identifier {body['id']} already exists."
         )
+
+    body["identifier"] = body.pop("id")
+
+    format_data = {}
+    format_data["doctype"] = body.pop("doctype")
+    format_data["claims"] = body.pop("claims", None)
+
+    vc_additional_data = {}
+    vc_additional_data["trust_anchors"] = body.pop("trust_anchors", None)
+    vc_additional_data["signing_key_pem"] = body.pop("signing_key_pem", None)
+    vc_additional_data["signing_cert_pem"] = body.pop("signing_cert_pem", None)
+
+    record = SupportedCredential(
+        **body,
+        format_data=format_data,
+        vc_additional_data=vc_additional_data,
+    )
+
+    registered_processors = context.inject(CredProcessors)
+    if record.format not in registered_processors.issuers:
+        raise web.HTTPBadRequest(
+            reason=f"Format {record.format} is not supported by"
+            " currently registered processors"
+        )
+
+    processor = registered_processors.issuer_for_format(record.format)
+    try:
+        processor.validate_supported_credential(record)
     except ValueError as err:
         raise web.HTTPBadRequest(reason=str(err)) from err
-    except Exception as err:
-        LOGGER.exception("mdoc_sign failed: %s", err)
-        raise web.HTTPInternalServerError(reason=f"mDoc signing failed: {err}") from err
 
-    return web.json_response(mso_mdoc)
+    async with profile.session() as session:
+        await record.save(session, reason="Save credential supported record.")
+
+    return web.json_response(record.serialize())
+
+
+async def supported_cred_update_helper(
+    record: SupportedCredential,
+    body: Dict[str, Any],
+    session: AskarProfileSession,
+) -> SupportedCredential:
+    """Helper for updating an mso_mdoc SupportedCredential record."""
+    format_data = {}
+    vc_additional_data = {}
+
+    body["identifier"] = body.pop("id")
+
+    format_data["doctype"] = body.pop("doctype")
+    format_data["claims"] = body.pop("claims", None)
+
+    vc_additional_data["trust_anchors"] = body.pop("trust_anchors", None)
+    vc_additional_data["signing_key_pem"] = body.pop("signing_key_pem", None)
+    vc_additional_data["signing_cert_pem"] = body.pop("signing_cert_pem", None)
+
+    record.identifier = body["identifier"]
+    record.format = body["format"]
+    record.cryptographic_binding_methods_supported = body.get(
+        "cryptographic_binding_methods_supported", None
+    )
+    record.cryptographic_suites_supported = body.get(
+        "cryptographic_suites_supported", None
+    )
+    record.display = body.get("display", None)
+    record.format_data = format_data
+    record.vc_additional_data = vc_additional_data
+
+    await record.save(session)
+    return record
 
 
 @docs(
-    tags=["mso_mdoc"],
-    summary=(
-        "Verify mso_mdoc CBOR encoded binaries according to ISO 18013-5 and"
-        " OpenID4VCI 1.0"
-    ),
+    tags=["oid4vci"],
+    summary="Update a supported mso_mdoc credential configuration",
 )
-@request_schema(MdocVerifySchema())
-@response_schema(MdocVerifyResponseSchema(), 200, description="")
-async def mdoc_verify(request: web.BaseRequest):
-    """Request handler for ISO 18013-5 mDoc verification.
-
-    Performs cryptographic verification of a mobile document (mDoc) including
-    validation of the mobile security object (MSO) signature and structure
-    compliance with both ISO 18013-5 and OpenID4VCI 1.0 requirements.
-
-    Protocol Compliance:
-    - OpenID4VCI 1.0 § E.1.1: mso_mdoc Credential Format verification
-      https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#appendix-E.1.1
-    - ISO 18013-5 § 9.1.4: MSO signature verification procedures
-    - ISO 18013-5 § 8.3: Document structure validation
-    - RFC 8152: COSE signature verification
-    - RFC 8949: CBOR decoding and validation
-
-    Args:
-        request: The web request object.
-
-            "mso_mdoc": {
-                CBOR-encoded mDoc per ISO 18013-5 § 8.3 and OID4VCI 1.0 § E.1.1
-            }
-    """
+@match_info_schema(SupportedCredentialMatchSchema())
+@request_schema(MsoMdocSupportedCredCreateReq())
+@response_schema(SupportedCredentialSchema())
+@tenant_authentication
+async def update_supported_credential_mso_mdoc(request: web.Request):
+    """Update an mso_mdoc SupportedCredential record."""
     context: AdminRequestContext = request["context"]
-    body = await request.json()
-    mso_mdoc = body["mso_mdoc"]
-    try:
-        # Load configured trust anchors from the wallet so verification is
-        # authenticated against the known trust chain.  Without this, the
-        # endpoint always accepts any self-signed issuer certificate, which
-        # defeats the purpose of having a trust store.
-        storage_manager = MdocStorageManager(context.profile)
-        async with context.profile.session() as session:
-            trust_anchor_pems = await storage_manager.get_all_trust_anchor_pems(session)
+    body: Dict[str, Any] = await request.json()
+    supported_cred_id = request.match_info["supported_cred_id"]
 
-        result = mso_mdoc_verify(mso_mdoc, trust_anchors=trust_anchor_pems)
+    try:
+        async with context.session() as session:
+            record = await SupportedCredential.retrieve_by_id(
+                session, supported_cred_id
+            )
+            assert isinstance(session, AskarProfileSession)
+            record = await supported_cred_update_helper(record, body, session)
+
+    except StorageNotFoundError as err:
+        raise web.HTTPNotFound(reason=err.roll_up) from err
+    except (StorageError, BaseModelError) as err:
+        raise web.HTTPBadRequest(reason=err.roll_up) from err
+
+    registered_processors = context.inject(CredProcessors)
+    if record.format not in registered_processors.issuers:
+        raise web.HTTPBadRequest(
+            reason=f"Format {record.format} is not supported by"
+            " currently registered processors"
+        )
+
+    processor = registered_processors.issuer_for_format(record.format)
+    try:
+        processor.validate_supported_credential(record)
     except ValueError as err:
         raise web.HTTPBadRequest(reason=str(err)) from err
-    except Exception as err:
-        raise web.HTTPInternalServerError(reason=f"Verification failed: {err}") from err
 
-    return web.json_response(result.serialize())
+    return web.json_response(record.serialize())
 
 
 async def register(app: web.Application):
     """Register routes."""
     app.add_routes(
         [
-            web.post("/mso_mdoc/sign", mdoc_sign),
-            web.post("/mso_mdoc/verify", mdoc_verify),
-        ]
-    )
-
-    # Register key and certificate management routes
-    register_key_routes(app)
-    # Register trust anchor management routes
-    register_trust_anchor_routes(app)
-
-
-def post_process_routes(app: web.Application):
-    """Amend swagger API.
-
-    Adds mso_mdoc plugin documentation with references to both ISO 18013-5
-    and OpenID4VCI 1.0 specifications for comprehensive protocol compliance.
-    """
-
-    # Add top-level tags description
-    if "tags" not in app._state["swagger_dict"]:
-        app._state["swagger_dict"]["tags"] = []
-    app._state["swagger_dict"]["tags"].append(
-        {
-            "name": "mso_mdoc",
-            "description": (
-                "ISO 18013-5 mobile document (mDoc) operations with OpenID4VCI"
-                " 1.0 compliance"
+            web.post(
+                "/oid4vci/credential-supported/create/mso-mdoc",
+                supported_credential_create,
             ),
-            "externalDocs": [
-                {"description": "ISO 18013-5 Specification", "url": SPEC_URI},
-                {
-                    "description": "OpenID4VCI 1.0 mso_mdoc Format",
-                    "url": OID4VCI_SPEC_URI,
-                },
-            ],
-        }
+            web.put(
+                "/oid4vci/credential-supported/records/mso-mdoc/{supported_cred_id}",
+                update_supported_credential_mso_mdoc,
+            ),
+        ]
     )
