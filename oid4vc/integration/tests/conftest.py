@@ -349,15 +349,9 @@ async def setup_issuer_certs(acapy_issuer_admin):
     Yields:
         Dictionary with certificate_pem
     """
-    from cryptography import x509
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import ec
-    from cryptography.x509.oid import NameOID
-    from datetime import datetime, timedelta, timezone
-
     # Generate a P-256 key pair and self-signed certificate
     key = ec.generate_private_key(ec.SECP256R1())
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     subject = issuer = x509.Name([
         x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
         x509.NameAttribute(NameOID.COMMON_NAME, "Test mDoc Issuer"),
