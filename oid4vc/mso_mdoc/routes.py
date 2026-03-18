@@ -88,6 +88,44 @@ class MsoMdocSupportedCredCreateReq(OpenAPISchema):
     )
 
 
+class MsoMdocSupportedCredUpdateReq(OpenAPISchema):
+    """Schema for partial updates to an mso_mdoc SupportedCredential.
+
+    All fields are optional; only supplied fields are changed.
+    """
+
+    format = fields.Str(required=False, metadata={"example": "mso_mdoc"})
+    identifier = fields.Str(
+        data_key="id",
+        required=False,
+        metadata={"example": "org.iso.18013.5.1.mDL"},
+    )
+    cryptographic_binding_methods_supported = fields.List(
+        fields.Str(), required=False, metadata={"example": ["cose_key"]}
+    )
+    cryptographic_suites_supported = fields.List(
+        fields.Str(), required=False, metadata={"example": ["ES256"]}
+    )
+    display = fields.List(fields.Dict(), required=False)
+    doctype = fields.Str(
+        required=False,
+        metadata={
+            "description": "ISO 18013-5 document type identifier.",
+            "example": "org.iso.18013.5.1.mDL",
+        },
+    )
+    claims = fields.Dict(keys=fields.Str, required=False)
+    trust_anchors = fields.List(
+        fields.Str,
+        required=False,
+        metadata={
+            "description": "PEM-encoded X.509 root CA certificates for verification.",
+        },
+    )
+    signing_key_pem = fields.Str(required=False)
+    signing_cert_pem = fields.Str(required=False)
+
+
 class SupportedCredentialMatchSchema(OpenAPISchema):
     """Match info for request taking credential supported id."""
 
@@ -158,28 +196,59 @@ async def supported_cred_update_helper(
     body: Dict[str, Any],
     session: AskarProfileSession,
 ) -> SupportedCredential:
-    """Helper for updating an mso_mdoc SupportedCredential record."""
-    format_data = {}
-    vc_additional_data = {}
+    """Helper for updating an mso_mdoc SupportedCredential record.
 
-    body["identifier"] = body.pop("id")
+    Only fields present in *body* are updated; omitted fields retain their
+    current values from *record*.
+    """
+    existing_format_data = record.format_data or {}
+    existing_vc_data = record.vc_additional_data or {}
 
-    format_data["doctype"] = body.pop("doctype")
-    format_data["claims"] = body.pop("claims", None)
+    # Identifier / format — fall back to existing values when not supplied
+    if "id" in body:
+        record.identifier = body.pop("id")
+    else:
+        body.pop("id", None)
+    if "format" in body:
+        record.format = body.pop("format")
+    else:
+        body.pop("format", None)
 
-    vc_additional_data["trust_anchors"] = body.pop("trust_anchors", None)
-    vc_additional_data["signing_key_pem"] = body.pop("signing_key_pem", None)
-    vc_additional_data["signing_cert_pem"] = body.pop("signing_cert_pem", None)
+    # format_data — merge with existing
+    format_data = dict(existing_format_data)
+    if "doctype" in body:
+        format_data["doctype"] = body.pop("doctype")
+    else:
+        body.pop("doctype", None)
+    if "claims" in body:
+        format_data["claims"] = body.pop("claims")
+    else:
+        body.pop("claims", None)
 
-    record.identifier = body["identifier"]
-    record.format = body["format"]
-    record.cryptographic_binding_methods_supported = body.get(
-        "cryptographic_binding_methods_supported", None
-    )
-    record.cryptographic_suites_supported = body.get(
-        "cryptographic_suites_supported", None
-    )
-    record.display = body.get("display", None)
+    # vc_additional_data — merge with existing
+    vc_additional_data = dict(existing_vc_data)
+    if "trust_anchors" in body:
+        vc_additional_data["trust_anchors"] = body.pop("trust_anchors")
+    else:
+        body.pop("trust_anchors", None)
+    if "signing_key_pem" in body:
+        vc_additional_data["signing_key_pem"] = body.pop("signing_key_pem")
+    else:
+        body.pop("signing_key_pem", None)
+    if "signing_cert_pem" in body:
+        vc_additional_data["signing_cert_pem"] = body.pop("signing_cert_pem")
+    else:
+        body.pop("signing_cert_pem", None)
+
+    if "cryptographic_binding_methods_supported" in body:
+        record.cryptographic_binding_methods_supported = body[
+            "cryptographic_binding_methods_supported"
+        ]
+    if "cryptographic_suites_supported" in body:
+        record.cryptographic_suites_supported = body["cryptographic_suites_supported"]
+    if "display" in body:
+        record.display = body["display"]
+
     record.format_data = format_data
     record.vc_additional_data = vc_additional_data
 
@@ -192,7 +261,7 @@ async def supported_cred_update_helper(
     summary="Update a supported mso_mdoc credential configuration",
 )
 @match_info_schema(SupportedCredentialMatchSchema())
-@request_schema(MsoMdocSupportedCredCreateReq())
+@request_schema(MsoMdocSupportedCredUpdateReq())
 @response_schema(SupportedCredentialSchema())
 @tenant_authentication
 async def update_supported_credential_mso_mdoc(request: web.Request):

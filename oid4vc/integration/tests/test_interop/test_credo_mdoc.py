@@ -379,7 +379,8 @@ async def test_mdoc_issuer_key_generation(
     """Test that mDOC issuer key can be generated."""
     assert mdoc_issuer_key is not None
     # Check for required key components
-    assert "key_id" in mdoc_issuer_key or "verification_method" in mdoc_issuer_key
+    assert "private_key_pem" in mdoc_issuer_key
+    assert "certificate_pem" in mdoc_issuer_key
 
 
 @pytest.mark.asyncio
