@@ -76,9 +76,7 @@ def _gen_chain_pems() -> tuple[str, str, str]:
     leaf_key = ec.generate_private_key(ec.SECP256R1())
     leaf_cert = (
         x509.CertificateBuilder()
-        .subject_name(
-            x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Leaf DS")])
-        )
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Leaf DS")]))
         .issuer_name(root_name)
         .public_key(leaf_key.public_key())
         .serial_number(x509.random_serial_number())
@@ -111,9 +109,7 @@ def session():
 def storage(monkeypatch):
     mock_storage = AsyncMock()
     monkeypatch.setattr(keys, "get_storage", MagicMock(return_value=mock_storage))
-    monkeypatch.setattr(
-        certificates, "get_storage", MagicMock(return_value=mock_storage)
-    )
+    monkeypatch.setattr(certificates, "get_storage", MagicMock(return_value=mock_storage))
     monkeypatch.setattr(
         trust_anchors, "get_storage", MagicMock(return_value=mock_storage)
     )
@@ -184,9 +180,7 @@ async def test_auto_register_non_pem_input_returns_empty(
     storage_manager, session, storage
 ):
     """Non-PEM text is ignored."""
-    created = await storage_manager.auto_register_trust_anchors(
-        session, "not a cert"
-    )
+    created = await storage_manager.auto_register_trust_anchors(session, "not a cert")
     assert created == []
     storage.add_record.assert_not_awaited()
 
@@ -214,9 +208,7 @@ async def test_store_certificate_auto_adds_trust_anchor(
 
     # Two add_record calls: one for the cert, one for the trust anchor
     assert storage.add_record.await_count == 2
-    types = [
-        storage.add_record.await_args_list[i].args[0].type for i in range(2)
-    ]
+    types = [storage.add_record.await_args_list[i].args[0].type for i in range(2)]
     assert MDOC_CERT_RECORD_TYPE in types
     assert MDOC_TRUST_ANCHOR_RECORD_TYPE in types
 

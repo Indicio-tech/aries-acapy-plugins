@@ -401,9 +401,7 @@ class MdocStorageManager:
             return []
 
         # Fetch existing trust anchor PEMs to avoid duplicates
-        existing_pems = set(
-            await trust_anchors.get_all_trust_anchor_pems(session)
-        )
+        existing_pems = set(await trust_anchors.get_all_trust_anchor_pems(session))
 
         created: List[str] = []
         for pem in individual_pems:
