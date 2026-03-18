@@ -141,12 +141,14 @@ def _generate_ec_key():
 
 def _get_name(cn: str) -> x509.Name:
     """Create an X.509 name with a common name."""
-    return x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
-        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "UT"),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "TestOrg"),
-        x509.NameAttribute(NameOID.COMMON_NAME, cn),
-    ])
+    return x509.Name(
+        [
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
+            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "UT"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "TestOrg"),
+            x509.NameAttribute(NameOID.COMMON_NAME, cn),
+        ]
+    )
 
 
 def _add_iaca_extensions(builder, key, issuer_key, is_ca=True, is_root=False):
@@ -203,24 +205,26 @@ def _add_iaca_extensions(builder, key, issuer_key, is_ca=True, is_root=False):
 
     # CRL Distribution Points
     builder = builder.add_extension(
-        x509.CRLDistributionPoints([
-            x509.DistributionPoint(
-                full_name=[
-                    x509.UniformResourceIdentifier("https://example.com/test.crl")
-                ],
-                relative_name=None,
-                crl_issuer=None,
-                reasons=None,
-            )
-        ]),
+        x509.CRLDistributionPoints(
+            [
+                x509.DistributionPoint(
+                    full_name=[
+                        x509.UniformResourceIdentifier("https://example.com/test.crl")
+                    ],
+                    relative_name=None,
+                    crl_issuer=None,
+                    reasons=None,
+                )
+            ]
+        ),
         critical=False,
     )
 
     # Issuer Alternative Name
     builder = builder.add_extension(
-        x509.IssuerAlternativeName([
-            x509.UniformResourceIdentifier("https://example.com")
-        ]),
+        x509.IssuerAlternativeName(
+            [x509.UniformResourceIdentifier("https://example.com")]
+        ),
         critical=False,
     )
 
