@@ -203,9 +203,7 @@ async def update_supported_credential_mso_mdoc(request: web.Request):
 
     try:
         async with context.session() as session:
-            record = await SupportedCredential.retrieve_by_id(
-                session, supported_cred_id
-            )
+            record = await SupportedCredential.retrieve_by_id(session, supported_cred_id)
             assert isinstance(session, AskarProfileSession)
             record = await supported_cred_update_helper(record, body, session)
 

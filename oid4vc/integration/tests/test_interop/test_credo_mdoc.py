@@ -141,10 +141,12 @@ async def mdoc_issuer_key(
     """
     key = ec.generate_private_key(ec.SECP256R1())
     now = datetime.now(UTC)
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
-        x509.NameAttribute(NameOID.COMMON_NAME, "Test mDoc Issuer"),
-    ])
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
+            x509.NameAttribute(NameOID.COMMON_NAME, "Test mDoc Issuer"),
+        ]
+    )
     cert = (
         x509.CertificateBuilder()
         .subject_name(subject)

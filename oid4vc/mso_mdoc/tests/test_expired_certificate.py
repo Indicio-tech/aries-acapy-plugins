@@ -252,9 +252,7 @@ class TestIssueRejectsExpiredCertificate:
         ex_record = self._make_ex_record()
         pop = self._make_pop()
 
-        with patch(
-            "mso_mdoc.cred_processor.isomdl_mdoc_sign"
-        ) as mock_sign:
+        with patch("mso_mdoc.cred_processor.isomdl_mdoc_sign") as mock_sign:
             processor = MsoMdocCredProcessor()
 
             with pytest.raises(CredProcessorError, match=r"(?i)expir"):
@@ -276,9 +274,7 @@ class TestIssueRejectsExpiredCertificate:
 
         profile, _ = _make_profile()
         context = self._make_admin_context(profile)
-        supported = self._make_supported(
-            cert_pem=valid_cert_pem, key_pem=private_key_pem
-        )
+        supported = self._make_supported(cert_pem=valid_cert_pem, key_pem=private_key_pem)
         ex_record = self._make_ex_record()
         pop = self._make_pop()
 
@@ -301,4 +297,3 @@ class TestIssueRejectsExpiredCertificate:
                 assert "expir" not in str(exc).lower(), (
                     f"Valid certificate incorrectly triggered expiry check: {exc}"
                 )
-

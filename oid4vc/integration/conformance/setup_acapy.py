@@ -531,9 +531,7 @@ async def upload_trust_anchor(
         result = await admin_get(
             client, base, f"/oid4vci/credential-supported/records/{supported_cred_id}"
         )
-        existing_anchors = result.get("vc_additional_data", {}).get(
-            "trust_anchors", []
-        )
+        existing_anchors = result.get("vc_additional_data", {}).get("trust_anchors", [])
         if cert_str not in existing_anchors:
             existing_anchors.append(cert_str)
         await admin_put(
@@ -549,9 +547,7 @@ async def upload_trust_anchor(
         )
     else:
         # Find all mso_mdoc supported credentials and add the anchor to each
-        records = await admin_get(
-            client, base, "/oid4vci/credential-supported/records"
-        )
+        records = await admin_get(client, base, "/oid4vci/credential-supported/records")
         for rec in records.get("results", []):
             if rec.get("format") == "mso_mdoc":
                 rec_id = rec.get("supported_cred_id")

@@ -352,10 +352,12 @@ async def setup_issuer_certs(acapy_issuer_admin):
     # Generate a P-256 key pair and self-signed certificate
     key = ec.generate_private_key(ec.SECP256R1())
     now = datetime.now(UTC)
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
-        x509.NameAttribute(NameOID.COMMON_NAME, "Test mDoc Issuer"),
-    ])
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
+            x509.NameAttribute(NameOID.COMMON_NAME, "Test mDoc Issuer"),
+        ]
+    )
     cert = (
         x509.CertificateBuilder()
         .subject_name(subject)
@@ -377,9 +379,7 @@ async def setup_issuer_certs(acapy_issuer_admin):
 
     # Find the mso_mdoc SupportedCredential and update it with signing key/cert
     try:
-        records = await acapy_issuer_admin.get(
-            "/oid4vci/credential-supported/records"
-        )
+        records = await acapy_issuer_admin.get("/oid4vci/credential-supported/records")
         for rec in records.get("results", []):
             if rec.get("format") == "mso_mdoc":
                 rec_id = rec.get("supported_cred_id")
@@ -427,8 +427,8 @@ async def setup_verifier_trust_anchors(acapy_verifier_admin, setup_issuer_certs)
 
         if mdoc_recs:
             rec_id = mdoc_recs[0].get("supported_cred_id")
-            existing_anchors = mdoc_recs[0].get("vc_additional_data", {}).get(
-                "trust_anchors", []
+            existing_anchors = (
+                mdoc_recs[0].get("vc_additional_data", {}).get("trust_anchors", [])
             )
             if cert_pem not in existing_anchors:
                 existing_anchors.append(cert_pem)
@@ -544,8 +544,8 @@ async def setup_pki_chain_trust_anchor(acapy_verifier_admin, generated_test_cert
 
         if mdoc_recs:
             rec_id = mdoc_recs[0].get("supported_cred_id")
-            existing_anchors = mdoc_recs[0].get("vc_additional_data", {}).get(
-                "trust_anchors", []
+            existing_anchors = (
+                mdoc_recs[0].get("vc_additional_data", {}).get("trust_anchors", [])
             )
             if root_ca_pem not in existing_anchors:
                 existing_anchors.append(root_ca_pem)
@@ -567,9 +567,7 @@ async def setup_pki_chain_trust_anchor(acapy_verifier_admin, generated_test_cert
 
         yield {"supported_cred_id": rec_id}
     except Exception as e:
-        raise RuntimeError(
-            f"Failed to setup PKI chain trust anchor: {e}"
-        ) from e
+        raise RuntimeError(f"Failed to setup PKI chain trust anchor: {e}") from e
 
 
 # =============================================================================
