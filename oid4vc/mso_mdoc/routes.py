@@ -25,6 +25,7 @@ from marshmallow import fields
 from oid4vc.cred_processor import CredProcessors
 from oid4vc.models.supported_cred import SupportedCredential, SupportedCredentialSchema
 from oid4vc.utils import supported_cred_is_unique
+from . import trust_anchor_routes
 
 LOGGER = logging.getLogger(__name__)
 
@@ -86,6 +87,35 @@ class MsoMdocSupportedCredCreateReq(OpenAPISchema):
             ),
         },
     )
+    signing_key_id = fields.Str(
+        required=False,
+        metadata={
+            "description": (
+                "ID of a MdocSigningKeyRecord to use for signing. "
+                "Takes precedence over signing_key_pem/signing_cert_pem."
+            ),
+        },
+    )
+    status_list_def_id = fields.Str(
+        required=False,
+        metadata={
+            "description": (
+                "Status list definition ID (from the status_list plugin) to use "
+                "for assigning revocation entries at credential issuance time."
+            ),
+        },
+    )
+    status_list_base_uri = fields.Str(
+        required=False,
+        metadata={
+            "description": (
+                "Base URI for published status lists "
+                "(e.g. 'https://issuer.example.com/status'). "
+                "Combined with the list_number to build the status URI embedded "
+                "in issued credentials."
+            ),
+        },
+    )
 
 
 class MsoMdocSupportedCredUpdateReq(OpenAPISchema):
@@ -124,6 +154,24 @@ class MsoMdocSupportedCredUpdateReq(OpenAPISchema):
     )
     signing_key_pem = fields.Str(required=False)
     signing_cert_pem = fields.Str(required=False)
+    signing_key_id = fields.Str(
+        required=False,
+        metadata={
+            "description": "ID of a MdocSigningKeyRecord to use for signing.",
+        },
+    )
+    status_list_def_id = fields.Str(
+        required=False,
+        metadata={
+            "description": "Status list definition ID for revocation entry assignment.",
+        },
+    )
+    status_list_base_uri = fields.Str(
+        required=False,
+        metadata={
+            "description": "Base URI for published status lists.",
+        },
+    )
 
 
 class SupportedCredentialMatchSchema(OpenAPISchema):
@@ -165,6 +213,9 @@ async def supported_credential_create(request: web.Request):
     vc_additional_data["trust_anchors"] = body.pop("trust_anchors", None)
     vc_additional_data["signing_key_pem"] = body.pop("signing_key_pem", None)
     vc_additional_data["signing_cert_pem"] = body.pop("signing_cert_pem", None)
+    vc_additional_data["signing_key_id"] = body.pop("signing_key_id", None)
+    vc_additional_data["status_list_def_id"] = body.pop("status_list_def_id", None)
+    vc_additional_data["status_list_base_uri"] = body.pop("status_list_base_uri", None)
 
     record = SupportedCredential(
         **body,
@@ -239,6 +290,18 @@ async def supported_cred_update_helper(
         vc_additional_data["signing_cert_pem"] = body.pop("signing_cert_pem")
     else:
         body.pop("signing_cert_pem", None)
+    if "signing_key_id" in body:
+        vc_additional_data["signing_key_id"] = body.pop("signing_key_id")
+    else:
+        body.pop("signing_key_id", None)
+    if "status_list_def_id" in body:
+        vc_additional_data["status_list_def_id"] = body.pop("status_list_def_id")
+    else:
+        body.pop("status_list_def_id", None)
+    if "status_list_base_uri" in body:
+        vc_additional_data["status_list_base_uri"] = body.pop("status_list_base_uri")
+    else:
+        body.pop("status_list_base_uri", None)
 
     if "cryptographic_binding_methods_supported" in body:
         record.cryptographic_binding_methods_supported = body[
@@ -311,3 +374,4 @@ async def register(app: web.Application):
             ),
         ]
     )
+    await trust_anchor_routes.register(app)

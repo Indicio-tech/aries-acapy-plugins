@@ -6,7 +6,7 @@ from acapy_agent.config.injection_context import InjectionContext
 
 from mso_mdoc.cred_processor import MsoMdocCredProcessor
 from oid4vc.cred_processor import CredProcessors
-from . import routes as routes
+from . import routes as routes  # noqa: F401 — triggers ACA-Py route discovery
 
 LOGGER = logging.getLogger(__name__)
 

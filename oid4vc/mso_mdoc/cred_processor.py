@@ -28,6 +28,8 @@ from .mdoc.issuer import MDL_MANDATORY_FIELDS, isomdl_mdoc_sign
 from .mdoc.cred_verifier import MsoMdocCredVerifier
 from .mdoc.pres_verifier import MsoMdocPresVerifier
 from .payload import normalize_mdoc_result, prepare_mdoc_payload
+from .trust_anchor import TrustAnchorRecord
+from .signing_key import MdocSigningKeyRecord
 
 __all__ = [
     "MsoMdocCredProcessor",
@@ -58,25 +60,42 @@ def check_certificate_not_expired(cert_pem: str) -> None:
         raise CredProcessorError(f"Certificate has expired (NotAfter={na})")
 
 
-async def _get_trust_anchors_from_supported_creds(
+async def _get_trust_anchors(
     profile: Profile,
+    doctype: Optional[str] = None,
 ) -> List[str]:
-    """Collect trust anchor PEMs from all mso_mdoc SupportedCredential records.
+    """Collect trust anchor PEMs from TrustAnchorRecord storage.
 
-    Trust anchors are stored in ``vc_additional_data.trust_anchors`` on each
-    ``SupportedCredential`` with ``format="mso_mdoc"``.  This follows the
-    same pattern as sd_jwt_vc storing ``sd_list`` in ``vc_additional_data``.
+    Queries ``TrustAnchorRecord`` records with ``purpose="iaca"``.  When
+    *doctype* is provided, records whose ``doctype`` tag matches OR whose
+    ``doctype`` tag is ``None`` ("wildcard") are both included.
+
+    Falls back to reading from ``SupportedCredential.vc_additional_data`` for
+    backward compatibility with configurations created before the trust
+    registry was introduced.
     """
     anchors: List[str] = []
+
     async with profile.session() as session:
-        records = await SupportedCredential.query(
-            session, tag_filter={"format": "mso_mdoc"}
-        )
+        # 1. Query TrustAnchorRecord (new registry approach)
+        records = await TrustAnchorRecord.query(session, tag_filter={"purpose": "iaca"})
         for record in records:
-            additional = record.vc_additional_data or {}
-            record_anchors = additional.get("trust_anchors", [])
-            if isinstance(record_anchors, list):
-                anchors.extend(record_anchors)
+            # Include if wildcard (no doctype) or doctype matches
+            if record.doctype is None or record.doctype == doctype:
+                if record.certificate_pem:
+                    anchors.append(record.certificate_pem)
+
+        # 2. Backward-compat: also scan SupportedCredential.vc_additional_data
+        if not anchors:
+            sc_records = await SupportedCredential.query(
+                session, tag_filter={"format": "mso_mdoc"}
+            )
+            for sc in sc_records:
+                additional = sc.vc_additional_data or {}
+                legacy_anchors = additional.get("trust_anchors", [])
+                if isinstance(legacy_anchors, list):
+                    anchors.extend(legacy_anchors)
+
     return anchors
 
 
@@ -288,19 +307,66 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
     async def _resolve_signing_key(
         self,
         supported: SupportedCredential,
+        profile: Optional[Profile] = None,
     ) -> Dict[str, Any]:
         """Resolve the signing key for credential issuance.
 
-        Reads the private key PEM and certificate PEM from either:
-        1. ``vc_additional_data`` on the SupportedCredential record, or
-        2. Environment variables ``OID4VC_MDOC_SIGNING_KEY_PATH`` and
+        Resolution order:
+        1. ``signing_key_id`` in ``vc_additional_data`` — fetch a specific
+           ``MdocSigningKeyRecord`` by ID.
+        2. ``MdocSigningKeyRecord`` query by doctype — first matching record.
+        3. ``signing_key_pem`` / ``signing_cert_pem`` in ``vc_additional_data``
+           (legacy / backward-compat).
+        4. Environment variables ``OID4VC_MDOC_SIGNING_KEY_PATH`` and
            ``OID4VC_MDOC_SIGNING_CERT_PATH``.
 
         Returns:
             Dict with ``private_key_pem`` and ``certificate_pem``.
         """
         additional = supported.vc_additional_data or {}
+        doctype = (supported.format_data or {}).get("doctype")
 
+        # 1. Explicit signing key record ID
+        signing_key_id = additional.get("signing_key_id")
+        if signing_key_id and profile:
+            try:
+                async with profile.session() as session:
+                    key_record = await MdocSigningKeyRecord.retrieve_by_id(
+                        session, signing_key_id
+                    )
+                if key_record.private_key_pem and key_record.certificate_pem:
+                    return {
+                        "private_key_pem": key_record.private_key_pem,
+                        "certificate_pem": key_record.certificate_pem,
+                    }
+            except Exception as exc:
+                LOGGER.warning(
+                    "Could not load MdocSigningKeyRecord %s: %s", signing_key_id, exc
+                )
+
+        # 2. MdocSigningKeyRecord query by doctype (or any key if no doctype)
+        if profile:
+            try:
+                async with profile.session() as session:
+                    tag_filter = {"doctype": doctype} if doctype else None
+                    key_records = await MdocSigningKeyRecord.query(
+                        session, tag_filter=tag_filter
+                    )
+                    if not key_records and doctype:
+                        # fall back to wildcard keys (no doctype set)
+                        key_records = await MdocSigningKeyRecord.query(session)
+                    for key_record in key_records:
+                        if key_record.private_key_pem and key_record.certificate_pem:
+                            return {
+                                "private_key_pem": key_record.private_key_pem,
+                                "certificate_pem": key_record.certificate_pem,
+                            }
+            except Exception as exc:
+                LOGGER.debug(
+                    "MdocSigningKeyRecord query failed (will try legacy path): %s", exc
+                )
+
+        # 3. Legacy: signing_key_pem / signing_cert_pem in vc_additional_data
         private_key_pem = additional.get("signing_key_pem")
         certificate_pem = additional.get("signing_cert_pem")
 
@@ -310,7 +376,7 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                 "certificate_pem": certificate_pem,
             }
 
-        # Fall back to environment variables
+        # 4. Environment variables
         key_path = os.getenv("OID4VC_MDOC_SIGNING_KEY_PATH")
         cert_path = os.getenv("OID4VC_MDOC_SIGNING_CERT_PATH")
 
@@ -335,11 +401,77 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                 ) from e
 
         raise CredProcessorError(
-            "No mDoc signing key configured. Provide signing_key_pem and "
-            "signing_cert_pem in the supported credential's vc_additional_data, "
+            "No mDoc signing key configured. "
+            "Create a MdocSigningKeyRecord via POST /mso-mdoc/signing-keys, "
+            "or provide signing_key_pem and signing_cert_pem in the supported "
+            "credential's vc_additional_data, "
             "or set OID4VC_MDOC_SIGNING_KEY_PATH and OID4VC_MDOC_SIGNING_CERT_PATH "
             "environment variables."
         )
+
+    async def _assign_status_entry(
+        self,
+        context: AdminRequestContext,
+        supported: SupportedCredential,
+        doctype: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Optionally assign a Token Status List entry for the credential.
+
+        If ``status_list_def_id`` and ``status_list_base_uri`` are set in the
+        ``SupportedCredential.vc_additional_data``, this method attempts to
+        assign an entry from the status_list plugin and returns the status
+        claim dict to embed in the payload.
+
+        Returns ``None`` if the status list plugin is not installed or not
+        configured for this credential type.
+        """
+        additional = supported.vc_additional_data or {}
+        definition_id = additional.get("status_list_def_id")
+        base_uri = additional.get("status_list_base_uri", "").rstrip("/")
+
+        if not definition_id or not base_uri:
+            return None
+
+        try:
+            from status_list.status_list.v1_0 import (  # noqa: PLC0415
+                status_handler as _status_handler,
+            )
+        except ImportError:
+            LOGGER.debug(
+                "status_list plugin not installed; skipping revocation entry assignment"
+            )
+            return None
+
+        try:
+            entry = await _status_handler.assign_status_list_entry(context, definition_id)
+        except Exception as exc:
+            LOGGER.warning(
+                "Failed to assign status list entry for definition %s: %s",
+                definition_id,
+                exc,
+            )
+            return None
+
+        if entry is None:
+            LOGGER.warning(
+                "Status list entry assignment returned None for definition %s",
+                definition_id,
+            )
+            return None
+
+        list_number = entry.get("list_number", "")
+        list_index = entry.get("list_index", 0)
+        status_uri = f"{base_uri}/{list_number}"
+
+        LOGGER.info(
+            "Assigned status list entry: doctype=%s list_number=%s index=%d uri=%s",
+            doctype,
+            list_number,
+            list_index,
+            status_uri,
+        )
+
+        return {"status_list": {"idx": list_index, "uri": status_uri}}
 
     async def issue(
         self,
@@ -383,8 +515,14 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             # Get payload
             payload = prepare_mdoc_payload(ex_record.credential_subject, doctype)
 
-            # Resolve signing key (from vc_additional_data or env vars)
-            key_data = await self._resolve_signing_key(supported)
+            # Optionally assign a status list entry and embed the status claim
+            status_claim = await self._assign_status_entry(context, supported, doctype)
+            if status_claim:
+                payload["status"] = status_claim
+
+            # Resolve signing key — check MdocSigningKeyRecord first, then
+            # fall back to vc_additional_data and env vars
+            key_data = await self._resolve_signing_key(supported, context.profile)
             private_key_pem = key_data["private_key_pem"]
             certificate_pem = key_data["certificate_pem"]
 
@@ -520,7 +658,7 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
         credential: Any,
     ):
         """Verify an mso_mdoc credential."""
-        trust_anchors = await _get_trust_anchors_from_supported_creds(profile)
+        trust_anchors = await _get_trust_anchors(profile)
         verifier = MsoMdocCredVerifier(trust_anchors=trust_anchors)
         return await verifier.verify_credential(profile, credential)
 
@@ -531,7 +669,7 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
         presentation_record: "OID4VPPresentation",
     ):
         """Verify an mso_mdoc presentation."""
-        trust_anchors = await _get_trust_anchors_from_supported_creds(profile)
+        trust_anchors = await _get_trust_anchors(profile)
         verifier = MsoMdocPresVerifier(trust_anchors=trust_anchors)
         return await verifier.verify_presentation(
             profile, presentation, presentation_record

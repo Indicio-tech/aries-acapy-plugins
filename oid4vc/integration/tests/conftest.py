@@ -336,122 +336,128 @@ def generated_test_certs() -> dict[str, Any]:
 
 @pytest_asyncio.fixture
 async def setup_issuer_certs(acapy_issuer_admin):
-    """Ensure the issuer has signing keys and certificates.
+    """Ensure the issuer has a signing key and certificate via the trust registry.
 
-    With the refactored mso_mdoc plugin, signing keys and certificates are
-    stored in ``SupportedCredential.vc_additional_data``. This fixture
-    generates a self-signed certificate locally and uploads it via the
-    supported credential update endpoint.
-
-    Args:
-        acapy_issuer_admin: ACA-Py issuer admin controller
+    Generates an IACA-compliant certificate chain (root CA → leaf DS) and
+    uploads the leaf document-signer key/cert to ACA-Py via the new
+    ``POST /mso-mdoc/signing-keys`` endpoint.  The root CA certificate is
+    returned so callers can set it as a trust anchor.
 
     Yields:
-        Dictionary with certificate_pem
+        Dictionary with ``certificate_pem``, ``private_key_pem``,
+        and ``root_ca_pem``.
     """
-    # Generate a P-256 key pair and self-signed certificate
-    key = ec.generate_private_key(ec.SECP256R1())
-    now = datetime.now(UTC)
-    subject = issuer = x509.Name(
-        [
-            x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
-            x509.NameAttribute(NameOID.COMMON_NAME, "Test mDoc Issuer"),
-        ]
-    )
-    cert = (
-        x509.CertificateBuilder()
-        .subject_name(subject)
-        .issuer_name(issuer)
-        .public_key(key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(now)
-        .not_valid_after(now + timedelta(days=365))
-        .sign(key, hashes.SHA256())
-    )
+    # Generate root CA and leaf document-signer key pair
+    root_key = _generate_ec_key()
+    root_cert = _generate_root_ca(root_key)
 
-    private_key_pem = key.private_bytes(
-        serialization.Encoding.PEM,
-        serialization.PrivateFormat.PKCS8,
-        serialization.NoEncryption(),
-    ).decode()
+    leaf_key = _generate_ec_key()
+    leaf_cert = _generate_leaf_ds(leaf_key, root_key, root_cert.subject)
 
-    certificate_pem = cert.public_bytes(serialization.Encoding.PEM).decode()
+    private_key_pem = _key_to_pem(leaf_key)
+    certificate_pem = _cert_to_pem(leaf_cert)
+    root_ca_pem = _cert_to_pem(root_cert)
 
-    # Find the mso_mdoc SupportedCredential and update it with signing key/cert
+    # Upload via the new signing-key registry endpoint
     try:
-        records = await acapy_issuer_admin.get("/oid4vci/credential-supported/records")
-        for rec in records.get("results", []):
-            if rec.get("format") == "mso_mdoc":
-                rec_id = rec.get("supported_cred_id")
-                await acapy_issuer_admin.put(
-                    f"/oid4vci/credential-supported/records/mso-mdoc/{rec_id}",
-                    json={
-                        "signing_key_pem": private_key_pem,
-                        "signing_cert_pem": certificate_pem,
-                    },
-                )
-                break
+        response = await acapy_issuer_admin.post(
+            "/mso-mdoc/signing-keys",
+            json={
+                "label": "integration-test-signing-key",
+                "private_key_pem": private_key_pem,
+                "certificate_pem": certificate_pem,
+            },
+        )
+        signing_key_id = response.get("id") or response.get("signing_key_id")
     except Exception:
-        pass  # If no supported credential exists yet, config is set via env vars
+        # Fallback: store in vc_additional_data for agents not yet running new code
+        signing_key_id = None
+        try:
+            records = await acapy_issuer_admin.get(
+                "/oid4vci/credential-supported/records"
+            )
+            for rec in records.get("results", []):
+                if rec.get("format") == "mso_mdoc":
+                    rec_id = rec.get("supported_cred_id")
+                    await acapy_issuer_admin.put(
+                        f"/oid4vci/credential-supported/records/mso-mdoc/{rec_id}",
+                        json={
+                            "signing_key_pem": private_key_pem,
+                            "signing_cert_pem": certificate_pem,
+                        },
+                    )
+                    break
+        except Exception:
+            pass
 
     yield {
         "certificate_pem": certificate_pem,
         "private_key_pem": private_key_pem,
+        "root_ca_pem": root_ca_pem,
+        "signing_key_id": signing_key_id,
     }
 
 
 @pytest_asyncio.fixture
 async def setup_verifier_trust_anchors(acapy_verifier_admin, setup_issuer_certs):
-    """Upload trust anchors to the verifier via SupportedCredential.
+    """Upload trust anchors to the ACA-Py verifier via the trust anchor registry.
 
-    Trust anchors are now stored in ``vc_additional_data.trust_anchors``
-    on ``SupportedCredential`` records with ``format="mso_mdoc"``.
-
-    Args:
-        acapy_verifier_admin: ACA-Py verifier admin controller
-        setup_issuer_certs: Issuer certificate fixture (provides the actual cert)
+    Uses the new ``POST /mso-mdoc/trust-anchors`` endpoint.  Falls back to the
+    legacy ``vc_additional_data`` approach if the endpoint is not available.
 
     Yields:
-        Dictionary with status
+        Dictionary with status.
     """
-    cert_pem = setup_issuer_certs["certificate_pem"]
+    # Use root CA as trust anchor when available; fall back to leaf cert
+    cert_pem = (
+        setup_issuer_certs.get("root_ca_pem") or setup_issuer_certs["certificate_pem"]
+    )
 
     try:
-        # Find or create an mso_mdoc SupportedCredential on the verifier
-        records = await acapy_verifier_admin.get(
-            "/oid4vci/credential-supported/records"
+        response = await acapy_verifier_admin.post(
+            "/mso-mdoc/trust-anchors",
+            json={
+                "label": "integration-test-trust-anchor",
+                "purpose": "iaca",
+                "certificate_pem": cert_pem,
+            },
         )
-        mdoc_recs = [
-            r for r in records.get("results", []) if r.get("format") == "mso_mdoc"
-        ]
+        yield {"trust_anchor_id": response.get("id")}
+    except Exception:
+        # Fallback: store in vc_additional_data (legacy approach)
+        try:
+            records = await acapy_verifier_admin.get(
+                "/oid4vci/credential-supported/records"
+            )
+            mdoc_recs = [
+                r for r in records.get("results", []) if r.get("format") == "mso_mdoc"
+            ]
 
-        if mdoc_recs:
-            rec_id = mdoc_recs[0].get("supported_cred_id")
-            existing_anchors = (
-                mdoc_recs[0].get("vc_additional_data", {}).get("trust_anchors", [])
-            )
-            if cert_pem not in existing_anchors:
-                existing_anchors.append(cert_pem)
-            await acapy_verifier_admin.put(
-                f"/oid4vci/credential-supported/records/mso-mdoc/{rec_id}",
-                json={"trust_anchors": existing_anchors},
-            )
-        else:
-            # Create a minimal mso_mdoc SupportedCredential for trust anchor storage
-            result = await acapy_verifier_admin.post(
-                "/oid4vci/credential-supported/create/mso-mdoc",
-                json={
-                    "format": "mso_mdoc",
-                    "id": "verifier-trust-store",
-                    "doctype": "org.iso.18013.5.1.mDL",
-                    "trust_anchors": [cert_pem],
-                },
-            )
-            rec_id = result.get("supported_cred_id")
-
-        yield {"supported_cred_id": rec_id}
-    except Exception as e:
-        raise RuntimeError(f"Failed to setup trust anchors: {e}") from e
+            if mdoc_recs:
+                rec_id = mdoc_recs[0].get("supported_cred_id")
+                existing_anchors = (
+                    mdoc_recs[0].get("vc_additional_data", {}).get("trust_anchors", [])
+                )
+                if cert_pem not in existing_anchors:
+                    existing_anchors.append(cert_pem)
+                await acapy_verifier_admin.put(
+                    f"/oid4vci/credential-supported/records/mso-mdoc/{rec_id}",
+                    json={"trust_anchors": existing_anchors},
+                )
+                yield {"supported_cred_id": rec_id}
+            else:
+                result = await acapy_verifier_admin.post(
+                    "/oid4vci/credential-supported/create/mso-mdoc",
+                    json={
+                        "format": "mso_mdoc",
+                        "id": "verifier-trust-store",
+                        "doctype": "org.iso.18013.5.1.mDL",
+                        "trust_anchors": [cert_pem],
+                    },
+                )
+                yield {"supported_cred_id": result.get("supported_cred_id")}
+        except Exception as e:
+            raise RuntimeError(f"Failed to setup trust anchors: {e}") from e
 
 
 @pytest_asyncio.fixture
@@ -516,6 +522,7 @@ async def setup_all_trust_anchors(
         "verifier": setup_verifier_trust_anchors,
         "credo": setup_credo_trust_anchors,
         "issuer_cert_pem": setup_issuer_certs["certificate_pem"],
+        "issuer_key_pem": setup_issuer_certs["private_key_pem"],
     }
 
 
@@ -523,51 +530,59 @@ async def setup_all_trust_anchors(
 async def setup_pki_chain_trust_anchor(acapy_verifier_admin, generated_test_certs):
     """Upload the generated root CA as trust anchor for PKI chain tests.
 
-    Uses the SupportedCredential vc_additional_data to store trust anchors.
-
-    Args:
-        acapy_verifier_admin: ACA-Py verifier admin controller
-        generated_test_certs: Generated test certificate chain
+    Uses the new ``POST /mso-mdoc/trust-anchors`` endpoint.  Falls back to
+    ``vc_additional_data`` for agents not yet running new code.
 
     Yields:
-        Dictionary with status
+        Dictionary with status.
     """
     root_ca_pem = generated_test_certs["root_ca_pem"]
 
     try:
-        records = await acapy_verifier_admin.get(
-            "/oid4vci/credential-supported/records"
+        response = await acapy_verifier_admin.post(
+            "/mso-mdoc/trust-anchors",
+            json={
+                "label": "pki-chain-trust-anchor",
+                "purpose": "iaca",
+                "certificate_pem": root_ca_pem,
+            },
         )
-        mdoc_recs = [
-            r for r in records.get("results", []) if r.get("format") == "mso_mdoc"
-        ]
+        yield {"trust_anchor_id": response.get("id")}
+    except Exception:
+        # Fallback: vc_additional_data approach
+        try:
+            records = await acapy_verifier_admin.get(
+                "/oid4vci/credential-supported/records"
+            )
+            mdoc_recs = [
+                r for r in records.get("results", []) if r.get("format") == "mso_mdoc"
+            ]
 
-        if mdoc_recs:
-            rec_id = mdoc_recs[0].get("supported_cred_id")
-            existing_anchors = (
-                mdoc_recs[0].get("vc_additional_data", {}).get("trust_anchors", [])
-            )
-            if root_ca_pem not in existing_anchors:
-                existing_anchors.append(root_ca_pem)
-            await acapy_verifier_admin.put(
-                f"/oid4vci/credential-supported/records/mso-mdoc/{rec_id}",
-                json={"trust_anchors": existing_anchors},
-            )
-        else:
-            result = await acapy_verifier_admin.post(
-                "/oid4vci/credential-supported/create/mso-mdoc",
-                json={
-                    "format": "mso_mdoc",
-                    "id": "pki-chain-trust-store",
-                    "doctype": "org.iso.18013.5.1.mDL",
-                    "trust_anchors": [root_ca_pem],
-                },
-            )
-            rec_id = result.get("supported_cred_id")
-
-        yield {"supported_cred_id": rec_id}
-    except Exception as e:
-        raise RuntimeError(f"Failed to setup PKI chain trust anchor: {e}") from e
+            if mdoc_recs:
+                rec_id = mdoc_recs[0].get("supported_cred_id")
+                existing_anchors = (
+                    mdoc_recs[0].get("vc_additional_data", {}).get("trust_anchors", [])
+                )
+                if root_ca_pem not in existing_anchors:
+                    existing_anchors.append(root_ca_pem)
+                await acapy_verifier_admin.put(
+                    f"/oid4vci/credential-supported/records/mso-mdoc/{rec_id}",
+                    json={"trust_anchors": existing_anchors},
+                )
+                yield {"supported_cred_id": rec_id}
+            else:
+                result = await acapy_verifier_admin.post(
+                    "/oid4vci/credential-supported/create/mso-mdoc",
+                    json={
+                        "format": "mso_mdoc",
+                        "id": "pki-chain-trust-store",
+                        "doctype": "org.iso.18013.5.1.mDL",
+                        "trust_anchors": [root_ca_pem],
+                    },
+                )
+                yield {"supported_cred_id": result.get("supported_cred_id")}
+        except Exception as e:
+            raise RuntimeError(f"Failed to setup PKI chain trust anchor: {e}") from e
 
 
 # =============================================================================
