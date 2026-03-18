@@ -15,7 +15,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --de
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Accept branch, tag, or commit ref to build from
-ARG ISOMDL_BRANCH=fix/python-build-system
+ARG ISOMDL_BRANCH=main
 
 RUN git clone --depth 1 --branch "${ISOMDL_BRANCH}" \
     https://github.com/Indicio-tech/isomdl-uniffi.git /build/isomdl-uniffi
