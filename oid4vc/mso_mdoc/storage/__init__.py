@@ -19,7 +19,9 @@ Storage Types:
 """
 
 from datetime import UTC, datetime
+import hashlib
 import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from acapy_agent.core.profile import Profile, ProfileSession
@@ -231,9 +233,14 @@ class MdocStorageManager:
         key_id: str,
         metadata: Optional[Dict] = None,
     ) -> None:
-        """Store a PEM certificate."""
+        """Store a PEM certificate and auto-register it as a trust anchor."""
         await certificates.store_certificate(
             session, cert_id, certificate_pem, key_id, metadata
+        )
+        # Automatically register every cert in the PEM chain as a trust anchor
+        # so the trust registry stays in sync without manual steps.
+        await self.auto_register_trust_anchors(
+            session, certificate_pem, source="cert-store"
         )
 
     async def get_certificate(
@@ -364,3 +371,57 @@ class MdocStorageManager:
     async def delete_trust_anchor(self, session: ProfileSession, anchor_id: str) -> bool:
         """Delete a trust anchor by ID."""
         return await trust_anchors.delete_trust_anchor(session, anchor_id)
+
+    async def auto_register_trust_anchors(
+        self,
+        session: ProfileSession,
+        certificate_pem: str,
+        source: str = "auto",
+    ) -> List[str]:
+        """Parse a PEM (possibly a chain) and register each cert as a trust anchor.
+
+        Duplicate certificates (by PEM content) are silently skipped so this
+        method is idempotent.
+
+        Args:
+            session: Active database session
+            certificate_pem: One or more concatenated PEM certificate blocks
+            source: Label for metadata (e.g. ``"key-generation"``)
+
+        Returns:
+            List of anchor IDs that were newly created.
+        """
+        _PEM_RE = re.compile(
+            r"-----BEGIN CERTIFICATE-----[A-Za-z0-9+/=\s]+?"
+            r"-----END CERTIFICATE-----\n?",
+            re.DOTALL,
+        )
+        individual_pems = _PEM_RE.findall(certificate_pem)
+        if not individual_pems:
+            return []
+
+        # Fetch existing trust anchor PEMs to avoid duplicates
+        existing_pems = set(await trust_anchors.get_all_trust_anchor_pems(session))
+
+        created: List[str] = []
+        for pem in individual_pems:
+            normalized = pem.strip()
+            if normalized in existing_pems:
+                continue
+            # Deterministic-ish anchor ID based on cert fingerprint
+            fingerprint = hashlib.sha256(normalized.encode()).hexdigest()[:12]
+            anchor_id = f"auto-{source}-{fingerprint}"
+            try:
+                await trust_anchors.store_trust_anchor(
+                    session,
+                    anchor_id=anchor_id,
+                    certificate_pem=normalized,
+                    metadata={"source": source, "auto_registered": True},
+                )
+                created.append(anchor_id)
+                existing_pems.add(normalized)
+            except Exception:
+                LOGGER.debug(
+                    "Skipping duplicate trust anchor %s", anchor_id, exc_info=True
+                )
+        return created

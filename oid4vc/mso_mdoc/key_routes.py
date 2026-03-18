@@ -119,13 +119,15 @@ async def list_certificates(request: web.BaseRequest):
     """List all stored mDoc certificates.
 
     Query parameters:
-        include_pem: If "true", include the certificate_pem field in results
+        exclude_pem: If "true", omit the certificate_pem field from results.
+            PEMs are included by default so callers can use cert data for
+            trust-registry automation without extra round-trips.
     """
     context: AdminRequestContext = request["context"]
     storage_manager = MdocStorageManager(context.profile)
 
-    # Check for include_pem query parameter
-    include_pem = request.query.get("include_pem", "").lower() == "true"
+    # PEMs are now included by default; pass exclude_pem=true to omit them.
+    include_pem = request.query.get("exclude_pem", "").lower() != "true"
 
     try:
         async with context.profile.session() as session:
