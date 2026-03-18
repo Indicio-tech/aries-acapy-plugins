@@ -461,6 +461,18 @@ async def generate_default_keys_and_certs(
         session, "default_certificate", {"cert_id": cert_id}
     )
 
+    # Auto-register the certificate as a trust anchor so verifiers
+    # immediately have the issuer cert in their trust store.
+    anchor_ids = await storage_manager.auto_register_trust_anchors(
+        session, cert_pem, source="key-generation"
+    )
+    if anchor_ids:
+        LOGGER.info(
+            "Auto-registered %d trust anchor(s) from generated certificate: %s",
+            len(anchor_ids),
+            anchor_ids,
+        )
+
     LOGGER.info("Generated default mDoc key: %s and certificate: %s", key_id, cert_id)
 
     return {
