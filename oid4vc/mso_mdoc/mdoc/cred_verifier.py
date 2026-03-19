@@ -11,7 +11,7 @@ from acapy_agent.core.profile import Profile
 
 from oid4vc.cred_processor import CredVerifier, VerifyResult
 
-from .utils import flatten_trust_anchors
+from .utils import check_status_list_claim, flatten_trust_anchors
 
 LOGGER = logging.getLogger(__name__)
 
@@ -185,6 +185,23 @@ class MsoMdocCredVerifier(CredVerifier):
 
                 if verification_result.verified:
                     claims = _extract_mdoc_claims(mdoc)
+
+                    # Check IETF Token Status List revocation if embedded in claims
+                    revocation_error = await check_status_list_claim(claims)
+                    if revocation_error:
+                        LOGGER.warning(
+                            "mDoc credential rejected — credential revoked: %s",
+                            revocation_error,
+                        )
+                        return VerifyResult(
+                            verified=False,
+                            payload={
+                                "error": revocation_error,
+                                "doctype": mdoc.doctype(),
+                                "id": str(mdoc.id()),
+                            },
+                        )
+
                     payload = {
                         "status": "verified",
                         "doctype": mdoc.doctype(),

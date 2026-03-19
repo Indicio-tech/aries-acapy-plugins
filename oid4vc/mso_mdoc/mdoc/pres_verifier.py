@@ -13,7 +13,7 @@ from oid4vc.cred_processor import PresVerifier, VerifyResult
 from oid4vc.did_utils import retrieve_or_create_did_jwk
 from oid4vc.models.presentation import OID4VPPresentation
 
-from .utils import flatten_trust_anchors
+from .utils import check_status_list_claim, flatten_trust_anchors
 from .cred_verifier import PreverifiedMdocClaims
 from .mdoc_item import (
     _decode_presentation_bytes,
@@ -286,6 +286,21 @@ class MsoMdocPresVerifier(PresVerifier):
                     except Exception as e:
                         LOGGER.warning("Failed to extract claims: %s", e)
                         claims = {}
+
+                    # Check IETF Token Status List revocation if embedded in claims
+                    revocation_error = await check_status_list_claim(claims)
+                    if revocation_error:
+                        LOGGER.warning(
+                            "mDoc presentation rejected — credential revoked: %s",
+                            revocation_error,
+                        )
+                        return VerifyResult(
+                            verified=False,
+                            payload={
+                                "error": revocation_error,
+                                "docType": verified_data.doc_type,
+                            },
+                        )
 
                     payload = {
                         "status": "verified",

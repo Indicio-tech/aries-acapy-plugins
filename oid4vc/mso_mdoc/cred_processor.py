@@ -80,8 +80,10 @@ async def _get_trust_anchors(
         # 1. Query TrustAnchorRecord (new registry approach)
         records = await TrustAnchorRecord.query(session, tag_filter={"purpose": "iaca"})
         for record in records:
-            # Include if wildcard (no doctype) or doctype matches
-            if record.doctype is None or record.doctype == doctype:
+            # When doctype is unspecified, include all anchors (no filtering).
+            # When doctype is specified, include only exact matches and wildcards
+            # (records stored without a doctype that apply to all credential types).
+            if doctype is None or record.doctype is None or record.doctype == doctype:
                 if record.certificate_pem:
                     anchors.append(record.certificate_pem)
 
