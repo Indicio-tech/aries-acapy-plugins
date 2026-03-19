@@ -23,10 +23,7 @@ class TestMsoMdocCredProcessor:
         supported = MagicMock(spec=SupportedCredential)
         supported.format = "mso_mdoc"
         supported.format_data = {"doctype": "org.iso.18013.5.1.mDL"}
-        supported.vc_additional_data = {
-            "signing_key_pem": "test-priv-key",
-            "signing_cert_pem": "test-cert",
-        }
+        supported.vc_additional_data = {}
         return supported
 
     @pytest.fixture
@@ -133,11 +130,17 @@ class TestMsoMdocCredProcessor:
         mock_context = MagicMock()
 
         # Mock signer
+        key_rec = MagicMock()
+        key_rec.private_key_pem = "test-priv-key"
+        key_rec.certificate_pem = "test-cert"
+
         with (
             patch("mso_mdoc.cred_processor.isomdl_mdoc_sign") as mock_sign,
+            patch("mso_mdoc.cred_processor.check_certificate_not_expired"),
             patch(
-                "mso_mdoc.cred_processor.check_certificate_not_expired"
-            ),  # bypass cert validation for fake PEM
+                "mso_mdoc.cred_processor.MdocSigningKeyRecord.query",
+                AsyncMock(return_value=[key_rec]),
+            ),
         ):
             mock_sign.return_value = "mock_credential_string"
 

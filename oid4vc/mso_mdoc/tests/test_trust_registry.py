@@ -325,27 +325,6 @@ class TestResolveSigningKey:
         assert result["private_key_pem"] == "PRIV_KEY_FROM_RECORD"
         assert result["certificate_pem"] == "CERT_FROM_RECORD"
 
-    @pytest.mark.asyncio
-    async def test_resolves_from_vc_additional_data_legacy(self, processor, profile):
-        """Falls back to signing_key_pem in vc_additional_data."""
-        from oid4vc.models.supported_cred import SupportedCredential
-
-        # Use a fresh profile so no MdocSigningKeyRecord for this doctype exists
-        fresh_profile = await create_test_profile({"admin.admin_insecure_mode": True})
-
-        supported = SupportedCredential(
-            format="mso_mdoc",
-            format_data={"doctype": "org.example.legacy"},
-            vc_additional_data={
-                "signing_key_pem": "LEGACY_KEY",
-                "signing_cert_pem": "LEGACY_CERT",
-            },
-        )
-        result = await processor._resolve_signing_key(supported, fresh_profile)
-
-        assert result["private_key_pem"] == "LEGACY_KEY"
-        assert result["certificate_pem"] == "LEGACY_CERT"
-
 
 # ---------------------------------------------------------------------------
 # _assign_status_entry processor method tests

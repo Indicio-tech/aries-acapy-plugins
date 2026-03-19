@@ -8,7 +8,6 @@ verification inside the OID4VCI plugin framework.
 import base64
 import json
 import logging
-import os
 import re
 from datetime import UTC, datetime
 
@@ -301,10 +300,6 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
         1. ``signing_key_id`` in ``vc_additional_data`` — fetch a specific
            ``MdocSigningKeyRecord`` by ID.
         2. ``MdocSigningKeyRecord`` query by doctype — first matching record.
-        3. ``signing_key_pem`` / ``signing_cert_pem`` in ``vc_additional_data``
-           (legacy / backward-compat).
-        4. Environment variables ``OID4VC_MDOC_SIGNING_KEY_PATH`` and
-           ``OID4VC_MDOC_SIGNING_CERT_PATH``.
 
         Returns:
             Dict with ``private_key_pem`` and ``certificate_pem``.
@@ -349,50 +344,12 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                             }
             except Exception as exc:
                 LOGGER.debug(
-                    "MdocSigningKeyRecord query failed (will try legacy path): %s", exc
+                    "MdocSigningKeyRecord query failed: %s", exc
                 )
-
-        # 3. Legacy: signing_key_pem / signing_cert_pem in vc_additional_data
-        private_key_pem = additional.get("signing_key_pem")
-        certificate_pem = additional.get("signing_cert_pem")
-
-        if private_key_pem and certificate_pem:
-            return {
-                "private_key_pem": private_key_pem,
-                "certificate_pem": certificate_pem,
-            }
-
-        # 4. Environment variables
-        key_path = os.getenv("OID4VC_MDOC_SIGNING_KEY_PATH")
-        cert_path = os.getenv("OID4VC_MDOC_SIGNING_CERT_PATH")
-
-        if (
-            key_path
-            and cert_path
-            and os.path.exists(key_path)
-            and os.path.exists(cert_path)
-        ):
-            try:
-                with open(key_path) as f:
-                    private_key_pem = f.read()
-                with open(cert_path) as f:
-                    certificate_pem = f.read()
-                return {
-                    "private_key_pem": private_key_pem,
-                    "certificate_pem": certificate_pem,
-                }
-            except Exception as e:
-                raise CredProcessorError(
-                    f"Failed to load signing key from {key_path!r}: {e}"
-                ) from e
 
         raise CredProcessorError(
             "No mDoc signing key configured. "
-            "Create a MdocSigningKeyRecord via POST /mso-mdoc/signing-keys, "
-            "or provide signing_key_pem and signing_cert_pem in the supported "
-            "credential's vc_additional_data, "
-            "or set OID4VC_MDOC_SIGNING_KEY_PATH and OID4VC_MDOC_SIGNING_CERT_PATH "
-            "environment variables."
+            "Create a MdocSigningKeyRecord via POST /mso-mdoc/signing-keys."
         )
 
     async def _assign_status_entry(

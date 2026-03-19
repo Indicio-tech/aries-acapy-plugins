@@ -22,7 +22,7 @@ HOW TO RUN:
 import sys
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -215,15 +215,12 @@ class TestIssueRejectsExpiredCertificate:
         ex.state = "offer_created"
         return ex
 
-    def _make_supported(self, cert_pem=None, key_pem=None):
+    def _make_supported(self):
         sup = MagicMock()
         sup.format = "mso_mdoc"
         sup.format_data = {"doctype": "org.iso.18013.5.1.mDL"}
         sup.identifier = "mDL"
-        sup.vc_additional_data = {
-            "signing_key_pem": key_pem,
-            "signing_cert_pem": cert_pem,
-        }
+        sup.vc_additional_data = {}
         return sup
 
     def _make_pop(self):
@@ -244,15 +241,23 @@ class TestIssueRejectsExpiredCertificate:
         """issue() must raise CredProcessorError when the cert is expired."""
         private_key_pem, expired_cert_pem = _expired_cert_pem()
 
+        key_rec = MagicMock()
+        key_rec.private_key_pem = private_key_pem
+        key_rec.certificate_pem = expired_cert_pem
+
         profile, _ = _make_profile()
         context = self._make_admin_context(profile)
-        supported = self._make_supported(
-            cert_pem=expired_cert_pem, key_pem=private_key_pem
-        )
+        supported = self._make_supported()
         ex_record = self._make_ex_record()
         pop = self._make_pop()
 
-        with patch("mso_mdoc.cred_processor.isomdl_mdoc_sign") as mock_sign:
+        with (
+            patch("mso_mdoc.cred_processor.isomdl_mdoc_sign") as mock_sign,
+            patch(
+                "mso_mdoc.cred_processor.MdocSigningKeyRecord.query",
+                AsyncMock(return_value=[key_rec]),
+            ),
+        ):
             processor = MsoMdocCredProcessor()
 
             with pytest.raises(CredProcessorError, match=r"(?i)expir"):
@@ -272,15 +277,25 @@ class TestIssueRejectsExpiredCertificate:
         """issue() must NOT raise when the certificate is currently valid."""
         private_key_pem, valid_cert_pem = _valid_cert_pem()
 
+        key_rec = MagicMock()
+        key_rec.private_key_pem = private_key_pem
+        key_rec.certificate_pem = valid_cert_pem
+
         profile, _ = _make_profile()
         context = self._make_admin_context(profile)
-        supported = self._make_supported(cert_pem=valid_cert_pem, key_pem=private_key_pem)
+        supported = self._make_supported()
         ex_record = self._make_ex_record()
         pop = self._make_pop()
 
-        with patch(
-            "mso_mdoc.cred_processor.isomdl_mdoc_sign",
-            return_value="mock-mdoc-b64",
+        with (
+            patch(
+                "mso_mdoc.cred_processor.isomdl_mdoc_sign",
+                return_value="mock-mdoc-b64",
+            ),
+            patch(
+                "mso_mdoc.cred_processor.MdocSigningKeyRecord.query",
+                AsyncMock(return_value=[key_rec]),
+            ),
         ):
             processor = MsoMdocCredProcessor()
 
