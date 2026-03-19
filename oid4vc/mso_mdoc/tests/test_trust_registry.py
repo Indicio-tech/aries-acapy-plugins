@@ -382,9 +382,7 @@ class TestAssignStatusEntry:
         """No status_list_def_id in vc_additional_data → returns None."""
         from oid4vc.models.supported_cred import SupportedCredential
 
-        supported = SupportedCredential(
-            format="mso_mdoc", vc_additional_data={}
-        )
+        supported = SupportedCredential(format="mso_mdoc", vc_additional_data={})
         result = await processor._assign_status_entry(context, supported, "org.example")
         assert result is None
 

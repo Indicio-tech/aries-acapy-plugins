@@ -479,9 +479,10 @@ async def setup_credo_trust_anchors(credo_client, setup_issuer_certs):
         # Credo validates the full certificate chain, so it needs the root CA
         # rather than the leaf DS certificate.  Fall back to the leaf cert for
         # self-signed setups that don't generate a separate root CA.
-        trust_anchor_pem = setup_issuer_certs.get(
-            "root_ca_pem"
-        ) or setup_issuer_certs["certificate_pem"]
+        trust_anchor_pem = (
+            setup_issuer_certs.get("root_ca_pem")
+            or setup_issuer_certs["certificate_pem"]
+        )
         response = await credo_client.post(
             "/x509/trust-anchors",
             json={

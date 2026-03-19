@@ -19,7 +19,9 @@ from ..mdoc.utils import check_status_list_claim
 # ---------------------------------------------------------------------------
 
 
-def _build_status_list_jwt(bits: int = 1, revoked_indices: list[int] | None = None) -> str:
+def _build_status_list_jwt(
+    bits: int = 1, revoked_indices: list[int] | None = None
+) -> str:
     """Return an unsigned (alg=none) IETF Token Status List JWT.
 
     Args:
@@ -54,9 +56,7 @@ def _build_status_list_jwt(bits: int = 1, revoked_indices: list[int] | None = No
         .decode()
         .rstrip("=")
     )
-    body_b64 = (
-        base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
-    )
+    body_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
     return f"{header_b64}.{body_b64}."
 
 

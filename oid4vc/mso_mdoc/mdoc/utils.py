@@ -219,4 +219,3 @@ async def check_status_list_claim(claims: dict) -> Optional[str]:
         )
 
     return None  # Bit is 0 → credential is valid
-
