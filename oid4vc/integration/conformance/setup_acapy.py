@@ -517,56 +517,26 @@ async def upload_trust_anchor(
     *,
     anchor_type: str = "mso_mdoc",
     supported_cred_id: str | None = None,
+    label: str | None = None,
 ) -> None:
     """Upload a trust anchor certificate to an ACA-Py instance.
 
-    Trust anchors are stored in SupportedCredential.vc_additional_data.
-    If supported_cred_id is provided, the anchor is added to that record.
-    Otherwise, all mso_mdoc SupportedCredential records are updated.
+    Trust anchors are stored as TrustAnchorRecord objects in the Askar wallet
+    and retrieved at verification time via the /mso-mdoc/trust-anchors registry.
+    The supported_cred_id parameter is accepted for backward compatibility but
+    is no longer used; anchors are tenant-scoped, not credential-scoped.
     """
     cert_str = cert_pem.decode()
-
-    if supported_cred_id:
-        # Update a specific supported credential record
-        result = await admin_get(
-            client, base, f"/oid4vci/credential-supported/records/{supported_cred_id}"
-        )
-        existing_anchors = result.get("vc_additional_data", {}).get("trust_anchors", [])
-        if cert_str not in existing_anchors:
-            existing_anchors.append(cert_str)
-        await admin_put(
-            client,
-            base,
-            f"/oid4vci/credential-supported/records/mso-mdoc/{supported_cred_id}",
-            {
-                "format": result.get("format"),
-                "id": result.get("identifier"),
-                "doctype": result.get("format_data", {}).get("doctype"),
-                "trust_anchors": existing_anchors,
-            },
-        )
-    else:
-        # Find all mso_mdoc supported credentials and add the anchor to each
-        records = await admin_get(client, base, "/oid4vci/credential-supported/records")
-        for rec in records.get("results", []):
-            if rec.get("format") == "mso_mdoc":
-                rec_id = rec.get("supported_cred_id")
-                existing_anchors = rec.get("vc_additional_data", {}).get(
-                    "trust_anchors", []
-                )
-                if cert_str not in existing_anchors:
-                    existing_anchors.append(cert_str)
-                await admin_put(
-                    client,
-                    base,
-                    f"/oid4vci/credential-supported/records/mso-mdoc/{rec_id}",
-                    {
-                        "format": rec.get("format"),
-                        "id": rec.get("identifier"),
-                        "doctype": rec.get("format_data", {}).get("doctype"),
-                        "trust_anchors": existing_anchors,
-                    },
-                )
+    await admin_post(
+        client,
+        base,
+        "/mso-mdoc/trust-anchors",
+        {
+            "certificate_pem": cert_str,
+            "purpose": "iaca",
+            "label": label or anchor_type,
+        },
+    )
     logger.info(f"Uploaded trust anchor to {base} ({anchor_type})")
 
 
