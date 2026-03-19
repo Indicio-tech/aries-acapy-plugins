@@ -287,24 +287,6 @@ class TestGetTrustAnchors:
         anchors = await _get_trust_anchors(profile)
         assert "READER_CERT_EXCL" not in anchors
 
-    @pytest.mark.asyncio
-    async def test_falls_back_to_vc_additional_data(self, profile):
-        """When no TrustAnchorRecord exists, falls back to SupportedCredential."""
-        # Use a brand-new isolated profile so no TrustAnchorRecord records exist
-        from oid4vc.models.supported_cred import SupportedCredential
-
-        fresh_profile = await create_test_profile({"admin.admin_insecure_mode": True})
-
-        sc = SupportedCredential(
-            format="mso_mdoc",
-            vc_additional_data={"trust_anchors": ["LEGACY_CERT"]},
-        )
-        async with fresh_profile.session() as session:
-            await sc.save(session, reason="fallback test")
-
-        anchors = await _get_trust_anchors(fresh_profile)
-        assert "LEGACY_CERT" in anchors
-
 
 # ---------------------------------------------------------------------------
 # _resolve_signing_key processor method tests

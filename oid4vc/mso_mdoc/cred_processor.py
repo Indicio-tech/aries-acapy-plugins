@@ -69,15 +69,10 @@ async def _get_trust_anchors(
     Queries ``TrustAnchorRecord`` records with ``purpose="iaca"``.  When
     *doctype* is provided, records whose ``doctype`` tag matches OR whose
     ``doctype`` tag is ``None`` ("wildcard") are both included.
-
-    Falls back to reading from ``SupportedCredential.vc_additional_data`` for
-    backward compatibility with configurations created before the trust
-    registry was introduced.
     """
     anchors: List[str] = []
 
     async with profile.session() as session:
-        # 1. Query TrustAnchorRecord (new registry approach)
         records = await TrustAnchorRecord.query(session, tag_filter={"purpose": "iaca"})
         for record in records:
             # When doctype is unspecified, include all anchors (no filtering).
@@ -86,17 +81,6 @@ async def _get_trust_anchors(
             if doctype is None or record.doctype is None or record.doctype == doctype:
                 if record.certificate_pem:
                     anchors.append(record.certificate_pem)
-
-        # 2. Backward-compat: also scan SupportedCredential.vc_additional_data
-        if not anchors:
-            sc_records = await SupportedCredential.query(
-                session, tag_filter={"format": "mso_mdoc"}
-            )
-            for sc in sc_records:
-                additional = sc.vc_additional_data or {}
-                legacy_anchors = additional.get("trust_anchors", [])
-                if isinstance(legacy_anchors, list):
-                    anchors.extend(legacy_anchors)
 
     return anchors
 
