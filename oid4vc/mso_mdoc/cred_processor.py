@@ -343,9 +343,7 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                                 "certificate_pem": key_record.certificate_pem,
                             }
             except Exception as exc:
-                LOGGER.debug(
-                    "MdocSigningKeyRecord query failed: %s", exc
-                )
+                LOGGER.debug("MdocSigningKeyRecord query failed: %s", exc)
 
         raise CredProcessorError(
             "No mDoc signing key configured. "
