@@ -250,12 +250,12 @@ async def mdoc_offer_did_based(
 async def mdoc_offer_verification_method(
     acapy_issuer: httpx.AsyncClient,
     mdoc_credential_config: dict[str, Any],
-    mdoc_issuer_key: dict[str, Any],  # noqa: ARG001 - ensures signing key is uploaded
+    setup_issuer_certs,  # noqa: ARG001 - ensures signing key with IACA cert is present
 ) -> str:
     """Create an mDOC credential offer using DID-based signing.
 
-    The signing key and certificate are stored in the SupportedCredential's
-    vc_additional_data (set up by the mdoc_issuer_key fixture).
+    Uses setup_issuer_certs so the signing key is the same one whose root CA
+    is registered as a trust anchor on both Credo and the ACA-Py verifier.
     """
     # Create credential subject with mDL claims
     credential_subject = {
