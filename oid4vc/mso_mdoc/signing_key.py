@@ -114,7 +114,10 @@ class MdocSigningKeyRecord(BaseRecord):
         """Derive the public key PEM from the stored private key."""
         if not self.private_key_pem:
             return None
-        return public_key_pem_from_private(self.private_key_pem)
+        try:
+            return public_key_pem_from_private(self.private_key_pem)
+        except (ValueError, TypeError):
+            return None
 
     @property
     def record_value(self) -> dict:
