@@ -28,7 +28,15 @@ from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from marshmallow import fields
 
 from .trust_anchor import TrustAnchorRecord, TrustAnchorRecordSchema
-from .signing_key import MdocSigningKeyRecord, MdocSigningKeyRecordSchema
+from .signing_key import (
+    MdocSigningKeyRecord,
+    MdocSigningKeyRecordSchema,
+    MdocSigningKeyCreateSchema,
+    MdocSigningKeyImportSchema,
+    MdocSigningKeyUpdateSchema,
+    generate_ec_p256_key_pem,
+    validate_cert_matches_private_key,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -194,25 +202,126 @@ async def delete_trust_anchor(request: web.Request):
 # ---------------------------------------------------------------------------
 
 
-@docs(tags=["mso-mdoc"], summary="Create a new mDoc signing key")
-@request_schema(MdocSigningKeyRecordSchema())
+@docs(tags=["mso-mdoc"], summary="Generate a new mDoc signing key")
+@request_schema(MdocSigningKeyCreateSchema())
 @response_schema(MdocSigningKeyRecordSchema(), 200)
 @tenant_authentication
 async def create_signing_key(request: web.Request):
-    """Create and persist a new MdocSigningKeyRecord."""
+    """Generate an EC P-256 key pair and persist a new MdocSigningKeyRecord.
+
+    The private key is generated server-side and never exposed via the API.
+    The response includes the derived ``public_key_pem`` so the caller can
+    submit it to an IACA for certificate signing.  The certificate can be
+    attached later via ``PUT /mso-mdoc/signing-keys/{id}``.
+    """
     context: AdminRequestContext = request["context"]
     body = await request.json()
+
+    private_key_pem = generate_ec_p256_key_pem()
+    certificate_pem = body.get("certificate_pem")
+
+    if certificate_pem:
+        try:
+            validate_cert_matches_private_key(private_key_pem, certificate_pem)
+        except ValueError as err:
+            raise web.HTTPBadRequest(reason=str(err)) from err
 
     record = MdocSigningKeyRecord(
         doctype=body.get("doctype"),
         label=body.get("label"),
-        private_key_pem=body.get("private_key_pem"),
-        certificate_pem=body.get("certificate_pem"),
+        private_key_pem=private_key_pem,
+        certificate_pem=certificate_pem,
     )
 
     try:
         async with context.profile.session() as session:
-            await record.save(session, reason="Create signing key")
+            await record.save(session, reason="Generate signing key")
+    except (StorageError, BaseModelError) as err:
+        raise web.HTTPBadRequest(reason=err.roll_up) from err
+
+    return web.json_response(record.serialize())
+
+
+@docs(
+    tags=["mso-mdoc"],
+    summary="Import an existing mDoc signing key",
+)
+@request_schema(MdocSigningKeyImportSchema())
+@response_schema(MdocSigningKeyRecordSchema(), 200)
+@tenant_authentication
+async def import_signing_key(request: web.Request):
+    """Import a pre-existing EC signing key and optional certificate.
+
+    Use this for keys already registered with a public trust registry
+    (IACA, etc.) that cannot be regenerated.
+    """
+    context: AdminRequestContext = request["context"]
+    body = await request.json()
+
+    private_key_pem = body.get("private_key_pem")
+    if not private_key_pem:
+        raise web.HTTPBadRequest(reason="private_key_pem is required for import")
+
+    certificate_pem = body.get("certificate_pem")
+    if certificate_pem:
+        try:
+            validate_cert_matches_private_key(private_key_pem, certificate_pem)
+        except ValueError as err:
+            raise web.HTTPBadRequest(reason=str(err)) from err
+
+    record = MdocSigningKeyRecord(
+        doctype=body.get("doctype"),
+        label=body.get("label"),
+        private_key_pem=private_key_pem,
+        certificate_pem=certificate_pem,
+    )
+
+    try:
+        async with context.profile.session() as session:
+            await record.save(session, reason="Import signing key")
+    except (StorageError, BaseModelError) as err:
+        raise web.HTTPBadRequest(reason=err.roll_up) from err
+
+    return web.json_response(record.serialize())
+
+
+@docs(tags=["mso-mdoc"], summary="Update an mDoc signing key record")
+@match_info_schema(SigningKeyIdMatchSchema())
+@request_schema(MdocSigningKeyUpdateSchema())
+@response_schema(MdocSigningKeyRecordSchema(), 200)
+@tenant_authentication
+async def update_signing_key(request: web.Request):
+    """Update a MdocSigningKeyRecord (attach certificate, change label, etc.).
+
+    If ``certificate_pem`` is provided, the certificate's public key is
+    validated against the stored private key to prevent mismatched pairs.
+    """
+    context: AdminRequestContext = request["context"]
+    signing_key_id = request.match_info["signing_key_id"]
+    body = await request.json()
+
+    try:
+        async with context.profile.session() as session:
+            record = await MdocSigningKeyRecord.retrieve_by_id(session, signing_key_id)
+
+            certificate_pem = body.get("certificate_pem")
+            if certificate_pem and record.private_key_pem:
+                try:
+                    validate_cert_matches_private_key(
+                        record.private_key_pem, certificate_pem
+                    )
+                except ValueError as err:
+                    raise web.HTTPBadRequest(reason=str(err)) from err
+                record.certificate_pem = certificate_pem
+
+            if "doctype" in body:
+                record.doctype = body["doctype"]
+            if "label" in body:
+                record.label = body["label"]
+
+            await record.save(session, reason="Update signing key")
+    except StorageNotFoundError as err:
+        raise web.HTTPNotFound(reason=err.roll_up) from err
     except (StorageError, BaseModelError) as err:
         raise web.HTTPBadRequest(reason=err.roll_up) from err
 
@@ -295,8 +404,10 @@ async def register(app: web.Application):
             web.delete("/mso-mdoc/trust-anchors/{trust_anchor_id}", delete_trust_anchor),
             # Signing key endpoints
             web.post("/mso-mdoc/signing-keys", create_signing_key),
+            web.post("/mso-mdoc/signing-keys/import", import_signing_key),
             web.get("/mso-mdoc/signing-keys", list_signing_keys),
             web.get("/mso-mdoc/signing-keys/{signing_key_id}", get_signing_key),
+            web.put("/mso-mdoc/signing-keys/{signing_key_id}", update_signing_key),
             web.delete("/mso-mdoc/signing-keys/{signing_key_id}", delete_signing_key),
         ]
     )

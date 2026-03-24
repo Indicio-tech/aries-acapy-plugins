@@ -121,8 +121,6 @@ class BaseMdocTest(BaseOID4VCTest):
         return CredentialFlowHelper(
             acapy_issuer_admin,
             credo_client,
-            signing_key_pem=setup_issuer_certs["private_key_pem"],
-            signing_cert_pem=setup_issuer_certs["certificate_pem"],
         )
 
 

@@ -69,24 +69,6 @@ class MsoMdocSupportedCredCreateReq(OpenAPISchema):
             "description": "PEM-encoded X.509 root CA certificates for verification.",
         },
     )
-    signing_key_pem = fields.Str(
-        required=False,
-        metadata={
-            "description": (
-                "PEM-encoded EC private key for credential signing. "
-                "Alternative to OID4VC_MDOC_SIGNING_KEY_PATH env var."
-            ),
-        },
-    )
-    signing_cert_pem = fields.Str(
-        required=False,
-        metadata={
-            "description": (
-                "PEM-encoded X.509 certificate for credential signing. "
-                "Alternative to OID4VC_MDOC_SIGNING_CERT_PATH env var."
-            ),
-        },
-    )
     signing_key_id = fields.Str(
         required=False,
         metadata={
@@ -152,8 +134,6 @@ class MsoMdocSupportedCredUpdateReq(OpenAPISchema):
             "description": "PEM-encoded X.509 root CA certificates for verification.",
         },
     )
-    signing_key_pem = fields.Str(required=False)
-    signing_cert_pem = fields.Str(required=False)
     signing_key_id = fields.Str(
         required=False,
         metadata={
@@ -211,8 +191,6 @@ async def supported_credential_create(request: web.Request):
 
     vc_additional_data = {}
     vc_additional_data["trust_anchors"] = body.pop("trust_anchors", None)
-    vc_additional_data["signing_key_pem"] = body.pop("signing_key_pem", None)
-    vc_additional_data["signing_cert_pem"] = body.pop("signing_cert_pem", None)
     vc_additional_data["signing_key_id"] = body.pop("signing_key_id", None)
     vc_additional_data["status_list_def_id"] = body.pop("status_list_def_id", None)
     vc_additional_data["status_list_base_uri"] = body.pop("status_list_base_uri", None)
@@ -282,14 +260,6 @@ async def supported_cred_update_helper(
         vc_additional_data["trust_anchors"] = body.pop("trust_anchors")
     else:
         body.pop("trust_anchors", None)
-    if "signing_key_pem" in body:
-        vc_additional_data["signing_key_pem"] = body.pop("signing_key_pem")
-    else:
-        body.pop("signing_key_pem", None)
-    if "signing_cert_pem" in body:
-        vc_additional_data["signing_cert_pem"] = body.pop("signing_cert_pem")
-    else:
-        body.pop("signing_cert_pem", None)
     if "signing_key_id" in body:
         vc_additional_data["signing_key_id"] = body.pop("signing_key_id")
     else:

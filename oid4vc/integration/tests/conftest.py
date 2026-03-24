@@ -151,10 +151,20 @@ def _get_name(cn: str) -> x509.Name:
     )
 
 
-def _add_iaca_extensions(builder, key, issuer_key, is_ca=True, is_root=False):
+def _get_public_key(key):
+    """Get public key from a private key or return the key if already public."""
+    if hasattr(key, "public_key"):
+        return key.public_key()
+    return key
+
+
+def _add_iaca_extensions(
+    builder, key, issuer_key, is_ca=True, is_root=False, path_length=None
+):
     """Add IACA-compliant extensions to certificate builder."""
     if is_ca:
-        path_length = 1 if is_root else 0
+        if path_length is None:
+            path_length = 1 if is_root else 0
         builder = builder.add_extension(
             x509.BasicConstraints(ca=True, path_length=path_length), critical=True
         )
@@ -194,12 +204,14 @@ def _add_iaca_extensions(builder, key, issuer_key, is_ca=True, is_root=False):
 
     # Subject Key Identifier
     builder = builder.add_extension(
-        x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False
+        x509.SubjectKeyIdentifier.from_public_key(_get_public_key(key)), critical=False
     )
 
     # Authority Key Identifier
     builder = builder.add_extension(
-        x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_key.public_key()),
+        x509.AuthorityKeyIdentifier.from_issuer_public_key(
+            _get_public_key(issuer_key)
+        ),
         critical=False,
     )
 
@@ -231,8 +243,15 @@ def _add_iaca_extensions(builder, key, issuer_key, is_ca=True, is_root=False):
     return builder
 
 
-def _generate_root_ca(key):
-    """Generate a self-signed root CA certificate."""
+def _generate_root_ca(key, path_length=0):
+    """Generate a self-signed root CA certificate.
+
+    Args:
+        key: EC private key for the root CA.
+        path_length: BasicConstraints pathLenConstraint.
+            Use 0 when the root directly signs leaf DS certs (no intermediate).
+            Use 1 when an intermediate CA is used.
+    """
     name = _get_name("Test Root CA")
     builder = x509.CertificateBuilder()
     builder = builder.subject_name(name)
@@ -241,7 +260,9 @@ def _generate_root_ca(key):
     builder = builder.not_valid_after(datetime.now(UTC) + timedelta(days=365))
     builder = builder.serial_number(x509.random_serial_number())
     builder = builder.public_key(key.public_key())
-    builder = _add_iaca_extensions(builder, key, key, is_ca=True, is_root=True)
+    builder = _add_iaca_extensions(
+        builder, key, key, is_ca=True, is_root=True, path_length=path_length
+    )
     return builder.sign(key, hashes.SHA256())
 
 
@@ -260,7 +281,10 @@ def _generate_intermediate_ca(key, issuer_key, issuer_name):
 
 
 def _generate_leaf_ds(key, issuer_key, issuer_name):
-    """Generate a leaf document signer certificate."""
+    """Generate a leaf document signer certificate.
+
+    ``key`` may be either a private key or a public key object.
+    """
     name = _get_name("Test Leaf DS")
     builder = x509.CertificateBuilder()
     builder = builder.subject_name(name)
@@ -268,7 +292,7 @@ def _generate_leaf_ds(key, issuer_key, issuer_name):
     builder = builder.not_valid_before(datetime.now(UTC))
     builder = builder.not_valid_after(datetime.now(UTC) + timedelta(days=365))
     builder = builder.serial_number(x509.random_serial_number())
-    builder = builder.public_key(key.public_key())
+    builder = builder.public_key(_get_public_key(key))
     builder = _add_iaca_extensions(builder, key, issuer_key, is_ca=False)
     return builder.sign(issuer_key, hashes.SHA256())
 
@@ -306,9 +330,9 @@ def generated_test_certs() -> dict[str, Any]:
         - leaf_key_pem: Leaf private key PEM
         - leaf_chain_pem: Leaf + Intermediate chain PEM (for x5chain)
     """
-    # Generate Root CA
+    # Generate Root CA (path_length=1: allows one intermediate CA)
     root_key = _generate_ec_key()
-    root_cert = _generate_root_ca(root_key)
+    root_cert = _generate_root_ca(root_key, path_length=1)
 
     # Generate Intermediate CA
     inter_key = _generate_ec_key()
@@ -338,63 +362,47 @@ def generated_test_certs() -> dict[str, Any]:
 async def setup_issuer_certs(acapy_issuer_admin):
     """Ensure the issuer has a signing key and certificate via the trust registry.
 
-    Generates an IACA-compliant certificate chain (root CA → leaf DS) and
-    uploads the leaf document-signer key/cert to ACA-Py via the new
-    ``POST /mso-mdoc/signing-keys`` endpoint.  The root CA certificate is
-    returned so callers can set it as a trust anchor.
+    Uses the two-step flow:
+    1. ``POST /mso-mdoc/signing-keys`` generates a key pair server-side.
+    2. A certificate is created for the generated public key (signed by a
+       test root CA) and attached via ``PUT /mso-mdoc/signing-keys/{id}``.
 
     Yields:
-        Dictionary with ``certificate_pem``, ``private_key_pem``,
-        and ``root_ca_pem``.
+        Dictionary with ``certificate_pem``, ``root_ca_pem``,
+        ``signing_key_id``, and ``public_key_pem``.
     """
-    # Generate root CA and leaf document-signer key pair
+    from cryptography.hazmat.primitives.serialization import load_pem_public_key
+
+    # Step 1: Generate a signing key server-side
+    response = await acapy_issuer_admin.post(
+        "/mso-mdoc/signing-keys",
+        json={"label": "integration-test-signing-key"},
+    )
+    signing_key_id = response.get("id") or response.get("signing_key_id")
+    public_key_pem = response.get("public_key_pem")
+
+    # Step 2: Create a certificate for the generated public key
     root_key = _generate_ec_key()
     root_cert = _generate_root_ca(root_key)
 
-    leaf_key = _generate_ec_key()
-    leaf_cert = _generate_leaf_ds(leaf_key, root_key, root_cert.subject)
+    # Load the public key returned by the server so we can create a cert for it
+    public_key = load_pem_public_key(public_key_pem.encode("utf-8"))
+    leaf_cert = _generate_leaf_ds(public_key, root_key, root_cert.subject)
 
-    private_key_pem = _key_to_pem(leaf_key)
     certificate_pem = _cert_to_pem(leaf_cert)
     root_ca_pem = _cert_to_pem(root_cert)
 
-    # Upload via the new signing-key registry endpoint
-    try:
-        response = await acapy_issuer_admin.post(
-            "/mso-mdoc/signing-keys",
-            json={
-                "label": "integration-test-signing-key",
-                "private_key_pem": private_key_pem,
-                "certificate_pem": certificate_pem,
-            },
-        )
-        signing_key_id = response.get("id") or response.get("signing_key_id")
-    except Exception:
-        # Fallback: store in vc_additional_data for agents not yet running new code
-        signing_key_id = None
-        try:
-            records = await acapy_issuer_admin.get(
-                "/oid4vci/credential-supported/records"
-            )
-            for rec in records.get("results", []):
-                if rec.get("format") == "mso_mdoc":
-                    rec_id = rec.get("supported_cred_id")
-                    await acapy_issuer_admin.put(
-                        f"/oid4vci/credential-supported/records/mso-mdoc/{rec_id}",
-                        json={
-                            "signing_key_pem": private_key_pem,
-                            "signing_cert_pem": certificate_pem,
-                        },
-                    )
-                    break
-        except Exception:
-            pass
+    # Step 3: Attach the certificate to the signing key
+    await acapy_issuer_admin.put(
+        f"/mso-mdoc/signing-keys/{signing_key_id}",
+        json={"certificate_pem": certificate_pem},
+    )
 
     yield {
         "certificate_pem": certificate_pem,
-        "private_key_pem": private_key_pem,
         "root_ca_pem": root_ca_pem,
         "signing_key_id": signing_key_id,
+        "public_key_pem": public_key_pem,
     }
 
 
