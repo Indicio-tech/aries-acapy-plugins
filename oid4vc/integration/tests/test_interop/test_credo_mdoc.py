@@ -176,11 +176,22 @@ async def mdoc_issuer_key(
     )
     response.raise_for_status()
     result = response.json()
+    signing_key_id = result.get("id")
 
-    return {
-        "signing_key_id": result.get("id"),
+    yield {
+        "signing_key_id": signing_key_id,
         "certificate_pem": certificate_pem,
     }
+
+    # Teardown: delete the signing key to prevent record accumulation.
+    # Stale records with bare certs (no IACA extensions) would otherwise be
+    # picked by _resolve_signing_key and cause cert validation errors in
+    # subsequent tests.
+    if signing_key_id:
+        try:
+            await acapy_issuer.delete(f"/mso-mdoc/signing-keys/{signing_key_id}")
+        except Exception:
+            pass  # Best-effort cleanup
 
 
 @pytest_asyncio.fixture
@@ -412,6 +423,7 @@ async def test_mdoc_offer_creation_verification_method(
 async def test_mdoc_credential_acceptance_did_based(
     credo: CredoWrapper,
     mdoc_offer_did_based: str,
+    setup_all_trust_anchors,  # noqa: ARG001 - registers trust anchor with Credo
 ):
     """Test Credo accepting an mDOC credential offer using DID-based signing.
 
@@ -428,6 +440,7 @@ async def test_mdoc_credential_acceptance_did_based(
 async def test_mdoc_credential_acceptance_verification_method(
     credo: CredoWrapper,
     mdoc_offer_verification_method: str,
+    setup_all_trust_anchors,  # noqa: ARG001 - registers trust anchor with Credo
 ):
     """Test Credo accepting an mDOC credential offer using verification_method.
 

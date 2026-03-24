@@ -202,7 +202,7 @@ async def test_sphereon_present_mdoc_credential(
     acapy_verifier_admin,
     acapy_issuer_admin,
     sphereon_client,
-    setup_issuer_certs,
+    setup_all_trust_anchors,  # noqa: ARG001 - registers trust anchor with ACA-Py verifier
 ):
     """Test Sphereon presenting an mdoc credential to ACA-Py."""
 

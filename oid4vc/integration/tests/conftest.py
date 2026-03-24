@@ -403,6 +403,15 @@ async def setup_issuer_certs(acapy_issuer_admin):
         "public_key_pem": public_key_pem,
     }
 
+    # Teardown: delete the signing key record to prevent accumulation across
+    # tests.  Without this, _resolve_signing_key may pick a stale record from
+    # a previous test whose root CA is no longer registered as a trust anchor.
+    if signing_key_id:
+        try:
+            await acapy_issuer_admin.delete(f"/mso-mdoc/signing-keys/{signing_key_id}")
+        except Exception:
+            pass  # Best-effort cleanup
+
 
 @pytest_asyncio.fixture
 async def setup_verifier_trust_anchors(acapy_verifier_admin, setup_issuer_certs):
