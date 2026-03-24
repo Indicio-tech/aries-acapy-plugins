@@ -219,10 +219,7 @@ async def test_sphereon_present_mdoc_credential(
             "id": cred_id,
             "identifier": "org.iso.18013.5.1.mDL",
             "format_data": {"doctype": "org.iso.18013.5.1.mDL"},
-            "vc_additional_data": {
-                "signing_key_pem": setup_issuer_certs["private_key_pem"],
-                "signing_cert_pem": setup_issuer_certs["certificate_pem"],
-            },
+            "vc_additional_data": {},
             "display": [{"name": "mDL", "locale": "en-US"}],
             "claims": {
                 "org.iso.18013.5.1": {

@@ -136,8 +136,8 @@ async def mdoc_issuer_key(
 ) -> dict[str, Any]:
     """Generate and upload an mDOC signing key for the issuer.
 
-    Generates a P-256 key pair and self-signed certificate locally, then
-    uploads them to the SupportedCredential via vc_additional_data.
+    Uses the ``POST /mso-mdoc/signing-keys/import`` endpoint to upload a
+    locally generated key pair to the signing key registry.
     """
     key = ec.generate_private_key(ec.SECP256R1())
     now = datetime.now(UTC)
@@ -165,17 +165,20 @@ async def mdoc_issuer_key(
     ).decode()
     certificate_pem = cert.public_bytes(serialization.Encoding.PEM).decode()
 
-    rec_id = mdoc_credential_config["supported_cred_id"]
-    await acapy_issuer.put(
-        f"/oid4vci/credential-supported/records/mso-mdoc/{rec_id}",
+    # Import via the signing key registry
+    response = await acapy_issuer.post(
+        "/mso-mdoc/signing-keys/import",
         json={
-            "signing_key_pem": private_key_pem,
-            "signing_cert_pem": certificate_pem,
+            "private_key_pem": private_key_pem,
+            "certificate_pem": certificate_pem,
+            "label": "test-interop-signing-key",
         },
     )
+    response.raise_for_status()
+    result = response.json()
 
     return {
-        "private_key_pem": private_key_pem,
+        "signing_key_id": result.get("id"),
         "certificate_pem": certificate_pem,
     }
 
@@ -379,7 +382,7 @@ async def test_mdoc_issuer_key_generation(
     """Test that mDOC issuer key can be generated."""
     assert mdoc_issuer_key is not None
     # Check for required key components
-    assert "private_key_pem" in mdoc_issuer_key
+    assert "signing_key_id" in mdoc_issuer_key
     assert "certificate_pem" in mdoc_issuer_key
 
 

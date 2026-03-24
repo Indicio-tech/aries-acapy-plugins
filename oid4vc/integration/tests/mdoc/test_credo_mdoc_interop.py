@@ -141,10 +141,7 @@ class TestCredoMdocInterop(BaseMdocTest):
                     }
                 },
             },
-            "vc_additional_data": {
-                "signing_key_pem": setup_all_trust_anchors["issuer_key_pem"],
-                "signing_cert_pem": setup_all_trust_anchors["issuer_cert_pem"],
-            },
+            "vc_additional_data": {},
         }
 
         config = await acapy_issuer_admin.post(
@@ -262,10 +259,7 @@ class TestCredoMdocInterop(BaseMdocTest):
                     }
                 },
             },
-            "vc_additional_data": {
-                "signing_key_pem": setup_all_trust_anchors["issuer_key_pem"],
-                "signing_cert_pem": setup_all_trust_anchors["issuer_cert_pem"],
-            },
+            "vc_additional_data": {},
         }
 
         config = await acapy_issuer_admin.post(

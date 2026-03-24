@@ -535,7 +535,7 @@ async def setup_all_trust_anchors(
         "verifier": setup_verifier_trust_anchors,
         "credo": setup_credo_trust_anchors,
         "issuer_cert_pem": setup_issuer_certs["certificate_pem"],
-        "issuer_key_pem": setup_issuer_certs["private_key_pem"],
+        "signing_key_id": setup_issuer_certs.get("signing_key_id"),
     }
 
 

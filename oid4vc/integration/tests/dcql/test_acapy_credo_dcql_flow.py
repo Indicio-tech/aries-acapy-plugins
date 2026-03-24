@@ -392,10 +392,7 @@ class TestDCQLMdocFlow:
                     }
                 ],
             },
-            "vc_additional_data": {
-                "signing_key_pem": setup_all_trust_anchors["issuer_key_pem"],
-                "signing_cert_pem": setup_all_trust_anchors["issuer_cert_pem"],
-            },
+            "vc_additional_data": {},
         }
 
         credential_config_response = await acapy_issuer_admin.post(
