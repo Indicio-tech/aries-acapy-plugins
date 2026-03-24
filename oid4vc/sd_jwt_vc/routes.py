@@ -17,7 +17,7 @@ from acapy_agent.askar.profile import AskarProfileSession
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
-from marshmallow import fields
+from marshmallow import RAISE, ValidationError, fields
 
 
 from oid4vc.cred_processor import CredProcessors
@@ -32,32 +32,19 @@ LOGGER = logging.getLogger(__name__)
 class SdJwtSupportedCredCreateReq(OpenAPISchema):
     """Schema for SdJwtSupportedCredCreateReq."""
 
-    format = fields.Str(required=True, metadata={"example": "jwt_vc_json"})
+    format = fields.Str(required=True, metadata={"example": "vc+sd-jwt"})
     identifier = fields.Str(
         data_key="id", required=True, metadata={"example": "UniversityDegreeCredential"}
     )
     cryptographic_binding_methods_supported = fields.List(
         fields.Str(), metadata={"example": ["did"]}
     )
-    cryptographic_suites_supported = fields.List(
+    credential_signing_alg_values_supported = fields.List(
         fields.Str(), metadata={"example": ["ES256K"]}
     )
-    display = fields.List(
-        fields.Dict(),
-        metadata={
-            "example": [
-                {
-                    "name": "University Credential",
-                    "locale": "en-US",
-                    "logo": {
-                        "url": "https://w3c-ccg.github.io/vc-ed/plugfest-1-2022/images/JFF_LogoLockup.png",
-                        "alt_text": "a square logo of a university",
-                    },
-                    "background_color": "#12107c",
-                    "text_color": "#FFFFFF",
-                }
-            ]
-        },
+    proof_types_supported = fields.Dict(
+        required=False,
+        metadata={"example": {"jwt": {"proof_signing_alg_values_supported": ["ES256"]}}},
     )
     vct = fields.Str(
         required=True,
@@ -69,46 +56,50 @@ class SdJwtSupportedCredCreateReq(OpenAPISchema):
             "example": "https://example.com/id-card",
         },
     )
-    order = fields.List(
-        fields.Str,
+    credential_metadata = fields.Dict(
         required=False,
         metadata={
-            "description": (
-                "The order in which claims should be displayed. This is not well defined "
-                "by the spec right now. Best to omit for now."
-            ),
-        },
-    )
-    claims = fields.Dict(
-        keys=fields.Str,
-        required=False,
-        metadata={
-            "description": "Display information about claims.",
+            "description": "Metadata about the credential to be issued.",
             "example": {
-                "given_name": {
-                    "display": [
-                        {"name": "Given Name", "locale": "en-US"},
-                        {"name": "Vorname", "locale": "de-DE"},
-                    ]
-                },
-                "family_name": {
-                    "display": [
-                        {"name": "Surname", "locale": "en-US"},
-                        {"name": "Nachname", "locale": "de-DE"},
-                    ]
-                },
-                "email": {},
-                "phone_number": {},
-                "address": {
-                    "street_address": {},
-                    "locality": {},
-                    "region": {},
-                    "country": {},
-                },
-                "birthdate": {},
-                "is_over_18": {},
-                "is_over_21": {},
-                "is_over_65": {},
+                "claims": [
+                    {
+                        "path": ["given_name"],
+                        "display": [
+                            {"name": "Given Name", "locale": "en-US"},
+                            {"name": "Vorname", "locale": "de-DE"},
+                        ],
+                    },
+                    {
+                        "path": ["family_name"],
+                        "display": [
+                            {"name": "Surname", "locale": "en-US"},
+                            {"name": "Nachname", "locale": "de-DE"},
+                        ],
+                    },
+                    {"path": ["email"]},
+                    {"path": ["phone_number"]},
+                    {"path": ["address", "street_address"]},
+                    {"path": ["address", "locality"]},
+                    {"path": ["address", "region"]},
+                    {"path": ["address", "country"]},
+                    {"path": ["address", "postal_code"]},
+                    {"path": ["birthdate"]},
+                    {"path": ["is_over_18"]},
+                    {"path": ["is_over_21"]},
+                    {"path": ["is_over_65"]},
+                ],
+                "display": [
+                    {
+                        "name": "University Credential",
+                        "locale": "en-US",
+                        "logo": {
+                            "url": "https://w3c-ccg.github.io/vc-ed/plugfest-1-2022/images/JFF_LogoLockup.png",
+                            "alt_text": "a square logo of a university",
+                        },
+                        "background_color": "#12107c",
+                        "text_color": "#FFFFFF",
+                    }
+                ],
             },
         },
     )
@@ -138,7 +129,7 @@ class SdJwtSupportedCredCreateReq(OpenAPISchema):
     This endpoint feeds into the Credential Issuer Metadata reported by the Issuer to its clients.
 
     See the SD-JWT VC profile for more details on these properties:
-    https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0-ID1.html#name-credential-issuer-metadata-6
+    https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html
     """),  # noqa
 )
 @request_schema(SdJwtSupportedCredCreateReq())
@@ -151,23 +142,27 @@ async def supported_credential_create(request: web.Request):
     profile = context.profile
 
     body: Dict[str, Any] = await request.json()
+    try:
+        body: Dict[str, Any] = SdJwtSupportedCredCreateReq().load(body, unknown=RAISE)
+    except ValidationError as err:
+        raise web.HTTPBadRequest(reason=str(err.messages)) from err
 
-    if not await supported_cred_is_unique(body["id"], profile):
+    if not await supported_cred_is_unique(body["identifier"], profile):
         raise web.HTTPBadRequest(
-            reason=f"Record with identifier {body['id']} already exists."
+            reason=f"Record with identifier {body['identifier']} already exists."
         )
-    LOGGER.info(f"body: {body}")
-    body["identifier"] = body.pop("id")
-    format_data = {}
-    format_data["vct"] = body.pop("vct")
-    format_data["claims"] = body.pop("claims", None)
-    format_data["order"] = body.pop("order", None)
-    vc_additional_data = {}
-    vc_additional_data["sd_list"] = body.pop("sd_list", None)
 
+    LOGGER.debug(
+        "Creating SD-JWT VC supported credential from request payload: %s",
+        body,
+    )
+
+    vc_additional_data = {
+        "vct": body.pop("vct", None),
+        "sd_list": body.pop("sd_list", None),
+    }
     record = SupportedCredential(
         **body,
-        format_data=format_data,
         vc_additional_data=vc_additional_data,
     )
 
@@ -206,28 +201,22 @@ async def supported_cred_update_helper(
     body: Dict[str, Any],
     session: AskarProfileSession,
 ) -> SupportedCredential:
-    """Helper method for updating a JWT Supported Credential Record."""
-    format_data = {}
-    vc_additional_data = {}
+    """Helper method for updating an SD-JWT VC Supported Credential Record."""
 
-    body["identifier"] = body.pop("id")
-
-    format_data["vct"] = body.pop("vct")
-    format_data["claims"] = body.pop("claims", None)
-    format_data["order"] = body.pop("order", None)
-    vc_additional_data["sd_list"] = body.pop("sd_list", None)
-
-    record.identifier = body["id"]
-    record.format = body["format"]
+    record.identifier = body.get("identifier", None)
+    record.format = body.get("format", None)
     record.cryptographic_binding_methods_supported = body.get(
         "cryptographic_binding_methods_supported", None
     )
-    record.cryptographic_suites_supported = body.get(
-        "cryptographic_suites_supported", None
+    record.credential_signing_alg_values_supported = body.get(
+        "credential_signing_alg_values_supported", None
     )
-    record.display = body.get("display", None)
-    record.format_data = format_data
-    record.vc_additional_data = vc_additional_data
+    record.proof_types_supported = body.get("proof_types_supported", None)
+    record.credential_metadata = body.get("credential_metadata", None)
+    record.vc_additional_data = {
+        "vct": body.get("vct", None),
+        "sd_list": body.get("sd_list", None),
+    }
 
     await record.save(session)
     return record
@@ -244,13 +233,22 @@ async def supported_cred_update_helper(
 @request_schema(SdJwtSupportedCredCreateReq())
 @response_schema(SupportedCredentialSchema())
 async def update_supported_credential_sd_jwt(request: web.Request):
-    """Update a JWT Supported Credential record."""
+    """Update an SD-JWT VC Supported Credential record."""
 
     context: AdminRequestContext = request["context"]
-    body: Dict[str, Any] = await request.json()
     supported_cred_id = request.match_info["supported_cred_id"]
+    body: Dict[str, Any] = await request.json()
+    try:
+        body: Dict[str, Any] = SdJwtSupportedCredCreateReq().load(body, unknown=RAISE)
+    except ValidationError as err:
+        raise web.HTTPBadRequest(reason=str(err.messages)) from err
 
-    LOGGER.info(f"body: {body}")
+    LOGGER.debug(
+        "Updating SD-JWT VC supported credential %s with request payload: %s",
+        supported_cred_id,
+        body,
+    )
+
     try:
         async with context.session() as session:
             record = await SupportedCredential.retrieve_by_id(session, supported_cred_id)

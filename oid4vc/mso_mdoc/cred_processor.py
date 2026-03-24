@@ -506,7 +506,11 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             # Surface the underlying exception text in the CredProcessorError
             raise CredProcessorError(f"Failed to issue mso_mdoc credential: {ex}") from ex
 
-        return mso_mdoc
+        binary = bytes.fromhex(mso_mdoc)
+        mso_mdoc_base64url = base64.urlsafe_b64encode(binary).rstrip(b"=").decode("ascii")
+        LOGGER.debug("mso_mdoc credential: %s", mso_mdoc_base64url)
+
+        return mso_mdoc_base64url
 
     def _prepare_payload(
         self, payload: Dict[str, Any], doctype: str = None

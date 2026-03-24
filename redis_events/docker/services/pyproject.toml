@@ -6,10 +6,10 @@ authors = ["Shaanjot Gill <gill.shaanjots@gmail.com>"]
 package-mode = false
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = "^3.13"
 redis = "^5.2.1"
-aiohttp = "^3.13.1"
-fastapi-slim = "^0.120.0"
+aiohttp = "^3.13.3"
+fastapi-slim = "^0.128.0"
 uvicorn = "^0.35.0"
 nest-asyncio = "^1.5.5"
 pydantic = "^2.12.3"
