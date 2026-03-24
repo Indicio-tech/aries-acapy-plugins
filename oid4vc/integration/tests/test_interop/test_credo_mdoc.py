@@ -11,11 +11,16 @@ Test coverage:
 """
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 import pytest
 import pytest_asyncio
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.x509.oid import NameOID
 
 from credo_wrapper import CredoWrapper
 from tests.helpers.constants import MDL_MANDATORY_FIELDS
@@ -125,31 +130,68 @@ async def mdoc_credential_config(acapy_issuer: httpx.AsyncClient) -> dict[str, A
 
 
 @pytest_asyncio.fixture
-async def mdoc_issuer_key(acapy_issuer: httpx.AsyncClient) -> dict[str, Any]:
-    """Create or retrieve an mDOC signing key for the issuer."""
-    # Try to get existing keys first
-    response = await acapy_issuer.get("/mso_mdoc/keys")
-    if response.status_code == 200:
-        data = response.json()
-        # API returns {"keys": [...]} format
-        keys = data.get("keys", []) if isinstance(data, dict) else data
-        if keys and len(keys) > 0:
-            return keys[0]
+async def mdoc_issuer_key(
+    acapy_issuer: httpx.AsyncClient,
+    mdoc_credential_config: dict[str, Any],
+) -> dict[str, Any]:
+    """Generate and upload an mDOC signing key for the issuer.
 
-    # Generate a new key if none exist
-    key_request = {
-        "key_type": "ES256",
-        "generate_certificate": True,
-        "certificate_subject": {
-            "common_name": "Test mDL Issuer",
-            "organization": "Test Organization",
-            "country": "US",
+    Uses the ``POST /mso-mdoc/signing-keys/import`` endpoint to upload a
+    locally generated key pair to the signing key registry.
+    """
+    key = ec.generate_private_key(ec.SECP256R1())
+    now = datetime.now(UTC)
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
+            x509.NameAttribute(NameOID.COMMON_NAME, "Test mDoc Issuer"),
+        ]
+    )
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now)
+        .not_valid_after(now + timedelta(days=365))
+        .sign(key, hashes.SHA256())
+    )
+
+    private_key_pem = key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode()
+    certificate_pem = cert.public_bytes(serialization.Encoding.PEM).decode()
+
+    # Import via the signing key registry
+    response = await acapy_issuer.post(
+        "/mso-mdoc/signing-keys/import",
+        json={
+            "private_key_pem": private_key_pem,
+            "certificate_pem": certificate_pem,
+            "label": "test-interop-signing-key",
         },
+    )
+    response.raise_for_status()
+    result = response.json()
+    signing_key_id = result.get("id")
+
+    yield {
+        "signing_key_id": signing_key_id,
+        "certificate_pem": certificate_pem,
     }
 
-    response = await acapy_issuer.post("/mso_mdoc/generate-keys", json=key_request)
-    response.raise_for_status()
-    return response.json()
+    # Teardown: delete the signing key to prevent record accumulation.
+    # Stale records with bare certs (no IACA extensions) would otherwise be
+    # picked by _resolve_signing_key and cause cert validation errors in
+    # subsequent tests.
+    if signing_key_id:
+        try:
+            await acapy_issuer.delete(f"/mso-mdoc/signing-keys/{signing_key_id}")
+        except Exception:
+            pass  # Best-effort cleanup
 
 
 @pytest_asyncio.fixture
@@ -208,12 +250,12 @@ async def mdoc_offer_did_based(
 async def mdoc_offer_verification_method(
     acapy_issuer: httpx.AsyncClient,
     mdoc_credential_config: dict[str, Any],
-    mdoc_issuer_key: dict[str, Any],
+    setup_issuer_certs,  # noqa: ARG001 - ensures signing key with IACA cert is present
 ) -> str:
-    """Create an mDOC credential offer using verification_method from mDOC keys.
+    """Create an mDOC credential offer using DID-based signing.
 
-    This flow uses the /mso_mdoc/generate-keys endpoint to create issuer keys
-    with X.509 certificates, then references them via verification_method.
+    Uses setup_issuer_certs so the signing key is the same one whose root CA
+    is registered as a trust anchor on both Credo and the ACA-Py verifier.
     """
     # Create credential subject with mDL claims
     credential_subject = {
@@ -230,24 +272,19 @@ async def mdoc_offer_verification_method(
         }
     }
 
+    # Use DID-based signing
+    did_response = await acapy_issuer.post(
+        "/wallet/did/create",
+        json={"method": "key", "options": {"key_type": "p256"}},
+    )
+    did_response.raise_for_status()
+    issuer_did = did_response.json()["result"]["did"]
+
     exchange_request = {
         "supported_cred_id": mdoc_credential_config["supported_cred_id"],
         "credential_subject": credential_subject,
+        "did": issuer_did,
     }
-
-    # Use verification_method from mDOC issuer key if available
-    verification_method = mdoc_issuer_key.get("verification_method")
-    if verification_method and ":" in verification_method:
-        exchange_request["verification_method"] = verification_method
-    else:
-        # Fallback to DID-based if verification_method not available
-        did_response = await acapy_issuer.post(
-            "/wallet/did/create",
-            json={"method": "key", "options": {"key_type": "p256"}},
-        )
-        did_response.raise_for_status()
-        issuer_did = did_response.json()["result"]["did"]
-        exchange_request["did"] = issuer_did
 
     response = await acapy_issuer.post(
         "/oid4vci/exchange/create", json=exchange_request
@@ -356,7 +393,8 @@ async def test_mdoc_issuer_key_generation(
     """Test that mDOC issuer key can be generated."""
     assert mdoc_issuer_key is not None
     # Check for required key components
-    assert "key_id" in mdoc_issuer_key or "verification_method" in mdoc_issuer_key
+    assert "signing_key_id" in mdoc_issuer_key
+    assert "certificate_pem" in mdoc_issuer_key
 
 
 @pytest.mark.asyncio
@@ -385,6 +423,7 @@ async def test_mdoc_offer_creation_verification_method(
 async def test_mdoc_credential_acceptance_did_based(
     credo: CredoWrapper,
     mdoc_offer_did_based: str,
+    setup_all_trust_anchors,  # noqa: ARG001 - registers trust anchor with Credo
 ):
     """Test Credo accepting an mDOC credential offer using DID-based signing.
 
@@ -401,11 +440,12 @@ async def test_mdoc_credential_acceptance_did_based(
 async def test_mdoc_credential_acceptance_verification_method(
     credo: CredoWrapper,
     mdoc_offer_verification_method: str,
+    setup_all_trust_anchors,  # noqa: ARG001 - registers trust anchor with Credo
 ):
     """Test Credo accepting an mDOC credential offer using verification_method.
 
-    This tests the alternative flow where the issuer uses mDOC-specific keys
-    generated via /mso_mdoc/generate-keys with X.509 certificates.
+    This tests the flow where the issuer uses signing keys stored in
+    the SupportedCredential's vc_additional_data.
     """
     result = await credo.openid4vci_accept_offer(mdoc_offer_verification_method)
 
@@ -493,8 +533,8 @@ async def test_mdoc_presentation_verification_method_flow(
 ):
     """Test mDOC presentation flow using verification_method-based credentials.
 
-    This tests the full flow where the issuer uses mDOC-specific keys
-    generated via /mso_mdoc/generate-keys with X.509 certificates.
+    This tests the full flow where the issuer uses signing keys stored in
+    the SupportedCredential's vc_additional_data.
     """
     # First, get the credential
     cred_result = await credo.openid4vci_accept_offer(mdoc_offer_verification_method)

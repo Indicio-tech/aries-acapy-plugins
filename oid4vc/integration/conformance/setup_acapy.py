@@ -110,6 +110,15 @@ async def admin_post(
     return resp.json()
 
 
+async def admin_put(
+    client: httpx.AsyncClient, base: str, path: str, body: dict | None = None
+) -> Any:
+    """PUT to ACA-Py admin API."""
+    resp = await client.put(f"{base}{path}", json=body or {}, timeout=30.0)
+    resp.raise_for_status()
+    return resp.json()
+
+
 async def create_did_jwk(client: httpx.AsyncClient, base: str, key_type: str) -> str:
     """Create a did:jwk and return the DID string."""
     result = await admin_post(client, base, "/did/jwk/create", {"key_type": key_type})
@@ -507,14 +516,26 @@ async def upload_trust_anchor(
     cert_pem: bytes,
     *,
     anchor_type: str = "mso_mdoc",
+    supported_cred_id: str | None = None,
+    label: str | None = None,
 ) -> None:
-    """Upload a trust anchor certificate to an ACA-Py instance."""
+    """Upload a trust anchor certificate to an ACA-Py instance.
+
+    Trust anchors are stored as TrustAnchorRecord objects in the Askar wallet
+    and retrieved at verification time via the /mso-mdoc/trust-anchors registry.
+    The supported_cred_id parameter is accepted for backward compatibility but
+    is no longer used; anchors are tenant-scoped, not credential-scoped.
+    """
     cert_str = cert_pem.decode()
     await admin_post(
         client,
         base,
-        f"/{anchor_type}/trust-anchors",
-        {"certificate_pem": cert_str},
+        "/mso-mdoc/trust-anchors",
+        {
+            "certificate_pem": cert_str,
+            "purpose": "iaca",
+            "label": label or anchor_type,
+        },
     )
     logger.info(f"Uploaded trust anchor to {base} ({anchor_type})")
 

@@ -231,7 +231,7 @@ async def test_acapy_credo_mdoc_flow(
     acapy_issuer_admin,
     acapy_verifier_admin,
     credo_client,
-    setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
+    setup_all_trust_anchors,
     mdoc_credential_config,
     issuer_p256_did,
 ):
@@ -265,6 +265,8 @@ async def test_acapy_credo_mdoc_flow(
             "description": "A mobile driver's license credential",
         }
     ]
+    # Signing key is already registered via setup_issuer_certs
+    credential_supported["vc_additional_data"] = {}
 
     credential_config_response = await acapy_issuer_admin.post(
         "/oid4vci/credential-supported/create", json=credential_supported
@@ -529,7 +531,7 @@ async def test_acapy_credo_mdoc_selective_disclosure(
     acapy_issuer_admin,
     acapy_verifier_admin,
     credo_client,
-    setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
+    setup_all_trust_anchors,
     mdoc_credential_config,
     issuer_p256_did,
 ):
@@ -560,6 +562,8 @@ async def test_acapy_credo_mdoc_selective_disclosure(
         "cose_key"
     ]
     credential_supported["format_data"]["cryptographic_suites_supported"] = ["ES256"]
+    # Signing key is already registered via setup_issuer_certs
+    credential_supported["vc_additional_data"] = {}
 
     credential_config_response = await acapy_issuer_admin.post(
         "/oid4vci/credential-supported/create", json=credential_supported

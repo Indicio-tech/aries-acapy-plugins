@@ -23,7 +23,7 @@ async def test_mdoc_issue_to_credo_verify_with_sphereon_patterns(
     acapy_verifier_admin,
     credo_client,
     sphereon_client,  # noqa: ARG001
-    setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
+    setup_all_trust_anchors,
     mdoc_credential_config,
     issuer_p256_did,
 ):
@@ -47,6 +47,8 @@ async def test_mdoc_issue_to_credo_verify_with_sphereon_patterns(
     credential_supported["proof_types_supported"] = {
         "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
     }
+    # Include signing keys so the issuer can sign mDOC credentials
+    credential_supported["vc_additional_data"] = {}
 
     config_response = await acapy_issuer_admin.post(
         "/oid4vci/credential-supported/create", json=credential_supported
@@ -150,7 +152,7 @@ async def test_mdoc_issue_to_sphereon_verify_with_credo_patterns(
     acapy_issuer_admin,
     acapy_verifier_admin,
     sphereon_client,
-    setup_all_trust_anchors,  # noqa: ARG001 - Required for mDOC verification
+    setup_all_trust_anchors,
 ):
     """Issue mDOC to Sphereon and verify.
 
@@ -170,6 +172,7 @@ async def test_mdoc_issue_to_sphereon_verify_with_credo_patterns(
             "id": cred_id,
             "identifier": "org.iso.18013.5.1.mDL",
             "format_data": {"doctype": "org.iso.18013.5.1.mDL"},
+            "vc_additional_data": {},
             "claims": {
                 "org.iso.18013.5.1": {
                     "given_name": {"mandatory": True},

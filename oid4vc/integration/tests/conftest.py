@@ -151,10 +151,20 @@ def _get_name(cn: str) -> x509.Name:
     )
 
 
-def _add_iaca_extensions(builder, key, issuer_key, is_ca=True, is_root=False):
+def _get_public_key(key):
+    """Get public key from a private key or return the key if already public."""
+    if hasattr(key, "public_key"):
+        return key.public_key()
+    return key
+
+
+def _add_iaca_extensions(
+    builder, key, issuer_key, is_ca=True, is_root=False, path_length=None
+):
     """Add IACA-compliant extensions to certificate builder."""
     if is_ca:
-        path_length = 1 if is_root else 0
+        if path_length is None:
+            path_length = 1 if is_root else 0
         builder = builder.add_extension(
             x509.BasicConstraints(ca=True, path_length=path_length), critical=True
         )
@@ -194,12 +204,12 @@ def _add_iaca_extensions(builder, key, issuer_key, is_ca=True, is_root=False):
 
     # Subject Key Identifier
     builder = builder.add_extension(
-        x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False
+        x509.SubjectKeyIdentifier.from_public_key(_get_public_key(key)), critical=False
     )
 
     # Authority Key Identifier
     builder = builder.add_extension(
-        x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_key.public_key()),
+        x509.AuthorityKeyIdentifier.from_issuer_public_key(_get_public_key(issuer_key)),
         critical=False,
     )
 
@@ -231,8 +241,15 @@ def _add_iaca_extensions(builder, key, issuer_key, is_ca=True, is_root=False):
     return builder
 
 
-def _generate_root_ca(key):
-    """Generate a self-signed root CA certificate."""
+def _generate_root_ca(key, path_length=0):
+    """Generate a self-signed root CA certificate.
+
+    Args:
+        key: EC private key for the root CA.
+        path_length: BasicConstraints pathLenConstraint.
+            Use 0 when the root directly signs leaf DS certs (no intermediate).
+            Use 1 when an intermediate CA is used.
+    """
     name = _get_name("Test Root CA")
     builder = x509.CertificateBuilder()
     builder = builder.subject_name(name)
@@ -241,7 +258,9 @@ def _generate_root_ca(key):
     builder = builder.not_valid_after(datetime.now(UTC) + timedelta(days=365))
     builder = builder.serial_number(x509.random_serial_number())
     builder = builder.public_key(key.public_key())
-    builder = _add_iaca_extensions(builder, key, key, is_ca=True, is_root=True)
+    builder = _add_iaca_extensions(
+        builder, key, key, is_ca=True, is_root=True, path_length=path_length
+    )
     return builder.sign(key, hashes.SHA256())
 
 
@@ -260,7 +279,10 @@ def _generate_intermediate_ca(key, issuer_key, issuer_name):
 
 
 def _generate_leaf_ds(key, issuer_key, issuer_name):
-    """Generate a leaf document signer certificate."""
+    """Generate a leaf document signer certificate.
+
+    ``key`` may be either a private key or a public key object.
+    """
     name = _get_name("Test Leaf DS")
     builder = x509.CertificateBuilder()
     builder = builder.subject_name(name)
@@ -268,7 +290,7 @@ def _generate_leaf_ds(key, issuer_key, issuer_name):
     builder = builder.not_valid_before(datetime.now(UTC))
     builder = builder.not_valid_after(datetime.now(UTC) + timedelta(days=365))
     builder = builder.serial_number(x509.random_serial_number())
-    builder = builder.public_key(key.public_key())
+    builder = builder.public_key(_get_public_key(key))
     builder = _add_iaca_extensions(builder, key, issuer_key, is_ca=False)
     return builder.sign(issuer_key, hashes.SHA256())
 
@@ -306,9 +328,9 @@ def generated_test_certs() -> dict[str, Any]:
         - leaf_key_pem: Leaf private key PEM
         - leaf_chain_pem: Leaf + Intermediate chain PEM (for x5chain)
     """
-    # Generate Root CA
+    # Generate Root CA (path_length=1: allows one intermediate CA)
     root_key = _generate_ec_key()
-    root_cert = _generate_root_ca(root_key)
+    root_cert = _generate_root_ca(root_key, path_length=1)
 
     # Generate Intermediate CA
     inter_key = _generate_ec_key()
@@ -336,136 +358,120 @@ def generated_test_certs() -> dict[str, Any]:
 
 @pytest_asyncio.fixture
 async def setup_issuer_certs(acapy_issuer_admin):
-    """Ensure the issuer has signing keys and certificates.
+    """Ensure the issuer has a signing key and certificate via the trust registry.
 
-    This fixture:
-    1. Checks if a default certificate already exists
-    2. If not, generates a signing key with proper ISO 18013-5 compliant extensions
-    3. Retrieves the DEFAULT certificate that will be used for signing
-
-    Note: We avoid using force=true to prevent regenerating keys between tests
-    in the same session, which would cause certificate mismatch errors.
-
-    Args:
-        acapy_issuer_admin: ACA-Py issuer admin controller
+    Uses the two-step flow:
+    1. ``POST /mso-mdoc/signing-keys`` generates a key pair server-side.
+    2. A certificate is created for the generated public key (signed by a
+       test root CA) and attached via ``PUT /mso-mdoc/signing-keys/{id}``.
 
     Yields:
-        Dictionary with key_id, cert_id, and certificate_pem
+        Dictionary with ``certificate_pem``, ``root_ca_pem``,
+        ``signing_key_id``, and ``public_key_pem``.
     """
-    # First, check if a default certificate already exists
-    # If it does, use it instead of regenerating
-    try:
-        default_cert = await acapy_issuer_admin.get("/mso_mdoc/certificates/default")
-        certificate_pem = default_cert.get("certificate_pem")
+    from cryptography.hazmat.primitives.serialization import load_pem_public_key
 
-        if certificate_pem:
-            yield {
-                "key_id": default_cert.get("key_id"),
-                "cert_id": default_cert.get("cert_id"),
-                "certificate_pem": certificate_pem,
-            }
-            return
-    except Exception:
-        # No default cert exists, we'll need to generate one
-        pass
+    # Step 1: Generate a signing key server-side
+    response = await acapy_issuer_admin.post(
+        "/mso-mdoc/signing-keys",
+        json={"label": "integration-test-signing-key"},
+    )
+    signing_key_id = response.get("id") or response.get("signing_key_id")
+    public_key_pem = response.get("public_key_pem")
 
-    # Generate keys via admin API (without force=true, so it only creates if needed)
-    # This ensures we get certificates with the required ISO 18013-5 extensions
-    # (SubjectKeyIdentifier, CRLDistributionPoints, IssuerAlternativeName)
-    try:
-        result = await acapy_issuer_admin.post("/mso_mdoc/generate-keys", json={})
-        key_id = result.get("key_id")
-        cert_id = result.get("cert_id")
-    except Exception:
-        # Keys may already exist, that's OK
-        key_id = None
-        cert_id = None
+    # Step 2: Create a certificate for the generated public key
+    root_key = _generate_ec_key()
+    root_cert = _generate_root_ca(root_key)
 
-    # Get the DEFAULT signing certificate - this is the one that will be used
-    # for credential issuance, not just any certificate in the wallet
-    try:
-        default_cert = await acapy_issuer_admin.get("/mso_mdoc/certificates/default")
-        certificate_pem = default_cert.get("certificate_pem")
+    # Load the public key returned by the server so we can create a cert for it
+    public_key = load_pem_public_key(public_key_pem.encode("utf-8"))
+    leaf_cert = _generate_leaf_ds(public_key, root_key, root_cert.subject)
 
-        if not certificate_pem:
-            raise RuntimeError(
-                "Certificate PEM not found in default certificate response"
-            )
+    certificate_pem = _cert_to_pem(leaf_cert)
+    root_ca_pem = _cert_to_pem(root_cert)
 
-        yield {
-            "key_id": default_cert.get("key_id"),
-            "cert_id": default_cert.get("cert_id"),
-            "certificate_pem": certificate_pem,
-        }
-    except Exception as e:
-        # Fall back to listing certificates if default endpoint fails
-        certs_response = await acapy_issuer_admin.get(
-            "/mso_mdoc/certificates?include_pem=true"
-        )
-        certificates = certs_response.get("certificates", [])
+    # Step 3: Attach the certificate to the signing key
+    await acapy_issuer_admin.put(
+        f"/mso-mdoc/signing-keys/{signing_key_id}",
+        json={"certificate_pem": certificate_pem},
+    )
 
-        if not certificates:
-            raise RuntimeError(
-                f"No certificates found on issuer after key generation: {e}"
-            ) from e
+    yield {
+        "certificate_pem": certificate_pem,
+        "root_ca_pem": root_ca_pem,
+        "signing_key_id": signing_key_id,
+        "public_key_pem": public_key_pem,
+    }
 
-        # Use the first certificate (fallback)
-        issuer_cert = certificates[0]
-        certificate_pem = issuer_cert.get("certificate_pem")
-
-        if not certificate_pem:
-            raise RuntimeError("Certificate PEM not found in issuer certificate")
-
-        yield {
-            "key_id": key_id or issuer_cert.get("key_id"),
-            "cert_id": cert_id or issuer_cert.get("cert_id"),
-            "certificate_pem": certificate_pem,
-        }
+    # Teardown: delete the signing key record to prevent accumulation across
+    # tests.  Without this, _resolve_signing_key may pick a stale record from
+    # a previous test whose root CA is no longer registered as a trust anchor.
+    if signing_key_id:
+        try:
+            await acapy_issuer_admin.delete(f"/mso-mdoc/signing-keys/{signing_key_id}")
+        except Exception:
+            pass  # Best-effort cleanup
 
 
 @pytest_asyncio.fixture
 async def setup_verifier_trust_anchors(acapy_verifier_admin, setup_issuer_certs):
-    """Upload trust anchors to the verifier wallet via admin API.
+    """Upload trust anchors to the ACA-Py verifier via the trust anchor registry.
 
-    This fixture uploads the issuer's signing certificate as a trust anchor
-    to the verifier's wallet for mDoc verification.
-
-    Args:
-        acapy_verifier_admin: ACA-Py verifier admin controller
-        setup_issuer_certs: Issuer certificate fixture (provides the actual cert)
+    Uses the new ``POST /mso-mdoc/trust-anchors`` endpoint.  Falls back to the
+    legacy ``vc_additional_data`` approach if the endpoint is not available.
 
     Yields:
-        Dictionary with anchor_id
+        Dictionary with status.
     """
-    # Upload issuer's certificate as trust anchor
+    # Use root CA as trust anchor when available; fall back to leaf cert
+    cert_pem = (
+        setup_issuer_certs.get("root_ca_pem") or setup_issuer_certs["certificate_pem"]
+    )
+
     try:
-        result = await acapy_verifier_admin.post(
-            "/mso_mdoc/trust-anchors",
+        response = await acapy_verifier_admin.post(
+            "/mso-mdoc/trust-anchors",
             json={
-                "certificate_pem": setup_issuer_certs["certificate_pem"],
-                "anchor_id": "issuer-signing-cert",
-                "metadata": {
-                    "description": "Issuer signing certificate",
-                    "purpose": "integration-testing",
-                },
+                "label": "integration-test-trust-anchor",
+                "purpose": "iaca",
+                "certificate_pem": cert_pem,
             },
         )
-        yield {"anchor_id": result.get("anchor_id")}
-
-        # Cleanup after test
+        yield {"trust_anchor_id": response.get("id")}
+    except Exception:
+        # Fallback: store in vc_additional_data (legacy approach)
         try:
-            await acapy_verifier_admin.delete(
-                f"/mso_mdoc/trust-anchors/{result.get('anchor_id')}"
+            records = await acapy_verifier_admin.get(
+                "/oid4vci/credential-supported/records"
             )
-        except Exception:
-            pass  # Cleanup failure is not critical
+            mdoc_recs = [
+                r for r in records.get("results", []) if r.get("format") == "mso_mdoc"
+            ]
 
-    except Exception as e:
-        # Trust anchor may already exist
-        anchors = await acapy_verifier_admin.get("/mso_mdoc/trust-anchors")
-        if anchors.get("trust_anchors"):
-            yield {"anchor_id": anchors["trust_anchors"][0]["anchor_id"]}
-        else:
+            if mdoc_recs:
+                rec_id = mdoc_recs[0].get("supported_cred_id")
+                existing_anchors = (
+                    mdoc_recs[0].get("vc_additional_data", {}).get("trust_anchors", [])
+                )
+                if cert_pem not in existing_anchors:
+                    existing_anchors.append(cert_pem)
+                await acapy_verifier_admin.put(
+                    f"/oid4vci/credential-supported/records/mso-mdoc/{rec_id}",
+                    json={"trust_anchors": existing_anchors},
+                )
+                yield {"supported_cred_id": rec_id}
+            else:
+                result = await acapy_verifier_admin.post(
+                    "/oid4vci/credential-supported/create/mso-mdoc",
+                    json={
+                        "format": "mso_mdoc",
+                        "id": "verifier-trust-store",
+                        "doctype": "org.iso.18013.5.1.mDL",
+                        "trust_anchors": [cert_pem],
+                    },
+                )
+                yield {"supported_cred_id": result.get("supported_cred_id")}
+        except Exception as e:
             raise RuntimeError(f"Failed to setup trust anchors: {e}") from e
 
 
@@ -485,10 +491,17 @@ async def setup_credo_trust_anchors(credo_client, setup_issuer_certs):
     """
     # Upload issuer certificate as trust anchor to Credo
     try:
+        # Credo validates the full certificate chain, so it needs the root CA
+        # rather than the leaf DS certificate.  Fall back to the leaf cert for
+        # self-signed setups that don't generate a separate root CA.
+        trust_anchor_pem = (
+            setup_issuer_certs.get("root_ca_pem")
+            or setup_issuer_certs["certificate_pem"]
+        )
         response = await credo_client.post(
             "/x509/trust-anchors",
             json={
-                "certificate_pem": setup_issuer_certs["certificate_pem"],
+                "certificate_pem": trust_anchor_pem,
             },
         )
         response.raise_for_status()
@@ -531,6 +544,7 @@ async def setup_all_trust_anchors(
         "verifier": setup_verifier_trust_anchors,
         "credo": setup_credo_trust_anchors,
         "issuer_cert_pem": setup_issuer_certs["certificate_pem"],
+        "signing_key_id": setup_issuer_certs.get("signing_key_id"),
     }
 
 
@@ -538,51 +552,58 @@ async def setup_all_trust_anchors(
 async def setup_pki_chain_trust_anchor(acapy_verifier_admin, generated_test_certs):
     """Upload the generated root CA as trust anchor for PKI chain tests.
 
-    This fixture is specifically for tests that manually create mDocs
-    using the leaf certificate from generated_test_certs. It uploads
-    the root CA so the verifier can validate the full PKI chain.
-
-    Args:
-        acapy_verifier_admin: ACA-Py verifier admin controller
-        generated_test_certs: Generated test certificate chain
+    Uses the new ``POST /mso-mdoc/trust-anchors`` endpoint.  Falls back to
+    ``vc_additional_data`` for agents not yet running new code.
 
     Yields:
-        Dictionary with anchor_id
+        Dictionary with status.
     """
-    # Upload root CA as trust anchor
+    root_ca_pem = generated_test_certs["root_ca_pem"]
+
     try:
-        result = await acapy_verifier_admin.post(
-            "/mso_mdoc/trust-anchors",
+        response = await acapy_verifier_admin.post(
+            "/mso-mdoc/trust-anchors",
             json={
-                "certificate_pem": generated_test_certs["root_ca_pem"],
-                "anchor_id": "pki-test-root-ca",
-                "metadata": {
-                    "description": "Ephemeral test root CA for PKI chain tests",
-                    "purpose": "pki-chain-testing",
-                },
+                "label": "pki-chain-trust-anchor",
+                "purpose": "iaca",
+                "certificate_pem": root_ca_pem,
             },
         )
-        yield {"anchor_id": result.get("anchor_id")}
-
-        # Cleanup after test
+        yield {"trust_anchor_id": response.get("id")}
+    except Exception:
+        # Fallback: vc_additional_data approach
         try:
-            await acapy_verifier_admin.delete(
-                f"/mso_mdoc/trust-anchors/{result.get('anchor_id')}"
+            records = await acapy_verifier_admin.get(
+                "/oid4vci/credential-supported/records"
             )
-        except Exception:
-            pass  # Cleanup failure is not critical
+            mdoc_recs = [
+                r for r in records.get("results", []) if r.get("format") == "mso_mdoc"
+            ]
 
-    except Exception as e:
-        # Trust anchor may already exist
-        anchors = await acapy_verifier_admin.get("/mso_mdoc/trust-anchors")
-        if anchors.get("trust_anchors"):
-            # Look for existing PKI chain anchor or use first one
-            for anchor in anchors["trust_anchors"]:
-                if anchor.get("anchor_id") == "pki-test-root-ca":
-                    yield {"anchor_id": anchor["anchor_id"]}
-                    return
-            yield {"anchor_id": anchors["trust_anchors"][0]["anchor_id"]}
-        else:
+            if mdoc_recs:
+                rec_id = mdoc_recs[0].get("supported_cred_id")
+                existing_anchors = (
+                    mdoc_recs[0].get("vc_additional_data", {}).get("trust_anchors", [])
+                )
+                if root_ca_pem not in existing_anchors:
+                    existing_anchors.append(root_ca_pem)
+                await acapy_verifier_admin.put(
+                    f"/oid4vci/credential-supported/records/mso-mdoc/{rec_id}",
+                    json={"trust_anchors": existing_anchors},
+                )
+                yield {"supported_cred_id": rec_id}
+            else:
+                result = await acapy_verifier_admin.post(
+                    "/oid4vci/credential-supported/create/mso-mdoc",
+                    json={
+                        "format": "mso_mdoc",
+                        "id": "pki-chain-trust-store",
+                        "doctype": "org.iso.18013.5.1.mDL",
+                        "trust_anchors": [root_ca_pem],
+                    },
+                )
+                yield {"supported_cred_id": result.get("supported_cred_id")}
+        except Exception as e:
             raise RuntimeError(f"Failed to setup PKI chain trust anchor: {e}") from e
 
 

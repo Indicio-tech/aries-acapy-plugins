@@ -58,11 +58,7 @@ class TestMsoMdocCredVerifier:
             "-----BEGIN CERTIFICATE-----\nZmFrZWNlcnQ=\n-----END CERTIFICATE-----\n"
         )
 
-        class _TrustStore:
-            def get_trust_anchors(self):
-                return [pem_cert]
-
-        verifier = MsoMdocCredVerifier(trust_store=_TrustStore())
+        verifier = MsoMdocCredVerifier(trust_anchors=[pem_cert])
         profile = MagicMock()
 
         # Patch isomdl_uniffi in the verifier module
@@ -122,11 +118,7 @@ class TestMsoMdocPresVerifier:
             "-----BEGIN CERTIFICATE-----\nZmFrZWNlcnQ=\n-----END CERTIFICATE-----\n"
         )
 
-        class _FakeTrustStore:
-            def get_trust_anchors(self):
-                return [pem_cert]
-
-        return MsoMdocPresVerifier(trust_store=_FakeTrustStore())
+        return MsoMdocPresVerifier(trust_anchors=[pem_cert])
 
     @pytest.fixture
     def mock_presentation(self):
