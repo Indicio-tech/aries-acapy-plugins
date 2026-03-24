@@ -209,9 +209,7 @@ def _add_iaca_extensions(
 
     # Authority Key Identifier
     builder = builder.add_extension(
-        x509.AuthorityKeyIdentifier.from_issuer_public_key(
-            _get_public_key(issuer_key)
-        ),
+        x509.AuthorityKeyIdentifier.from_issuer_public_key(_get_public_key(issuer_key)),
         critical=False,
     )
 

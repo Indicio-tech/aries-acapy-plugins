@@ -42,15 +42,17 @@ def public_key_pem_from_private(private_key_pem: str) -> str:
     private_key = serialization.load_pem_private_key(
         private_key_pem.encode("utf-8"), password=None
     )
-    return private_key.public_key().public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo,
-    ).decode("utf-8")
+    return (
+        private_key.public_key()
+        .public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        .decode("utf-8")
+    )
 
 
-def validate_cert_matches_private_key(
-    private_key_pem: str, certificate_pem: str
-) -> None:
+def validate_cert_matches_private_key(private_key_pem: str, certificate_pem: str) -> None:
     """Raise ValueError if the certificate's public key doesn't match the private key."""
     from cryptography import x509
 
@@ -194,8 +196,7 @@ class MdocSigningKeyCreateSchema(OpenAPISchema):
         required=False,
         metadata={
             "description": (
-                "PEM-encoded X.509 certificate. Can be attached now or "
-                "later via PUT."
+                "PEM-encoded X.509 certificate. Can be attached now or later via PUT."
             )
         },
     )
