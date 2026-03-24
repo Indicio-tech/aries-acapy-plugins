@@ -20,6 +20,7 @@ certificate in a single step.
 
 from typing import Optional
 
+from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from acapy_agent.messaging.models.base_record import BaseRecord, BaseRecordSchema
@@ -54,8 +55,6 @@ def public_key_pem_from_private(private_key_pem: str) -> str:
 
 def validate_cert_matches_private_key(private_key_pem: str, certificate_pem: str) -> None:
     """Raise ValueError if the certificate's public key doesn't match the private key."""
-    from cryptography import x509
-
     private_key = serialization.load_pem_private_key(
         private_key_pem.encode("utf-8"), password=None
     )
