@@ -192,6 +192,10 @@ jobs:
             if ! docker compose up --exit-code-from test-river test-river; then
               echo "❌ Tests failed for $dir - dumping logs:"
               docker compose logs test-river
+              echo "--- ACA-Py Issuer Logs ---"
+              docker compose logs acapy-issuer 2>/dev/null || true
+              echo "--- ACA-Py Verifier Logs ---"
+              docker compose logs acapy-verifier 2>/dev/null || true
               docker compose down --remove-orphans
               exit 1
             fi

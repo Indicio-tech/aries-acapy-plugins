@@ -39,7 +39,7 @@ class CredentialOffer:
     """Credential Offer."""
 
     credential_issuer: str
-    credentials: list[str]
+    credential_configuration_ids: list[str]
     authorization_code: dict | None = None
     pre_authorized_code: CredentialGrantPreAuth | None = None
 
@@ -165,8 +165,8 @@ class OpenID4VCIClient:
             "credential_configuration_id": credential_configuration_id,
             "proofs": proofs,
         }
-        if offer.credentials:
-            request["type"] = offer.credentials
+        if offer.credential_configuration_ids:
+            request["type"] = offer.credential_configuration_ids
 
         async with ClientSession() as session:
             async with session.post(

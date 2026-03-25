@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone ACA-Py with shallow clone
-ARG ACAPY_VERSION=1.4.0
+ARG ACAPY_VERSION=1.5.1
 RUN git clone --depth 1 --branch ${ACAPY_VERSION} \
     https://github.com/openwallet-foundation/acapy.git /usr/acapy
 
