@@ -130,7 +130,7 @@ services:
       context: .
       dockerfile: Dockerfile.test.runner
       args:
-        ACAPY_VERSION: 1.5.1
+        ACAPY_VERSION: 1.4.0
     platform: linux/amd64  # Force x86_64 for wheel compatibility
     working_dir: /usr/src/app
     environment:
