@@ -1,7 +1,7 @@
 # =============================================================================
 # Stage 0: Build isomdl-uniffi from source (Rust + maturin)
 # =============================================================================
-FROM python:3.12-slim-bookworm AS isomdl-builder
+FROM python:3.13-slim-bookworm AS isomdl-builder
 
 # Install Rust toolchain dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -28,7 +28,7 @@ RUN maturin build --release --out /build/dist
 # =============================================================================
 # Stage 1: Install ACA-Py and plugin dependencies
 # =============================================================================
-FROM python:3.12-slim-bookworm AS base
+FROM python:3.13-slim-bookworm AS base
 
 WORKDIR /usr/src/app
 
@@ -40,7 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Accept build argument for ACA-Py version
-ARG ACAPY_VERSION=1.4.0
+ARG ACAPY_VERSION=1.5.1
 
 # Clone ACA-Py source with shallow clone
 RUN git clone --depth 1 --branch ${ACAPY_VERSION} \
@@ -75,7 +75,7 @@ RUN pip install --no-cache-dir -e ".[mso_mdoc,sd_jwt_vc]"
 # =============================================================================
 # Stage 3: Final slim runtime image
 # =============================================================================
-FROM python:3.12-slim-bookworm
+FROM python:3.13-slim-bookworm
 
 WORKDIR /usr/src/app
 
@@ -91,7 +91,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the entire Python environment from base stage, including site-packages
-COPY --from=base /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=base /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=base /usr/local/bin /usr/local/bin
 
 # Copy dev config
