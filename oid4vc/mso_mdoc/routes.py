@@ -16,6 +16,7 @@ from typing import Any, Dict
 
 from acapy_agent.admin.decorators.auth import tenant_authentication
 from acapy_agent.admin.request_context import AdminRequestContext
+from acapy_agent.askar.profile import AskarProfileSession
 from acapy_agent.messaging.models.openapi import OpenAPISchema
 from acapy_agent.messaging.valid import GENERIC_DID_EXAMPLE, GENERIC_DID_VALIDATE, Uri
 from aiohttp import web
