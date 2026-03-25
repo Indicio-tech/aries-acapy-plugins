@@ -34,7 +34,7 @@ async def test_sphereon_accept_credential_offer(acapy_issuer_admin, sphereon_cli
         "/oid4vci/credential-supported/create/jwt",
         json={
             "cryptographic_binding_methods_supported": ["did"],
-            "cryptographic_suites_supported": ["ES256"],
+            "credential_signing_alg_values_supported": ["ES256"],
             "format": "jwt_vc_json",
             "id": cred_id,
             "@context": [
@@ -99,7 +99,7 @@ async def test_sphereon_accept_mdoc_credential_offer(
         "/oid4vci/credential-supported/create",
         json={
             "cryptographic_binding_methods_supported": ["cose_key"],
-            "cryptographic_suites_supported": ["ES256", "ES384", "ES512"],
+            "credential_signing_alg_values_supported": ["ES256", "ES384", "ES512"],
             "format": "mso_mdoc",
             "id": cred_id,
             "identifier": "org.iso.18013.5.1.mDL",
@@ -214,7 +214,7 @@ async def test_sphereon_present_mdoc_credential(
         "/oid4vci/credential-supported/create",
         json={
             "cryptographic_binding_methods_supported": ["cose_key"],
-            "cryptographic_suites_supported": ["ES256"],
+            "credential_signing_alg_values_supported": ["ES256"],
             "format": "mso_mdoc",
             "id": cred_id,
             "identifier": "org.iso.18013.5.1.mDL",
@@ -341,7 +341,7 @@ async def test_sphereon_accept_credential_offer_by_ref(
         "/oid4vci/credential-supported/create/jwt",
         json={
             "cryptographic_binding_methods_supported": ["did"],
-            "cryptographic_suites_supported": ["ES256"],
+            "credential_signing_alg_values_supported": ["ES256"],
             "format": "jwt_vc_json",
             "id": cred_id,
             "@context": [
@@ -412,7 +412,7 @@ async def test_sphereon_revocation_flow(
         "/oid4vci/credential-supported/create",
         json={
             "cryptographic_binding_methods_supported": ["did:key"],
-            "cryptographic_suites_supported": ["ES256"],
+            "credential_signing_alg_values_supported": ["ES256"],
             "format": "jwt_vc_json",
             "id": cred_id,
             "type": ["VerifiableCredential", "UniversityDegreeCredential"],

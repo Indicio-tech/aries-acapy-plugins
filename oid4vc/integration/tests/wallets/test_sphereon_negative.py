@@ -13,7 +13,7 @@ async def test_sphereon_accept_offer_invalid_proof(acapy_issuer_admin, sphereon_
         "/oid4vci/credential-supported/create/jwt",
         json={
             "cryptographic_binding_methods_supported": ["did"],
-            "cryptographic_suites_supported": ["ES256"],
+            "credential_signing_alg_values_supported": ["ES256"],
             "format": "jwt_vc_json",
             "id": cred_id,
             "@context": [

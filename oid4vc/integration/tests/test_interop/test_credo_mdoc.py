@@ -88,7 +88,7 @@ async def mdoc_credential_config(acapy_issuer: httpx.AsyncClient) -> dict[str, A
         "scope": "mDL",
         "doctype": "org.iso.18013.5.1.mDL",
         "cryptographic_binding_methods_supported": ["cose_key", "did:key", "did"],
-        "cryptographic_suites_supported": ["ES256"],
+        "credential_signing_alg_values_supported": ["ES256"],
         "proof_types_supported": {
             "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
         },

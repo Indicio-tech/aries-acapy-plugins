@@ -167,7 +167,7 @@ async def test_mdoc_issue_to_sphereon_verify_with_credo_patterns(
         "/oid4vci/credential-supported/create",
         json={
             "cryptographic_binding_methods_supported": ["cose_key"],
-            "cryptographic_suites_supported": ["ES256"],
+            "credential_signing_alg_values_supported": ["ES256"],
             "format": "mso_mdoc",
             "id": cred_id,
             "identifier": "org.iso.18013.5.1.mDL",

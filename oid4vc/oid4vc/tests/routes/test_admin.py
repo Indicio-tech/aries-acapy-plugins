@@ -140,20 +140,21 @@ async def test_supported_credential_create_jwt(context: AdminRequestContext):
 
 
 @pytest.mark.asyncio
-async def test_supported_credential_create_jwt_rejects_unknown_fields(
+async def test_supported_credential_create_jwt_ignores_unknown_fields(
     context: AdminRequestContext,
 ):
-    """JWT create should reject unknown fields due to RAISE validation."""
+    """JWT create should ignore unknown fields (schema uses exclude, matching upstream)."""
     body = {
         "format": "jwt_vc_json",
         "id": "BadCred",
         "credential_signing_alg_values_supported": ["ES256"],
-        "totally_bogus_field": "should fail",
+        "totally_bogus_field": "should be ignored",
     }
     request = _make_request(context, json_data=body)
 
-    with pytest.raises(web.HTTPBadRequest):
-        await supported_credential_create_jwt(request)
+    # Should succeed — unknown fields are excluded, not rejected
+    response = await supported_credential_create_jwt(request)
+    assert response.status == 200
 
 
 # -- List ---------------------------------------------------------------------

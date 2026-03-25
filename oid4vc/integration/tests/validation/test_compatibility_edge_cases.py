@@ -40,7 +40,7 @@ async def test_credo_empty_claim_values(
         },
         "format_data": {
             "cryptographic_binding_methods_supported": ["did:key"],
-            "cryptographic_suites_supported": ["EdDSA"],
+            "credential_signing_alg_values_supported": ["EdDSA"],
             "vct": "EmptyClaimCredential",
             "claims": {
                 "required_field": {"mandatory": True},
@@ -175,7 +175,7 @@ async def test_credo_special_characters_in_claims(
         },
         "format_data": {
             "cryptographic_binding_methods_supported": ["did:key"],
-            "cryptographic_suites_supported": ["EdDSA"],
+            "credential_signing_alg_values_supported": ["EdDSA"],
             "vct": "SpecialCharCredential",
             "claims": {
                 "unicode_name": {"mandatory": True},
@@ -323,7 +323,7 @@ async def test_large_credential_subject(
             },
             "format_data": {
                 "cryptographic_binding_methods_supported": ["did:key"],
-                "cryptographic_suites_supported": ["EdDSA"],
+                "credential_signing_alg_values_supported": ["EdDSA"],
                 "vct": "LargeCredential",
                 "claims": claims,
             },

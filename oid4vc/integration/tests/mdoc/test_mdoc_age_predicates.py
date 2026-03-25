@@ -63,7 +63,7 @@ class TestMdocAgePredicates:
             "format": "mso_mdoc",
             "doctype": "org.iso.18013.5.1.mDL",
             "cryptographic_binding_methods_supported": ["cose_key", "did:key", "did"],
-            "cryptographic_suites_supported": ["ES256"],
+            "credential_signing_alg_values_supported": ["ES256"],
             "proof_types_supported": {
                 "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
             },
@@ -245,7 +245,7 @@ class TestMdocAgePredicates:
             "format": "mso_mdoc",
             "doctype": "org.iso.18013.5.1.mDL",
             "cryptographic_binding_methods_supported": ["cose_key", "did:key", "did"],
-            "cryptographic_suites_supported": ["ES256"],
+            "credential_signing_alg_values_supported": ["ES256"],
             "proof_types_supported": {
                 "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
             },

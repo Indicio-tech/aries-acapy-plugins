@@ -39,7 +39,7 @@ async def test_issue_to_sphereon_verify_with_credo_jwt_vc(
         "/oid4vci/credential-supported/create/jwt",
         json={
             "cryptographic_binding_methods_supported": ["did"],
-            "cryptographic_suites_supported": ["ES256"],
+            "credential_signing_alg_values_supported": ["ES256"],
             "format": "jwt_vc_json",
             "id": cred_id,
             "@context": [
@@ -161,7 +161,7 @@ async def test_sphereon_jwt_vp_with_constraints_pattern(
         "/oid4vci/credential-supported/create/jwt",
         json={
             "cryptographic_binding_methods_supported": ["did"],
-            "cryptographic_suites_supported": ["ES256"],
+            "credential_signing_alg_values_supported": ["ES256"],
             "format": "jwt_vc_json",
             "id": cred_id,
             "@context": [
@@ -280,7 +280,7 @@ async def test_sphereon_unsupported_format_request(
         "/oid4vci/credential-supported/create/jwt",
         json={
             "cryptographic_binding_methods_supported": ["did"],
-            "cryptographic_suites_supported": ["ES256"],
+            "credential_signing_alg_values_supported": ["ES256"],
             "format": "jwt_vc_json",
             "id": cred_id,
             "@context": ["https://www.w3.org/2018/credentials/v1"],

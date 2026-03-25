@@ -18,7 +18,7 @@ from aiohttp_apispec import (
     request_schema,
     response_schema,
 )
-from marshmallow import RAISE, ValidationError, fields
+from marshmallow import fields
 
 from ..cred_processor import CredProcessorError, CredProcessors
 from ..models.supported_cred import SupportedCredential, SupportedCredentialSchema
@@ -317,10 +317,16 @@ async def supported_credential_create_jwt(request: web.Request):
     profile = context.profile
 
     body: Dict[str, Any] = await request.json()
-    try:
-        body = JwtSupportedCredCreateRequestSchema().load(body, unknown=RAISE)
-    except ValidationError as err:
-        raise web.HTTPBadRequest(reason=str(err.messages)) from err
+    # Backward compat: accept top-level @context/type (old API) alongside
+    # the OID4VCI 1.0 credential_definition wrapping.
+    if "credential_definition" not in body:
+        compat: Dict[str, Any] = {}
+        for key in ("@context", "type", "credentialSubject", "order"):
+            if key in body:
+                compat[key] = body.pop(key)
+        if compat:
+            body["credential_definition"] = compat
+    body = JwtSupportedCredCreateRequestSchema().load(body)
 
     if not await supported_cred_is_unique(body["identifier"], profile):
         raise web.HTTPBadRequest(
@@ -546,10 +552,16 @@ async def update_supported_credential_jwt_vc(request: web.Request):
     context: AdminRequestContext = request["context"]
     supported_cred_id = request.match_info["supported_cred_id"]
     body: Dict[str, Any] = await request.json()
-    try:
-        body = JwtSupportedCredCreateRequestSchema().load(body, unknown=RAISE)
-    except ValidationError as err:
-        raise web.HTTPBadRequest(reason=str(err.messages)) from err
+    # Backward compat: accept top-level @context/type (old API) alongside
+    # the OID4VCI 1.0 credential_definition wrapping.
+    if "credential_definition" not in body:
+        compat: Dict[str, Any] = {}
+        for key in ("@context", "type", "credentialSubject", "order"):
+            if key in body:
+                compat[key] = body.pop(key)
+        if compat:
+            body["credential_definition"] = compat
+    body = JwtSupportedCredCreateRequestSchema().load(body)
 
     LOGGER.debug(
         "Updating JWT VC supported credential %s with request payload: %s",

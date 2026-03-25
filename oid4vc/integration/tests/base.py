@@ -56,7 +56,7 @@ class BaseSdJwtTest(BaseOID4VCTest):
         return {
             "format": CredentialFormat.SD_JWT.value,
             "cryptographic_binding_methods_supported": ["did:key", "jwk"],
-            "cryptographic_suites_supported": ALGORITHMS.SD_JWT_ALGS,
+            "credential_signing_alg_values_supported": ALGORITHMS.SD_JWT_ALGS,
             "proof_types_supported": {
                 "jwt": {"proof_signing_alg_values_supported": ALGORITHMS.SD_JWT_ALGS}
             },
@@ -75,7 +75,7 @@ class BaseJwtVcTest(BaseOID4VCTest):
         return {
             "format": CredentialFormat.JWT_VC.value,
             "cryptographic_binding_methods_supported": ["did"],
-            "cryptographic_suites_supported": ALGORITHMS.JWT_VC_ALGS,
+            "credential_signing_alg_values_supported": ALGORITHMS.JWT_VC_ALGS,
             "proof_types_supported": {
                 "jwt": {"proof_signing_alg_values_supported": ALGORITHMS.JWT_VC_ALGS}
             },
@@ -107,7 +107,7 @@ class BaseMdocTest(BaseOID4VCTest):
             "format": CredentialFormat.MDOC.value,
             "doctype": Doctype.MDL,
             "cryptographic_binding_methods_supported": ["cose_key", "did:key", "did"],
-            "cryptographic_suites_supported": ALGORITHMS.MDOC_ALGS,
+            "credential_signing_alg_values_supported": ALGORITHMS.MDOC_ALGS,
             "proof_types_supported": {
                 "jwt": {"proof_signing_alg_values_supported": ALGORITHMS.MDOC_ALGS}
             },
