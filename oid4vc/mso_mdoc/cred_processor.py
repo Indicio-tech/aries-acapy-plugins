@@ -3,19 +3,16 @@
 Glues together the signing-key resolution, payload preparation, and isomdl
 binding layers to implement ISO/IEC 18013-5:2021 compliant mDoc issuance and
 verification inside the OID4VCI plugin framework.
-
-Public API re-exported from sub-modules for backward compatibility:
-
-- ``check_certificate_not_expired`` — from :mod:`.signing_key`
-- ``resolve_signing_key_for_credential`` — from :mod:`.signing_key`
 """
 
 import base64
 import json
 import logging
-import os
 import re
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+
+from cryptography import x509 as _x509
+from typing import Any, Dict, List, Optional
 
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.core.profile import Profile
@@ -26,27 +23,65 @@ from oid4vc.models.presentation import OID4VPPresentation
 from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.pop_result import PopResult
 
-from .key_generation import generate_self_signed_certificate, pem_from_jwk, pem_to_jwk  # noqa: F401
 from .mdoc.issuer import MDL_MANDATORY_FIELDS, isomdl_mdoc_sign
 from .mdoc.cred_verifier import MsoMdocCredVerifier
 from .mdoc.pres_verifier import MsoMdocPresVerifier
-from .mdoc.trust_store import WalletTrustStore
 from .payload import normalize_mdoc_result, prepare_mdoc_payload
-from .signing_key import (
-    check_certificate_not_expired,
-    resolve_signing_key_for_credential,
-)
-from .storage import MdocStorageManager
+from .trust_anchor import TrustAnchorRecord
+from .signing_key import MdocSigningKeyRecord
 
-# Re-export so existing ``from .cred_processor import X`` and
-# ``patch("mso_mdoc.cred_processor.X")`` usages continue to work.
 __all__ = [
     "MsoMdocCredProcessor",
     "check_certificate_not_expired",
-    "resolve_signing_key_for_credential",
 ]
 
 LOGGER = logging.getLogger(__name__)
+
+
+def check_certificate_not_expired(cert_pem: str) -> None:
+    """Validate that a PEM-encoded X.509 certificate is currently valid."""
+    if not cert_pem or not cert_pem.strip():
+        raise CredProcessorError("Empty certificate PEM string")
+
+    try:
+        cert = _x509.load_pem_x509_certificate(cert_pem.strip().encode())
+    except Exception as exc:
+        raise CredProcessorError(
+            f"Invalid certificate PEM — could not parse: {exc}"
+        ) from exc
+
+    now = datetime.now(UTC)
+    if cert.not_valid_before_utc > now:
+        nb = cert.not_valid_before_utc.isoformat()
+        raise CredProcessorError(f"Certificate is not yet valid (NotBefore={nb})")
+    if cert.not_valid_after_utc < now:
+        na = cert.not_valid_after_utc.isoformat()
+        raise CredProcessorError(f"Certificate has expired (NotAfter={na})")
+
+
+async def _get_trust_anchors(
+    profile: Profile,
+    doctype: Optional[str] = None,
+) -> List[str]:
+    """Collect trust anchor PEMs from TrustAnchorRecord storage.
+
+    Queries ``TrustAnchorRecord`` records with ``purpose="iaca"``.  When
+    *doctype* is provided, records whose ``doctype`` tag matches OR whose
+    ``doctype`` tag is ``None`` ("wildcard") are both included.
+    """
+    anchors: List[str] = []
+
+    async with profile.session() as session:
+        records = await TrustAnchorRecord.query(session, tag_filter={"purpose": "iaca"})
+        for record in records:
+            # When doctype is unspecified, include all anchors (no filtering).
+            # When doctype is specified, include only exact matches and wildcards
+            # (records stored without a doctype that apply to all credential types).
+            if doctype is None or record.doctype is None or record.doctype == doctype:
+                if record.certificate_pem:
+                    anchors.append(record.certificate_pem)
+
+    return anchors
 
 
 class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
@@ -115,9 +150,8 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             credential_metadata = metadata.setdefault("credential_metadata", {})
             credential_metadata["display"] = display
 
-    def __init__(self, trust_store: Optional[Any] = None):
+    def __init__(self):
         """Initialize the processor."""
-        self.trust_store = trust_store
 
     def _validate_and_get_doctype(
         self, body: Dict[str, Any], supported: SupportedCredential
@@ -257,104 +291,128 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
 
     async def _resolve_signing_key(
         self,
-        context: AdminRequestContext,
-        session: Any,
-        verification_method: Optional[str],
+        supported: SupportedCredential,
+        profile: Optional[Profile] = None,
     ) -> Dict[str, Any]:
-        """Resolve the signing key for credential issuance."""
-        storage_manager = MdocStorageManager(context.profile)
+        """Resolve the signing key for credential issuance.
 
-        # Check for environment variables for static key
-        key_path = os.getenv("OID4VC_MDOC_SIGNING_KEY_PATH")
-        cert_path = os.getenv("OID4VC_MDOC_SIGNING_CERT_PATH")
+        Resolution order:
+        1. ``signing_key_id`` in ``vc_additional_data`` — fetch a specific
+           ``MdocSigningKeyRecord`` by ID.
+        2. ``MdocSigningKeyRecord`` query by doctype — first matching record.
 
-        if (
-            key_path
-            and cert_path
-            and os.path.exists(key_path)
-            and os.path.exists(cert_path)
-        ):
-            static_key_id = "static-signing-key"
-            # Use the same API as the rest of the signing-key path.
-            existing_key = await storage_manager.get_signing_key(
-                session, identifier=static_key_id
-            )
-            if not existing_key:
-                LOGGER.info("Loading static signing key from %s", key_path)
-                try:
-                    with open(key_path, "r") as f:
-                        private_key_pem = f.read()
-                    with open(cert_path, "r") as f:
-                        certificate_pem = f.read()
+        Returns:
+            Dict with ``private_key_pem`` and ``certificate_pem``.
+        """
+        additional = supported.vc_additional_data or {}
+        doctype = (supported.format_data or {}).get("doctype")
 
-                    # Derive JWK from PEM
-                    jwk = pem_to_jwk(private_key_pem)
-
-                    await storage_manager.store_key(
-                        session,
-                        key_id=static_key_id,
-                        jwk=jwk,
-                        purpose="signing",
-                        metadata={"static": True},
+        # 1. Explicit signing key record ID
+        signing_key_id = additional.get("signing_key_id")
+        if signing_key_id and profile:
+            try:
+                async with profile.session() as session:
+                    key_record = await MdocSigningKeyRecord.retrieve_by_id(
+                        session, signing_key_id
                     )
-
-                    cert_id = f"mdoc-cert-{static_key_id}"
-                    await storage_manager.store_certificate(
-                        session,
-                        cert_id=cert_id,
-                        certificate_pem=certificate_pem,
-                        key_id=static_key_id,
-                        metadata={"static": True, "purpose": "mdoc_issuing"},
-                    )
-
-                    # Only set as default when no key has been configured yet.
-                    # Without this guard the env-var key would silently overwrite
-                    # whatever key the operator registered via the key management API.
-                    existing_default = await storage_manager.get_config(
-                        session, "default_signing_key"
-                    )
-                    if not existing_default:
-                        await storage_manager.store_config(
-                            session, "default_signing_key", {"key_id": static_key_id}
-                        )
-
-                except CredProcessorError:
-                    raise
-                except Exception as e:
-                    raise CredProcessorError(
-                        f"Failed to load static signing key from {key_path!r}: {e}"
-                    ) from e
-
-        if verification_method:
-            # Use verification method to resolve signing key
-            if "#" in verification_method:
-                _, key_id = verification_method.split("#", 1)
-            else:
-                key_id = verification_method
-
-            key_data = await storage_manager.get_signing_key(
-                session,
-                identifier=key_id,
-                verification_method=verification_method,
-            )
-
-            if key_data:
-                LOGGER.info(
-                    "Using signing key from verification method: %s",
-                    verification_method,
+                if key_record.private_key_pem and key_record.certificate_pem:
+                    return {
+                        "private_key_pem": key_record.private_key_pem,
+                        "certificate_pem": key_record.certificate_pem,
+                    }
+            except Exception as exc:
+                LOGGER.warning(
+                    "Could not load MdocSigningKeyRecord %s: %s", signing_key_id, exc
                 )
-                return key_data
 
-        # Fall back to default signing key from storage
-        key_data = await storage_manager.get_default_signing_key(session)
-        if key_data:
-            LOGGER.info("Using default signing key")
-            return key_data
+        # 2. MdocSigningKeyRecord query by doctype (or any key if no doctype)
+        if profile:
+            try:
+                async with profile.session() as session:
+                    tag_filter = {"doctype": doctype} if doctype else None
+                    key_records = await MdocSigningKeyRecord.query(
+                        session, tag_filter=tag_filter
+                    )
+                    if not key_records and doctype:
+                        # fall back to wildcard keys (no doctype set)
+                        key_records = await MdocSigningKeyRecord.query(session)
+                    for key_record in key_records:
+                        if key_record.private_key_pem and key_record.certificate_pem:
+                            return {
+                                "private_key_pem": key_record.private_key_pem,
+                                "certificate_pem": key_record.certificate_pem,
+                            }
+            except Exception as exc:
+                LOGGER.debug("MdocSigningKeyRecord query failed: %s", exc)
 
         raise CredProcessorError(
-            "No default signing key is configured. "
-            "Register a signing key via the mso_mdoc key management API before issuing."
+            "No mDoc signing key configured. "
+            "Create a MdocSigningKeyRecord via POST /mso-mdoc/signing-keys."
         )
+
+    async def _assign_status_entry(
+        self,
+        context: AdminRequestContext,
+        supported: SupportedCredential,
+        doctype: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Optionally assign a Token Status List entry for the credential.
+
+        If ``status_list_def_id`` and ``status_list_base_uri`` are set in the
+        ``SupportedCredential.vc_additional_data``, this method attempts to
+        assign an entry from the status_list plugin and returns the status
+        claim dict to embed in the payload.
+
+        Returns ``None`` if the status list plugin is not installed or not
+        configured for this credential type.
+        """
+        additional = supported.vc_additional_data or {}
+        definition_id = additional.get("status_list_def_id")
+        base_uri = additional.get("status_list_base_uri", "").rstrip("/")
+
+        if not definition_id or not base_uri:
+            return None
+
+        try:
+            from status_list.status_list.v1_0 import (  # noqa: PLC0415
+                status_handler as _status_handler,
+            )
+        except ImportError:
+            LOGGER.debug(
+                "status_list plugin not installed; skipping revocation entry assignment"
+            )
+            return None
+
+        try:
+            entry = await _status_handler.assign_status_list_entry(context, definition_id)
+        except Exception as exc:
+            LOGGER.warning(
+                "Failed to assign status list entry for definition %s: %s",
+                definition_id,
+                exc,
+            )
+            return None
+
+        if entry is None:
+            LOGGER.warning(
+                "Status list entry assignment returned None for definition %s",
+                definition_id,
+            )
+            return None
+
+        list_number = entry.get("list_number", "")
+        list_index = entry.get("list_index", 0)
+        status_uri = f"{base_uri}/{list_number}"
+
+        LOGGER.info(
+            "Assigned status list entry: doctype=%s list_number=%s index=%d uri=%s",
+            doctype,
+            list_number,
+            list_index,
+            status_uri,
+        )
+
+        return {"status_list": {"idx": list_index, "uri": status_uri}}
 
     async def issue(
         self,
@@ -395,40 +453,19 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             # Build mso_mdoc headers
             headers = self._build_headers(doctype, device_key_str)
 
-            # Get payload and verification method
-            verification_method = ex_record.verification_method
+            # Get payload
             payload = prepare_mdoc_payload(ex_record.credential_subject, doctype)
 
-            # Resolve signing key
-            async with context.profile.session() as session:
-                key_data = await self._resolve_signing_key(
-                    context, session, verification_method
-                )
-                key_id = key_data.get("key_id")
-                # Reconstruct private_key_pem on-demand from the JWK 'd' parameter.
-                private_key_pem = key_data.get("metadata", {}).get("private_key_pem")
-                if not private_key_pem:
-                    signing_jwk = key_data.get("jwk", {})
-                    if signing_jwk.get("d"):
-                        private_key_pem = pem_from_jwk(signing_jwk)
+            # Optionally assign a status list entry and embed the status claim
+            status_claim = await self._assign_status_entry(context, supported, doctype)
+            if status_claim:
+                payload["status"] = status_claim
 
-                # Fetch certificate
-                storage_manager = MdocStorageManager(context.profile)
-                certificate_pem = await storage_manager.get_certificate_for_key(
-                    session, key_id
-                )
-
-                if not certificate_pem:
-                    raise CredProcessorError(
-                        f"Certificate not found for key {key_id!r}. "
-                        "Keys must be registered with a certificate before use."
-                    )
-
-            if not private_key_pem:
-                raise CredProcessorError("Private key PEM not found for signing key")
-
-            if not certificate_pem:
-                raise CredProcessorError("Certificate PEM not found for signing key")
+            # Resolve signing key — check MdocSigningKeyRecord first, then
+            # fall back to vc_additional_data and env vars
+            key_data = await self._resolve_signing_key(supported, context.profile)
+            private_key_pem = key_data["private_key_pem"]
+            certificate_pem = key_data["certificate_pem"]
 
             # Validity-period guard: reject expired or not-yet-valid certificates
             # before passing them to the Rust signing library.
@@ -566,10 +603,8 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
         credential: Any,
     ):
         """Verify an mso_mdoc credential."""
-        # Always build a per-request WalletTrustStore from the calling profile
-        # so each tenant's Askar partition is queried (wallet-scoped registry).
-        trust_store = WalletTrustStore(profile)
-        verifier = MsoMdocCredVerifier(trust_store=trust_store)
+        trust_anchors = await _get_trust_anchors(profile)
+        verifier = MsoMdocCredVerifier(trust_anchors=trust_anchors)
         return await verifier.verify_credential(profile, credential)
 
     async def verify_presentation(
@@ -579,10 +614,8 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
         presentation_record: "OID4VPPresentation",
     ):
         """Verify an mso_mdoc presentation."""
-        # Always build a per-request WalletTrustStore from the calling profile
-        # so each tenant's Askar partition is queried (wallet-scoped registry).
-        trust_store = WalletTrustStore(profile)
-        verifier = MsoMdocPresVerifier(trust_store=trust_store)
+        trust_anchors = await _get_trust_anchors(profile)
+        verifier = MsoMdocPresVerifier(trust_anchors=trust_anchors)
         return await verifier.verify_presentation(
             profile, presentation, presentation_record
         )

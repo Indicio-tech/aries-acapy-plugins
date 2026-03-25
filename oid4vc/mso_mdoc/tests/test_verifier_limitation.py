@@ -48,16 +48,12 @@ class TestMsoMdocVerifierSignature:
         A trust store with at least one anchor must be provided; without one
         the fail-closed guard returns verified=False before calling Rust.
         """
-        # Provide a minimal trust store so the fail-closed guard is satisfied.
+        # Provide a minimal trust anchor list so the fail-closed guard is satisfied.
         pem_cert = (
             "-----BEGIN CERTIFICATE-----\nZmFrZWNlcnQ=\n-----END CERTIFICATE-----\n"
         )
 
-        class _TrustStore:
-            def get_trust_anchors(self):
-                return [pem_cert]
-
-        verifier = MsoMdocCredVerifier(trust_store=_TrustStore())
+        verifier = MsoMdocCredVerifier(trust_anchors=[pem_cert])
         profile = MagicMock()
 
         # Mock isomdl_uniffi to simulate successful parsing and verification
@@ -100,11 +96,7 @@ class TestMsoMdocVerifierSignature:
             "-----BEGIN CERTIFICATE-----\nZmFrZWNlcnQ=\n-----END CERTIFICATE-----\n"
         )
 
-        class _TrustStore:
-            def get_trust_anchors(self):
-                return [pem_cert]
-
-        verifier = MsoMdocCredVerifier(trust_store=_TrustStore())
+        verifier = MsoMdocCredVerifier(trust_anchors=[pem_cert])
         profile = MagicMock()
 
         with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_isomdl:
@@ -142,11 +134,7 @@ class TestMsoMdocVerifierSignature:
             "-----BEGIN CERTIFICATE-----\nZmFrZWNlcnQ=\n-----END CERTIFICATE-----\n"
         )
 
-        class _TrustStore:
-            def get_trust_anchors(self):
-                return [pem_cert]
-
-        verifier = MsoMdocCredVerifier(trust_store=_TrustStore())
+        verifier = MsoMdocCredVerifier(trust_anchors=[pem_cert])
         profile = MagicMock()
 
         with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_isomdl:

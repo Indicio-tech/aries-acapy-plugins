@@ -355,7 +355,7 @@ class TestDCQLMdocFlow:
         acapy_issuer_admin,
         acapy_verifier_admin,
         credo_client,
-        setup_all_trust_anchors,  # noqa: ARG002 - required fixture for mDOC trust
+        setup_all_trust_anchors,
     ):
         """Test DCQL flow with mDOC: issue → receive → present with DCQL → verify.
 
@@ -392,6 +392,7 @@ class TestDCQLMdocFlow:
                     }
                 ],
             },
+            "vc_additional_data": {},
         }
 
         credential_config_response = await acapy_issuer_admin.post(

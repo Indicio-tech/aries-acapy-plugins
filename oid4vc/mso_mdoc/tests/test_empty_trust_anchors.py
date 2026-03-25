@@ -20,7 +20,7 @@ HOW TO RUN:
 
 import sys
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -36,7 +36,6 @@ sys.modules.setdefault("isomdl_uniffi", _iso_stub)
 
 from ..mdoc.cred_verifier import MsoMdocCredVerifier  # noqa: E402
 from ..mdoc.pres_verifier import MsoMdocPresVerifier  # noqa: E402
-from ..mdoc.trust_store import WalletTrustStore  # noqa: E402
 from ..mdoc.mdoc_verify import mdoc_verify  # noqa: E402
 
 
@@ -106,7 +105,7 @@ class TestEmptyTrustAnchorsCredVerifier:
 
         If this test fails it means the fail-closed guard is missing.
         """
-        verifier = MsoMdocCredVerifier(trust_store=None)
+        verifier = MsoMdocCredVerifier(trust_anchors=[])
         profile, _ = _make_profile()
         mock_mdoc = _make_mock_mdoc(verified=True)  # Rust "accepts" without trust anchors
 
@@ -138,11 +137,7 @@ class TestEmptyTrustAnchorsCredVerifier:
         the verifier must fail-closed.
         """
 
-        class EmptyTrustStore:
-            def get_trust_anchors(self):
-                return []
-
-        verifier = MsoMdocCredVerifier(trust_store=EmptyTrustStore())
+        verifier = MsoMdocCredVerifier(trust_anchors=[])
         profile, _ = _make_profile()
         mock_mdoc = _make_mock_mdoc(verified=True)
 
@@ -154,8 +149,8 @@ class TestEmptyTrustAnchorsCredVerifier:
 
         assert result.verified is False, (
             "SECURITY BUG: verify_credential returned verified=True even though "
-            "the trust store returned an empty list. Fail-closed guard must also "
-            "cover the case where get_trust_anchors() returns []."
+            "the trust anchors list is empty. Fail-closed guard must also "
+            "cover the case where trust_anchors is []."
         )
 
     @pytest.mark.asyncio
@@ -172,11 +167,7 @@ class TestEmptyTrustAnchorsCredVerifier:
             "-----END CERTIFICATE-----\n"
         )
 
-        class PopulatedTrustStore:
-            def get_trust_anchors(self):
-                return [pem_cert]
-
-        verifier = MsoMdocCredVerifier(trust_store=PopulatedTrustStore())
+        verifier = MsoMdocCredVerifier(trust_anchors=[pem_cert])
         profile, _ = _make_profile()
         mock_mdoc = _make_mock_mdoc(verified=True, common_name="Test Root CA")
 
@@ -205,11 +196,7 @@ class TestEmptyTrustAnchorsCredVerifier:
             "-----BEGIN CERTIFICATE-----\nZmFrZWNlcnQ=\n-----END CERTIFICATE-----\n"
         )
 
-        class PopulatedTrustStore:
-            def get_trust_anchors(self):
-                return [pem_cert]
-
-        verifier = MsoMdocCredVerifier(trust_store=PopulatedTrustStore())
+        verifier = MsoMdocCredVerifier(trust_anchors=[pem_cert])
         profile, _ = _make_profile()
         mock_mdoc = _make_mock_mdoc(verified=False)
 
@@ -328,76 +315,6 @@ class TestMdocVerifyEmptyTrustAnchors:
 
 
 # ---------------------------------------------------------------------------
-# WalletTrustStore-specific: refresh_cache must be called before verification
-# ---------------------------------------------------------------------------
-
-
-class TestWalletTrustStoreEmptyCache:
-    """WalletTrustStore with unfilled cache must not silently allow verification."""
-
-    @pytest.mark.asyncio
-    async def test_uninitialized_wallet_trust_store_rejects_credential(self):
-        """verify_credential must not call Rust when WalletTrustStore is uninitialized.
-
-        If refresh_cache() was never awaited, get_trust_anchors() raises RuntimeError.
-        The MsoMdocCredVerifier must catch this and return verified=False, NOT
-        call Rust with whatever fallback trust list.
-        """
-        profile, _ = _make_profile()
-        trust_store = WalletTrustStore(profile)
-        # Deliberately do NOT call await trust_store.refresh_cache()
-
-        verifier = MsoMdocCredVerifier(trust_store=trust_store)
-        mock_mdoc = _make_mock_mdoc(verified=True)
-
-        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso:
-            mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
-            mock_iso.Mdoc.from_string.return_value = mock_mdoc
-
-            result = await verifier.verify_credential(profile, "a0b1c2d3e4f5")
-
-        # The uninitialized store either raises RuntimeError (existing contract)
-        # or returns [] after the fail-closed guard is added.  Either way,
-        # the final result must be verified=False.
-        assert result.verified is False, (
-            "Uninitialized WalletTrustStore must not allow a credential to "
-            "pass verification. Ensure get_trust_anchors() RuntimeError is caught "
-            "and returns verified=False."
-        )
-
-    @pytest.mark.asyncio
-    async def test_wallet_trust_store_empty_after_refresh_rejects_credential(self):
-        """Even after refresh_cache(), an empty wallet trust store must fail-closed.
-
-        This tests the case where the wallet is running but no trust anchors
-        have been uploaded by an operator.
-        """
-        profile, mock_session = _make_profile()
-
-        # Patch MdocStorageManager to return zero trust anchors
-        with patch("mso_mdoc.mdoc.trust_store.MdocStorageManager") as MockStorage:
-            MockStorage.return_value.get_all_trust_anchor_pems = AsyncMock(
-                return_value=[]
-            )
-            trust_store = WalletTrustStore(profile)
-            await trust_store.refresh_cache()
-
-        verifier = MsoMdocCredVerifier(trust_store=trust_store)
-        mock_mdoc = _make_mock_mdoc(verified=True)
-
-        with patch("mso_mdoc.mdoc.cred_verifier.isomdl_uniffi") as mock_iso:
-            mock_iso.MdocVerificationError = _iso_stub.MdocVerificationError
-            mock_iso.Mdoc.from_string.return_value = mock_mdoc
-
-            result = await verifier.verify_credential(profile, "a0b1c2d3e4f5")
-
-        assert result.verified is False, (
-            "SECURITY BUG: WalletTrustStore with zero stored trust anchors "
-            "allowed credential verification to succeed."
-        )
-
-
-# ---------------------------------------------------------------------------
 # MsoMdocPresVerifier — verify_presentation also must fail-closed
 # ---------------------------------------------------------------------------
 
@@ -408,7 +325,7 @@ class TestEmptyTrustAnchorsPresVerifier:
     @pytest.mark.asyncio
     async def test_no_trust_store_rejects_presentation(self):
         """OID4VP presentation MUST be rejected when no trust anchors exist."""
-        verifier = MsoMdocPresVerifier(trust_store=None)
+        verifier = MsoMdocPresVerifier(trust_anchors=[])
         profile, _ = _make_profile()
         pres_record = _make_presentation_record()
 

@@ -19,7 +19,11 @@ from .constants import (
 class CredentialFlowHelper:
     """Helper for credential issuance flows."""
 
-    def __init__(self, issuer_admin, holder_client):
+    def __init__(
+        self,
+        issuer_admin,
+        holder_client,
+    ):
         """Initialize with admin controller and holder client.
 
         Args:
@@ -236,6 +240,8 @@ class CredentialFlowHelper:
             credential_id = f"mDOC_{uuid.uuid4().hex[:8]}"
 
         # Create credential configuration
+        vc_additional_data: dict[str, Any] = {}
+
         credential_config = {
             "id": credential_id,
             "format": CredentialFormat.MDOC.value,
@@ -249,6 +255,7 @@ class CredentialFlowHelper:
                 "doctype": doctype,
                 "claims": claims_config,
             },
+            "vc_additional_data": vc_additional_data,
         }
 
         config_response = await self.issuer_admin.post(

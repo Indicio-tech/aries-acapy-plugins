@@ -145,7 +145,7 @@ class SupportedCredential(BaseRecord):
                 format-specific post-processing (e.g. converting algorithm
                 names, reshaping claims arrays).
         """
-        metadata = {
+        issuer_metadata = {
             prop: value
             for prop in (
                 "display",

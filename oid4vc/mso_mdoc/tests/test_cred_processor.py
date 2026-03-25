@@ -23,6 +23,7 @@ class TestMsoMdocCredProcessor:
         supported = MagicMock(spec=SupportedCredential)
         supported.format = "mso_mdoc"
         supported.format_data = {"doctype": "org.iso.18013.5.1.mDL"}
+        supported.vc_additional_data = {}
         return supported
 
     @pytest.fixture
@@ -127,63 +128,53 @@ class TestMsoMdocCredProcessor:
 
         # Mock dependencies
         mock_context = MagicMock()
-        mock_session = AsyncMock()
-        mock_context.profile.session.return_value = mock_session
-        mock_session.__aenter__.return_value = mock_session
 
-        # Mock storage manager
-        with patch("mso_mdoc.cred_processor.MdocStorageManager") as MockStorage:
-            mock_storage = MockStorage.return_value
-            # Mock key resolution
-            mock_storage.get_default_signing_key = AsyncMock(
-                return_value={
-                    "jwk": {"kty": "EC", "crv": "P-256", "x": "test", "y": "test"},
-                    "key_id": "test-key",
-                    "metadata": {"private_key_pem": "test-priv-key"},
-                }
+        # Mock signer
+        key_rec = MagicMock()
+        key_rec.private_key_pem = "test-priv-key"
+        key_rec.certificate_pem = "test-cert"
+
+        with (
+            patch("mso_mdoc.cred_processor.isomdl_mdoc_sign") as mock_sign,
+            patch("mso_mdoc.cred_processor.check_certificate_not_expired"),
+            patch(
+                "mso_mdoc.cred_processor.MdocSigningKeyRecord.query",
+                AsyncMock(return_value=[key_rec]),
+            ),
+        ):
+            mock_sign.return_value = "a0b1c2d3e4f5"
+
+            # Setup input
+            ex_record = MagicMock(spec=OID4VCIExchangeRecord)
+            ex_record.verification_method = None
+            ex_record.credential_subject = sample_body
+
+            pop = MagicMock(spec=PopResult)
+            pop.holder_jwk = {
+                "kty": "EC",
+                "crv": "P-256",
+                "x": "holder",
+                "y": "holder",
+            }
+            pop.holder_kid = None
+
+            # Call issue
+            result = await cred_processor.issue(
+                body={"doctype": "org.iso.18013.5.1.mDL"},
+                supported=mock_supported_credential,
+                ex_record=ex_record,
+                pop=pop,
+                context=mock_context,
             )
-            mock_storage.get_certificate_for_key = AsyncMock(return_value="test-cert")
 
-            # Mock signer
-            with (
-                patch("mso_mdoc.cred_processor.isomdl_mdoc_sign") as mock_sign,
-                patch(
-                    "mso_mdoc.cred_processor.check_certificate_not_expired"
-                ),  # bypass cert validation for fake PEM
-            ):
-                mock_sign.return_value = "mock_credential_string"
+            # Verify result (hex "a0b1c2d3e4f5" → base64url "oLHC0-T1")
+            assert result == "oLHC0-T1"
 
-                # Setup input
-                ex_record = MagicMock(spec=OID4VCIExchangeRecord)
-                ex_record.verification_method = None
-                ex_record.credential_subject = sample_body
-
-                pop = MagicMock(spec=PopResult)
-                pop.holder_jwk = {
-                    "kty": "EC",
-                    "crv": "P-256",
-                    "x": "holder",
-                    "y": "holder",
-                }
-                pop.holder_kid = None
-
-                # Call issue
-                result = await cred_processor.issue(
-                    body={"doctype": "org.iso.18013.5.1.mDL"},
-                    supported=mock_supported_credential,
-                    ex_record=ex_record,
-                    pop=pop,
-                    context=mock_context,
-                )
-
-                # Verify result
-                assert result == "mock_credential_string"
-
-                # Verify signer was called with correct arguments
-                mock_sign.assert_called_once()
-                call_args = mock_sign.call_args
-                assert call_args[0][0] == pop.holder_jwk  # holder_jwk
-                assert call_args[0][1]["doctype"] == "org.iso.18013.5.1.mDL"  # headers
-                assert call_args[0][2] == sample_body  # payload
-                assert call_args[0][3] == "test-cert"  # cert
-                assert call_args[0][4] == "test-priv-key"  # priv key
+            # Verify signer was called with correct arguments
+            mock_sign.assert_called_once()
+            call_args = mock_sign.call_args
+            assert call_args[0][0] == pop.holder_jwk  # holder_jwk
+            assert call_args[0][1]["doctype"] == "org.iso.18013.5.1.mDL"  # headers
+            assert call_args[0][2] == sample_body  # payload
+            assert call_args[0][3] == "test-cert"  # cert
+            assert call_args[0][4] == "test-priv-key"  # priv key
