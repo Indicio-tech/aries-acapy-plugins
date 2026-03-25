@@ -17,7 +17,7 @@ class Nonce(BaseRecord):
     RECORD_TOPIC = "oid4vci"
     RECORD_TYPE = "nonce"
     RECORD_ID_NAME = "id"
-    TAG_NAMES = {"nonce_value"}
+    TAG_NAMES = {"nonce_value", "used"}
 
     class Meta:
         """Nonce Metadata."""
