@@ -142,7 +142,7 @@ class TestMsoMdocCredProcessor:
                 AsyncMock(return_value=[key_rec]),
             ),
         ):
-            mock_sign.return_value = "a0b1c2d3e4f5"
+            mock_sign.return_value = "oLHC0+T1"  # standard base64 as returned by isomdl-uniffi
 
             # Setup input
             ex_record = MagicMock(spec=OID4VCIExchangeRecord)
@@ -167,7 +167,7 @@ class TestMsoMdocCredProcessor:
                 context=mock_context,
             )
 
-            # Verify result (hex "a0b1c2d3e4f5" → base64url "oLHC0-T1")
+            # Verify result (base64 "oLHC0+T1" → bytes → base64url "oLHC0-T1")
             assert result == "oLHC0-T1"
 
             # Verify signer was called with correct arguments
