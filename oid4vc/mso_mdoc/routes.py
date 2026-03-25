@@ -17,8 +17,10 @@ from typing import Any, Dict
 from acapy_agent.admin.decorators.auth import tenant_authentication
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.askar.profile import AskarProfileSession
+from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
 from acapy_agent.messaging.valid import GENERIC_DID_EXAMPLE, GENERIC_DID_VALIDATE, Uri
+from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from aiohttp import web
 from aiohttp_apispec import (
     docs,
@@ -52,11 +54,13 @@ LOGGER = logging.getLogger(__name__)
 
 
 class MdocSupportedCredCreateRequestSchema(OpenAPISchema):
-    """Schema for SupportedCredCreateRequestSchema."""
+    """Schema for creating an mso_mdoc SupportedCredential."""
 
     format = fields.Str(required=True, metadata={"example": "mso_mdoc"})
     identifier = fields.Str(
-        data_key="id", required=True, metadata={"example": "DriverLicenceCredential"}
+        data_key="id",
+        required=True,
+        metadata={"example": "org.iso.18013.5.1.mDL"},
     )
     cryptographic_binding_methods_supported = fields.List(
         fields.Str(), metadata={"example": ["cose_key"]}
@@ -71,8 +75,17 @@ class MdocSupportedCredCreateRequestSchema(OpenAPISchema):
     doctype = fields.Str(
         required=True,
         metadata={
-            "description": ("String designating the type of a Credential."),
+            "description": "ISO 18013-5 document type identifier.",
             "example": "org.iso.18013.5.1.mDL",
+        },
+    )
+    claims = fields.Dict(
+        keys=fields.Str,
+        required=False,
+        metadata={
+            "description": (
+                "Namespace-keyed claims: {namespace: {claim_name: descriptor}}"
+            ),
         },
     )
     credential_metadata = fields.Dict(
@@ -105,6 +118,97 @@ class MdocSupportedCredCreateRequestSchema(OpenAPISchema):
                     }
                 ],
             },
+        },
+    )
+    trust_anchors = fields.List(
+        fields.Str,
+        required=False,
+        metadata={
+            "description": "PEM-encoded X.509 root CA certificates for verification.",
+        },
+    )
+    signing_key_id = fields.Str(
+        required=False,
+        metadata={
+            "description": (
+                "ID of a MdocSigningKeyRecord to use for signing. "
+                "Takes precedence over signing_key_pem/signing_cert_pem."
+            ),
+        },
+    )
+    status_list_def_id = fields.Str(
+        required=False,
+        metadata={
+            "description": (
+                "Status list definition ID (from the status_list plugin) to use "
+                "for assigning revocation entries at credential issuance time."
+            ),
+        },
+    )
+    status_list_base_uri = fields.Str(
+        required=False,
+        metadata={
+            "description": (
+                "Base URI for published status lists "
+                "(e.g. 'https://issuer.example.com/status'). "
+                "Combined with the list_number to build the status URI embedded "
+                "in issued credentials."
+            ),
+        },
+    )
+
+
+class MdocSupportedCredUpdateRequestSchema(OpenAPISchema):
+    """Schema for partial updates to an mso_mdoc SupportedCredential.
+
+    All fields are optional; only supplied fields are changed.
+    """
+
+    format = fields.Str(required=False, metadata={"example": "mso_mdoc"})
+    identifier = fields.Str(
+        data_key="id",
+        required=False,
+        metadata={"example": "org.iso.18013.5.1.mDL"},
+    )
+    cryptographic_binding_methods_supported = fields.List(
+        fields.Str(), required=False, metadata={"example": ["cose_key"]}
+    )
+    credential_signing_alg_values_supported = fields.List(
+        fields.Str(), required=False, metadata={"example": ["-7", "-8"]}
+    )
+    proof_types_supported = fields.Dict(required=False)
+    doctype = fields.Str(
+        required=False,
+        metadata={
+            "description": "ISO 18013-5 document type identifier.",
+            "example": "org.iso.18013.5.1.mDL",
+        },
+    )
+    claims = fields.Dict(keys=fields.Str, required=False)
+    credential_metadata = fields.Dict(required=False)
+    trust_anchors = fields.List(
+        fields.Str,
+        required=False,
+        metadata={
+            "description": "PEM-encoded X.509 root CA certificates for verification.",
+        },
+    )
+    signing_key_id = fields.Str(
+        required=False,
+        metadata={
+            "description": "ID of a MdocSigningKeyRecord to use for signing.",
+        },
+    )
+    status_list_def_id = fields.Str(
+        required=False,
+        metadata={
+            "description": "Status list definition ID for revocation entry assignment.",
+        },
+    )
+    status_list_base_uri = fields.Str(
+        required=False,
+        metadata={
+            "description": "Base URI for published status lists.",
         },
     )
 
@@ -140,8 +244,21 @@ async def supported_credential_create_mdoc(request: web.Request):
         body,
     )
 
-    vc_additional_data = {"doctype": body.pop("doctype", None)}
-    record = SupportedCredential(**body, vc_additional_data=vc_additional_data)
+    format_data = {}
+    format_data["doctype"] = body.pop("doctype")
+    format_data["claims"] = body.pop("claims", None)
+
+    vc_additional_data = {}
+    vc_additional_data["trust_anchors"] = body.pop("trust_anchors", None)
+    vc_additional_data["signing_key_id"] = body.pop("signing_key_id", None)
+    vc_additional_data["status_list_def_id"] = body.pop("status_list_def_id", None)
+    vc_additional_data["status_list_base_uri"] = body.pop("status_list_base_uri", None)
+
+    record = SupportedCredential(
+        **body,
+        format_data=format_data,
+        vc_additional_data=vc_additional_data,
+    )
 
     registered_processors = context.inject(CredProcessors)
     if record.format not in registered_processors.issuers:
@@ -167,19 +284,69 @@ async def mdoc_supported_cred_update_helper(
     body: Dict[str, Any],
     session: AskarProfileSession,
 ) -> SupportedCredential:
-    """Helper method for updating a MSO mDoc Supported Credential Record."""
+    """Helper for updating an mso_mdoc SupportedCredential record.
 
-    record.identifier = body.get("identifier", None)
-    record.format = body.get("format", None)
-    record.cryptographic_binding_methods_supported = body.get(
-        "cryptographic_binding_methods_supported", None
-    )
-    record.credential_signing_alg_values_supported = body.get(
-        "credential_signing_alg_values_supported", None
-    )
-    record.proof_types_supported = body.get("proof_types_supported", None)
-    record.credential_metadata = body.get("credential_metadata", None)
-    record.vc_additional_data = {"doctype": body.get("doctype", None)}
+    Only fields present in *body* are updated; omitted fields retain their
+    current values from *record*.
+    """
+    existing_format_data = record.format_data or {}
+    existing_vc_data = record.vc_additional_data or {}
+
+    # Identifier / format — fall back to existing values when not supplied
+    if "id" in body:
+        record.identifier = body.pop("id")
+    else:
+        body.pop("id", None)
+    if "format" in body:
+        record.format = body.pop("format")
+    else:
+        body.pop("format", None)
+
+    # format_data — merge with existing
+    format_data = dict(existing_format_data)
+    if "doctype" in body:
+        format_data["doctype"] = body.pop("doctype")
+    else:
+        body.pop("doctype", None)
+    if "claims" in body:
+        format_data["claims"] = body.pop("claims")
+    else:
+        body.pop("claims", None)
+
+    # vc_additional_data — merge with existing
+    vc_additional_data = dict(existing_vc_data)
+    if "trust_anchors" in body:
+        vc_additional_data["trust_anchors"] = body.pop("trust_anchors")
+    else:
+        body.pop("trust_anchors", None)
+    if "signing_key_id" in body:
+        vc_additional_data["signing_key_id"] = body.pop("signing_key_id")
+    else:
+        body.pop("signing_key_id", None)
+    if "status_list_def_id" in body:
+        vc_additional_data["status_list_def_id"] = body.pop("status_list_def_id")
+    else:
+        body.pop("status_list_def_id", None)
+    if "status_list_base_uri" in body:
+        vc_additional_data["status_list_base_uri"] = body.pop("status_list_base_uri")
+    else:
+        body.pop("status_list_base_uri", None)
+
+    if "cryptographic_binding_methods_supported" in body:
+        record.cryptographic_binding_methods_supported = body[
+            "cryptographic_binding_methods_supported"
+        ]
+    if "credential_signing_alg_values_supported" in body:
+        record.credential_signing_alg_values_supported = body[
+            "credential_signing_alg_values_supported"
+        ]
+    if "proof_types_supported" in body:
+        record.proof_types_supported = body["proof_types_supported"]
+    if "credential_metadata" in body:
+        record.credential_metadata = body["credential_metadata"]
+
+    record.format_data = format_data
+    record.vc_additional_data = vc_additional_data
 
     await record.save(session)
     return record
@@ -193,20 +360,15 @@ async def mdoc_supported_cred_update_helper(
     "their original value.",
 )
 @match_info_schema(SupportedCredentialMatchSchema())
-@request_schema(MdocSupportedCredCreateRequestSchema())
+@request_schema(MdocSupportedCredUpdateRequestSchema())
 @response_schema(SupportedCredentialSchema())
+@tenant_authentication
 async def update_supported_credential_mdoc(request: web.Request):
-    """Update a MSO mDoc Supported Credential record."""
+    """Update an mso_mdoc SupportedCredential record."""
 
     context: AdminRequestContext = request["context"]
     supported_cred_id = request.match_info["supported_cred_id"]
     body: Dict[str, Any] = await request.json()
-    try:
-        body: Dict[str, Any] = MdocSupportedCredCreateRequestSchema().load(
-            body, unknown=RAISE
-        )
-    except ValidationError as err:
-        raise web.HTTPBadRequest(reason=str(err.messages)) from err
 
     LOGGER.debug(
         "Updating mdoc supported credential %s with request payload: %s",
