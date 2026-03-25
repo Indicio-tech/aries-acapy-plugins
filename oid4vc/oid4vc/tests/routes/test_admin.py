@@ -59,9 +59,7 @@ async def test_supported_credential_create(context: AdminRequestContext):
     assert response.status == 200
 
     async with context.session() as session:
-        records = await SupportedCredential.query(
-            session, {"identifier": "GenericCred"}
-        )
+        records = await SupportedCredential.query(session, {"identifier": "GenericCred"})
 
     assert len(records) == 1
     record = records[0]
@@ -120,9 +118,7 @@ async def test_supported_credential_create_jwt(context: AdminRequestContext):
     assert response.status == 200
 
     async with context.session() as session:
-        records = await SupportedCredential.query(
-            session, {"identifier": "JwtCred"}
-        )
+        records = await SupportedCredential.query(session, {"identifier": "JwtCred"})
 
     assert len(records) == 1
     record = records[0]
@@ -205,9 +201,7 @@ async def test_get_supported_credential_by_id(context: AdminRequestContext):
     created = json.loads(create_resp.body)
     record_id = created["supported_cred_id"]
 
-    request = _make_request(
-        context, match_info={"supported_cred_id": record_id}
-    )
+    request = _make_request(context, match_info={"supported_cred_id": record_id})
     response = await get_supported_credential_by_id(request)
     assert response.status == 200
 
@@ -218,9 +212,7 @@ async def test_get_supported_credential_by_id(context: AdminRequestContext):
 @pytest.mark.asyncio
 async def test_get_supported_credential_not_found(context: AdminRequestContext):
     """Getting a non-existent credential should 404."""
-    request = _make_request(
-        context, match_info={"supported_cred_id": "nonexistent-id"}
-    )
+    request = _make_request(context, match_info={"supported_cred_id": "nonexistent-id"})
     with pytest.raises(web.HTTPNotFound):
         await get_supported_credential_by_id(request)
 
@@ -297,15 +289,11 @@ async def test_supported_credential_remove(context: AdminRequestContext):
     created = json.loads(create_resp.body)
     record_id = created["supported_cred_id"]
 
-    request = _make_request(
-        context, match_info={"supported_cred_id": record_id}
-    )
+    request = _make_request(context, match_info={"supported_cred_id": record_id})
     response = await supported_credential_remove(request)
     assert response.status == 200
 
     # Verify it's gone
-    get_req = _make_request(
-        context, match_info={"supported_cred_id": record_id}
-    )
+    get_req = _make_request(context, match_info={"supported_cred_id": record_id})
     with pytest.raises(web.HTTPNotFound):
         await get_supported_credential_by_id(get_req)
