@@ -116,6 +116,10 @@ class SdJwtCredIssueProcessor(Issuer, CredVerifier, PresVerifier):
         if body_vct is not None and body_vct != supported_vct:
             raise CredProcessorError("Requested vct does not match offer.")
 
+        vct = body_vct or supported_vct
+        if not vct:
+            raise CredProcessorError("No vct available in body or format_data.")
+
         current_time = int(time.time())
         claims = deepcopy(ex_record.credential_subject)
 
