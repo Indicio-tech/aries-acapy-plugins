@@ -179,6 +179,13 @@ jobs:
               . ./init-network.sh
             fi
 
+            # Skip if no test-river service (plugin uses a different service name)
+            if ! docker compose config --services 2>/dev/null | grep -q "^test-river$"; then
+              echo "⏭️  No test-river service in $dir/integration, skipping"
+              cd ../..
+              continue
+            fi
+
             docker compose build test-river
 
             # Run tests
