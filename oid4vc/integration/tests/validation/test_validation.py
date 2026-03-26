@@ -38,7 +38,7 @@ async def test_mso_mdoc_validation(acapy_issuer_admin):
         "scope": "ValidMDOC",
         "format_data": {"doctype": "org.iso.18013.5.1.mDL"},
         "cryptographic_binding_methods_supported": ["cose_key"],
-        "cryptographic_suites_supported": ["ES256"],
+        "credential_signing_alg_values_supported": ["ES256"],
         "vc_additional_data": {},
     }
     response = await acapy_issuer_admin.post(

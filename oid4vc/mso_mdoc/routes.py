@@ -2,11 +2,21 @@
 
 Format-specific routes for creating and updating mso_mdoc SupportedCredential
 records.  Follows the same pattern as sd_jwt_vc/routes.py.
+
+Protocol Compliance:
+- OpenID4VCI 1.0 § E.1.1: mso_mdoc Credential Format
+- ISO/IEC 18013-5:2021: Mobile driving licence (mDL) application
 """
 
 import logging
 from typing import Any, Dict
 
+from acapy_agent.admin.decorators.auth import tenant_authentication
+from acapy_agent.admin.request_context import AdminRequestContext
+from acapy_agent.askar.profile import AskarProfileSession
+from acapy_agent.messaging.models.base import BaseModelError
+from acapy_agent.messaging.models.openapi import OpenAPISchema
+from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from aiohttp import web
 from aiohttp_apispec import (
     docs,
@@ -14,23 +24,17 @@ from aiohttp_apispec import (
     request_schema,
     response_schema,
 )
-from acapy_agent.admin.decorators.auth import tenant_authentication
-from acapy_agent.admin.request_context import AdminRequestContext
-from acapy_agent.askar.profile import AskarProfileSession
-from acapy_agent.storage.error import StorageError, StorageNotFoundError
-from acapy_agent.messaging.models.base import BaseModelError
-from acapy_agent.messaging.models.openapi import OpenAPISchema
-from marshmallow import fields
+from marshmallow import RAISE, ValidationError, fields
 
 from oid4vc.cred_processor import CredProcessors
 from oid4vc.models.supported_cred import SupportedCredential, SupportedCredentialSchema
-from oid4vc.utils import supported_cred_is_unique
+from oid4vc.routes import SupportedCredentialMatchSchema, supported_cred_is_unique
 from . import trust_anchor_routes
 
 LOGGER = logging.getLogger(__name__)
 
 
-class MsoMdocSupportedCredCreateReq(OpenAPISchema):
+class MdocSupportedCredCreateRequestSchema(OpenAPISchema):
     """Schema for creating an mso_mdoc SupportedCredential."""
 
     format = fields.Str(required=True, metadata={"example": "mso_mdoc"})
@@ -42,10 +46,13 @@ class MsoMdocSupportedCredCreateReq(OpenAPISchema):
     cryptographic_binding_methods_supported = fields.List(
         fields.Str(), metadata={"example": ["cose_key"]}
     )
-    cryptographic_suites_supported = fields.List(
-        fields.Str(), metadata={"example": ["ES256"]}
+    credential_signing_alg_values_supported = fields.List(
+        fields.Str(), metadata={"example": ["-7", "-8"]}
     )
-    display = fields.List(fields.Dict(), required=False)
+    proof_types_supported = fields.Dict(
+        required=False,
+        metadata={"example": {"jwt": {"proof_signing_alg_values_supported": ["ES256"]}}},
+    )
     doctype = fields.Str(
         required=True,
         metadata={
@@ -60,6 +67,38 @@ class MsoMdocSupportedCredCreateReq(OpenAPISchema):
             "description": (
                 "Namespace-keyed claims: {namespace: {claim_name: descriptor}}"
             ),
+        },
+    )
+    credential_metadata = fields.Dict(
+        required=False,
+        metadata={
+            "description": "Metadata about the credential, such as claims and display.",
+            "example": {
+                "claims": [
+                    {
+                        "path": ["org.iso.18013.5.1", "given_name"],
+                        "display": [{"name": "Given Name", "locale": "en-US"}],
+                    },
+                    {
+                        "path": ["org.iso.18013.5.1", "family_name"],
+                        "display": [{"name": "Surname", "locale": "en-US"}],
+                    },
+                    {"path": ["org.iso.18013.5.1", "birth_date"], "mandatory": True},
+                    {"path": ["org.iso.18013.5.1.aamva", "organ_donor"]},
+                ],
+                "display": [
+                    {
+                        "name": "Mobile Driving License",
+                        "locale": "en-US",
+                        "logo": {
+                            "uri": "https://state.example.org/public/mdl.png",
+                            "alt_text": "state mobile driving license",
+                        },
+                        "background_color": "#12107c",
+                        "text_color": "#FFFFFF",
+                    }
+                ],
+            },
         },
     )
     trust_anchors = fields.List(
@@ -100,7 +139,7 @@ class MsoMdocSupportedCredCreateReq(OpenAPISchema):
     )
 
 
-class MsoMdocSupportedCredUpdateReq(OpenAPISchema):
+class MdocSupportedCredUpdateRequestSchema(OpenAPISchema):
     """Schema for partial updates to an mso_mdoc SupportedCredential.
 
     All fields are optional; only supplied fields are changed.
@@ -115,10 +154,10 @@ class MsoMdocSupportedCredUpdateReq(OpenAPISchema):
     cryptographic_binding_methods_supported = fields.List(
         fields.Str(), required=False, metadata={"example": ["cose_key"]}
     )
-    cryptographic_suites_supported = fields.List(
-        fields.Str(), required=False, metadata={"example": ["ES256"]}
+    credential_signing_alg_values_supported = fields.List(
+        fields.Str(), required=False, metadata={"example": ["-7", "-8"]}
     )
-    display = fields.List(fields.Dict(), required=False)
+    proof_types_supported = fields.Dict(required=False)
     doctype = fields.Str(
         required=False,
         metadata={
@@ -127,6 +166,7 @@ class MsoMdocSupportedCredUpdateReq(OpenAPISchema):
         },
     )
     claims = fields.Dict(keys=fields.Str, required=False)
+    credential_metadata = fields.Dict(required=False)
     trust_anchors = fields.List(
         fields.Str,
         required=False,
@@ -154,36 +194,36 @@ class MsoMdocSupportedCredUpdateReq(OpenAPISchema):
     )
 
 
-class SupportedCredentialMatchSchema(OpenAPISchema):
-    """Match info for request taking credential supported id."""
-
-    supported_cred_id = fields.Str(
-        required=True,
-        metadata={"description": "Credential supported identifier"},
-    )
-
-
 @docs(
     tags=["oid4vci"],
-    summary="Register a configuration for a supported mso_mdoc credential",
+    summary="Register a configuration for a supported MSO mDoc credential",
 )
-@request_schema(MsoMdocSupportedCredCreateReq())
+@request_schema(MdocSupportedCredCreateRequestSchema())
 @response_schema(SupportedCredentialSchema())
 @tenant_authentication
-async def supported_credential_create(request: web.Request):
-    """Create a SupportedCredential record for mso_mdoc format."""
+async def supported_credential_create_mdoc(request: web.Request):
+    """Request handler for creating a credential supported record."""
     context = request["context"]
     assert isinstance(context, AdminRequestContext)
     profile = context.profile
 
     body: Dict[str, Any] = await request.json()
+    try:
+        body: Dict[str, Any] = MdocSupportedCredCreateRequestSchema().load(
+            body, unknown=RAISE
+        )
+    except ValidationError as err:
+        raise web.HTTPBadRequest(reason=str(err.messages)) from err
 
-    if not await supported_cred_is_unique(body["id"], profile):
+    if not await supported_cred_is_unique(body["identifier"], profile):
         raise web.HTTPBadRequest(
-            reason=f"Record with identifier {body['id']} already exists."
+            reason=f"Record with identifier {body['identifier']} already exists."
         )
 
-    body["identifier"] = body.pop("id")
+    LOGGER.debug(
+        "Creating mdoc supported credential from request payload: %s",
+        body,
+    )
 
     format_data = {}
     format_data["doctype"] = body.pop("doctype")
@@ -220,7 +260,7 @@ async def supported_credential_create(request: web.Request):
     return web.json_response(record.serialize())
 
 
-async def supported_cred_update_helper(
+async def mdoc_supported_cred_update_helper(
     record: SupportedCredential,
     body: Dict[str, Any],
     session: AskarProfileSession,
@@ -277,10 +317,14 @@ async def supported_cred_update_helper(
         record.cryptographic_binding_methods_supported = body[
             "cryptographic_binding_methods_supported"
         ]
-    if "cryptographic_suites_supported" in body:
-        record.cryptographic_suites_supported = body["cryptographic_suites_supported"]
-    if "display" in body:
-        record.display = body["display"]
+    if "credential_signing_alg_values_supported" in body:
+        record.credential_signing_alg_values_supported = body[
+            "credential_signing_alg_values_supported"
+        ]
+    if "proof_types_supported" in body:
+        record.proof_types_supported = body["proof_types_supported"]
+    if "credential_metadata" in body:
+        record.credential_metadata = body["credential_metadata"]
 
     record.format_data = format_data
     record.vc_additional_data = vc_additional_data
@@ -291,23 +335,34 @@ async def supported_cred_update_helper(
 
 @docs(
     tags=["oid4vci"],
-    summary="Update a supported mso_mdoc credential configuration",
+    summary="Update a Supported Credential. "
+    "Expected to be a complete replacement of a MSO mDoc Supported Credential record, "
+    "i.e., optional values that aren't supplied will be `None`, rather than retaining "
+    "their original value.",
 )
 @match_info_schema(SupportedCredentialMatchSchema())
-@request_schema(MsoMdocSupportedCredUpdateReq())
+@request_schema(MdocSupportedCredUpdateRequestSchema())
 @response_schema(SupportedCredentialSchema())
 @tenant_authentication
-async def update_supported_credential_mso_mdoc(request: web.Request):
+async def update_supported_credential_mdoc(request: web.Request):
     """Update an mso_mdoc SupportedCredential record."""
+
     context: AdminRequestContext = request["context"]
-    body: Dict[str, Any] = await request.json()
     supported_cred_id = request.match_info["supported_cred_id"]
+    body: Dict[str, Any] = await request.json()
+
+    LOGGER.debug(
+        "Updating mdoc supported credential %s with request payload: %s",
+        supported_cred_id,
+        body,
+    )
 
     try:
         async with context.session() as session:
             record = await SupportedCredential.retrieve_by_id(session, supported_cred_id)
+
             assert isinstance(session, AskarProfileSession)
-            record = await supported_cred_update_helper(record, body, session)
+            record = await mdoc_supported_cred_update_helper(record, body, session)
 
     except StorageNotFoundError as err:
         raise web.HTTPNotFound(reason=err.roll_up) from err
@@ -336,11 +391,11 @@ async def register(app: web.Application):
         [
             web.post(
                 "/oid4vci/credential-supported/create/mso-mdoc",
-                supported_credential_create,
+                supported_credential_create_mdoc,
             ),
             web.put(
                 "/oid4vci/credential-supported/records/mso-mdoc/{supported_cred_id}",
-                update_supported_credential_mso_mdoc,
+                update_supported_credential_mdoc,
             ),
         ]
     )

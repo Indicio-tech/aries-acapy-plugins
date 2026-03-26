@@ -35,6 +35,7 @@ from .exchange import (
     list_exchange_records,
 )
 from .supported_credential import (
+    SupportedCredentialMatchSchema,
     get_supported_credential_by_id,
     supported_credential_create,
     supported_credential_create_jwt,
@@ -42,6 +43,7 @@ from .supported_credential import (
     supported_credential_remove,
     update_supported_credential_jwt_vc,
 )
+from ..utils import supported_cred_is_unique
 from .vp_dcql import (
     create_dcql_query,
     dcql_query_remove,
@@ -85,6 +87,8 @@ __all__ = [
     "get_exchange_by_id",
     "exchange_delete",
     # Supported credential
+    "SupportedCredentialMatchSchema",
+    "supported_cred_is_unique",
     "supported_credential_create",
     "supported_credential_create_jwt",
     "supported_credential_list",

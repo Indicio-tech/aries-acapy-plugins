@@ -54,7 +54,7 @@ class TestMultiCredentialDCQL:
             },
             "format_data": {
                 "cryptographic_binding_methods_supported": ["did:key", "jwk"],
-                "cryptographic_suites_supported": ["EdDSA"],
+                "credential_signing_alg_values_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/identity",
                 "claims": {
                     "given_name": {"mandatory": True},
@@ -82,7 +82,7 @@ class TestMultiCredentialDCQL:
             },
             "format_data": {
                 "cryptographic_binding_methods_supported": ["did:key", "jwk"],
-                "cryptographic_suites_supported": ["EdDSA"],
+                "credential_signing_alg_values_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/address",
                 "claims": {
                     "street_address": {"mandatory": True},
@@ -297,7 +297,7 @@ class TestMultiCredentialDCQL:
                 },
                 "format_data": {
                     "cryptographic_binding_methods_supported": ["did:key", "jwk"],
-                    "cryptographic_suites_supported": ["EdDSA"],
+                    "credential_signing_alg_values_supported": ["EdDSA"],
                     "vct": cfg["vct"],
                     "claims": cfg["claims"],
                 },
@@ -429,7 +429,7 @@ class TestMultiCredentialCredentialSets:
             },
             "format_data": {
                 "cryptographic_binding_methods_supported": ["did:key", "jwk"],
-                "cryptographic_suites_supported": ["EdDSA"],
+                "credential_signing_alg_values_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/passport",
                 "claims": {
                     "full_name": {},
@@ -456,7 +456,7 @@ class TestMultiCredentialCredentialSets:
             },
             "format_data": {
                 "cryptographic_binding_methods_supported": ["did:key", "jwk"],
-                "cryptographic_suites_supported": ["EdDSA"],
+                "credential_signing_alg_values_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/drivers_license",
                 "claims": {
                     "full_name": {},

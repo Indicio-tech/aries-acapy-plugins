@@ -40,7 +40,7 @@ class OID4VCTestRunner:
             },
             "format_data": {
                 "cryptographic_binding_methods_supported": ["did:key"],
-                "cryptographic_suites_supported": ["EdDSA"],
+                "credential_signing_alg_values_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/test",
                 "claims": {"test_claim": {"mandatory": True}},
             },

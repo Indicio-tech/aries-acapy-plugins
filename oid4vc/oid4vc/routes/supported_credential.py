@@ -2,9 +2,12 @@
 
 from typing import Any, Dict
 
+import logging
+
 from acapy_agent.admin.decorators.auth import tenant_authentication
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.askar.profile import AskarProfileSession
+from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from aiohttp import web
@@ -20,16 +23,19 @@ from marshmallow import fields
 from ..cred_processor import CredProcessorError, CredProcessors
 from ..models.supported_cred import SupportedCredential, SupportedCredentialSchema
 from ..utils import supported_cred_is_unique
-from .constants import LOGGER
+
+LOGGER = logging.getLogger(__name__)
 
 # Fields allowed in SupportedCredential constructor
 _ALLOWED_SUPPORTED_CRED_FIELDS = {
     "format",
     "identifier",
     "cryptographic_binding_methods_supported",
+    "credential_signing_alg_values_supported",
     "cryptographic_suites_supported",
     "proof_types_supported",
     "display",
+    "credential_metadata",
     "format_data",
     "vc_additional_data",
 }
@@ -114,7 +120,7 @@ class SupportedCredCreateRequestSchema(OpenAPISchema):
     cryptographic_binding_methods_supported = fields.List(
         fields.Str(), metadata={"example": ["did"]}
     )
-    cryptographic_suites_supported = fields.List(
+    credential_signing_alg_values_supported = fields.List(
         fields.Str(), metadata={"example": ["ES256K"]}
     )
     proof_types_supported = fields.Dict(
@@ -187,7 +193,7 @@ async def supported_credential_create(request: web.Request):
     profile = context.profile
 
     body: Dict[str, Any] = await request.json()
-    LOGGER.info(f"body: {body}")
+    LOGGER.debug("Creating supported credential from request payload: %s", body)
 
     if not await supported_cred_is_unique(body["id"], profile):
         raise web.HTTPBadRequest(
@@ -232,7 +238,12 @@ async def supported_credential_create(request: web.Request):
 
 
 class JwtSupportedCredCreateRequestSchema(OpenAPISchema):
-    """Schema for SupportedCredCreateRequestSchema."""
+    """Schema for creating a JWT VC supported credential.
+
+    Follows OID4VCI 1.0 credential configuration structure with
+    credential_definition wrapping type/@context and credential_metadata
+    for claims/display.
+    """
 
     format = fields.Str(required=True, metadata={"example": "jwt_vc_json"})
     identifier = fields.Str(
@@ -241,71 +252,53 @@ class JwtSupportedCredCreateRequestSchema(OpenAPISchema):
     cryptographic_binding_methods_supported = fields.List(
         fields.Str(), metadata={"example": ["did"]}
     )
-    cryptographic_suites_supported = fields.List(
+    credential_signing_alg_values_supported = fields.List(
         fields.Str(), metadata={"example": ["ES256K"]}
+    )
+    credential_definition = fields.Dict(
+        required=False,
+        metadata={
+            "example": {
+                "type": ["VerifiableCredential", "UniversityDegreeCredential"],
+                "@context": [
+                    "https://www.w3.org/2018/credentials/v1",
+                    "https://www.w3.org/2018/credentials/examples/v1",
+                ],
+            },
+            "description": "Credential definition with type and context.",
+        },
     )
     proof_types_supported = fields.Dict(
         required=False,
         metadata={"example": {"jwt": {"proof_signing_alg_values_supported": ["ES256"]}}},
     )
-    display = fields.List(
-        fields.Dict(),
-        metadata={
-            "example": [
-                {
-                    "name": "University Credential",
-                    "locale": "en-US",
-                    "logo": {
-                        "url": "https://w3c-ccg.github.io/vc-ed/plugfest-1-2022/images/JFF_LogoLockup.png",
-                        "alt_text": "a square logo of a university",
-                    },
-                    "background_color": "#12107c",
-                    "text_color": "#FFFFFF",
-                }
-            ]
-        },
-    )
-    type = fields.List(
-        fields.Str,
-        required=True,
-        metadata={
-            "description": "List of credential types supported.",
-            "example": ["VerifiableCredential", "UniversityDegreeCredential"],
-        },
-    )
-    credential_subject = fields.Dict(
-        keys=fields.Str,
-        data_key="credentialSubject",
+    credential_metadata = fields.Dict(
         required=False,
         metadata={
-            "description": "Metadata about the Credential Subject to help with display.",
             "example": {
-                "given_name": {"display": [{"name": "Given Name", "locale": "en-US"}]},
-                "last_name": {"display": [{"name": "Surname", "locale": "en-US"}]},
-                "degree": {},
-                "gpa": {"display": [{"name": "GPA"}]},
-            },
-        },
-    )
-    order = fields.List(
-        fields.Str,
-        required=False,
-        metadata={
-            "description": (
-                "The order in which claims should be displayed. This is not well defined "
-                "by the spec right now. Best to omit for now."
-            )
-        },
-    )
-    context = fields.List(
-        fields.Raw,
-        data_key="@context",
-        required=True,
-        metadata={
-            "example": [
-                "https://www.w3.org/2018/credentials/v1",
-                "https://www.w3.org/2018/credentials/examples/v1",
-            ],
+                "display": [
+                    {
+                        "name": "University Credential",
+                        "locale": "en-US",
+                        "logo": {
+                            "url": "https://w3c-ccg.github.io/vc-ed/plugfest-1-2022/images/JFF_LogoLockup.png",
+                            "alt_text": "a square logo of a university",
+                        },
+                        "background_color": "#12107c",
+                        "text_color": "#FFFFFF",
+                    }
+                ],
+                "claims": [
+                    {
+                        "path": ["given_name"],
+                        "display": [{"name": "Given Name", "locale": "en-US"}],
+                    },
+                    {
+                        "path": ["family_name"],
+                        "display": [{"name": "Surname", "locale": "en-US"}],
+                    },
+                ],
+            }
         },
     )
 
@@ -324,29 +317,46 @@ async def supported_credential_create_jwt(request: web.Request):
     profile = context.profile
 
     body: Dict[str, Any] = await request.json()
+    # Backward compat: accept top-level @context/type (old API) alongside
+    # the OID4VCI 1.0 credential_definition wrapping.
+    if "credential_definition" not in body:
+        compat: Dict[str, Any] = {}
+        for key in ("@context", "type", "credentialSubject", "order"):
+            if key in body:
+                compat[key] = body.pop(key)
+        if compat:
+            body["credential_definition"] = compat
+    body = JwtSupportedCredCreateRequestSchema().load(body)
 
-    if not await supported_cred_is_unique(body["id"], profile):
+    if not await supported_cred_is_unique(body["identifier"], profile):
         raise web.HTTPBadRequest(
-            reason=f"Record with identifier {body['id']} already exists."
+            reason=f"Record with identifier {body['identifier']} already exists."
         )
 
-    LOGGER.info(f"body: {body}")
-    body["identifier"] = body.pop("id")
+    LOGGER.debug(
+        "Creating JWT VC supported credential from request payload: %s",
+        body,
+    )
+
+    # Extract credential_definition → build format_data and vc_additional_data
+    cred_def = body.pop("credential_definition", None) or {}
     format_data = {}
-    format_data["types"] = body.pop("type")
-    format_data["credentialSubject"] = body.pop("credentialSubject", None)
-    format_data["context"] = body.pop("@context")
-    format_data["order"] = body.pop("order", None)
     vc_additional_data = {}
-    vc_additional_data["@context"] = format_data["context"]
-    # In OID4VCI 1.0 metadata, the field is "type" (converted in to_issuer_metadata).
-    # In the actual W3C VC, it's also "type" (per VCDM spec).
-    vc_additional_data["type"] = format_data["types"]
+    if "type" in cred_def:
+        format_data["types"] = cred_def["type"]
+        vc_additional_data["type"] = cred_def["type"]
+    if "@context" in cred_def:
+        format_data["context"] = cred_def["@context"]
+        vc_additional_data["@context"] = cred_def["@context"]
+    if "credentialSubject" in cred_def:
+        format_data["credentialSubject"] = cred_def["credentialSubject"]
+    if "order" in cred_def:
+        format_data["order"] = cred_def["order"]
 
     record = SupportedCredential(
         **body,
-        format_data=format_data,
-        vc_additional_data=vc_additional_data,
+        format_data=format_data if format_data else None,
+        vc_additional_data=vc_additional_data if vc_additional_data else None,
     )
 
     registered_processors = context.inject(CredProcessors)
@@ -494,30 +504,33 @@ async def jwt_supported_cred_update_helper(
     session: AskarProfileSession,
 ) -> SupportedCredential:
     """Helper method for updating a JWT Supported Credential Record."""
+    # Extract credential_definition → build format_data and vc_additional_data
+    cred_def = body.get("credential_definition") or {}
     format_data = {}
     vc_additional_data = {}
+    if "type" in cred_def:
+        format_data["types"] = cred_def["type"]
+        vc_additional_data["type"] = cred_def["type"]
+    if "@context" in cred_def:
+        format_data["context"] = cred_def["@context"]
+        vc_additional_data["@context"] = cred_def["@context"]
+    if "credentialSubject" in cred_def:
+        format_data["credentialSubject"] = cred_def["credentialSubject"]
+    if "order" in cred_def:
+        format_data["order"] = cred_def["order"]
 
-    format_data["types"] = body.get("type")
-    format_data["credentialSubject"] = body.get("credentialSubject", None)
-    format_data["context"] = body.get("@context")
-    format_data["order"] = body.get("order", None)
-    vc_additional_data["@context"] = format_data["context"]
-    # In OID4VCI 1.0 metadata, the field is "type" (converted in to_issuer_metadata).
-    # In the actual W3C VC, it's also "type" (per VCDM spec).
-    vc_additional_data["type"] = format_data["types"]
-
-    record.identifier = body["id"]
+    record.identifier = body["identifier"]
     record.format = body["format"]
     record.cryptographic_binding_methods_supported = body.get(
         "cryptographic_binding_methods_supported", None
     )
-    record.cryptographic_suites_supported = body.get(
-        "cryptographic_suites_supported", None
+    record.credential_signing_alg_values_supported = body.get(
+        "credential_signing_alg_values_supported", None
     )
     record.proof_types_supported = body.get("proof_types_supported", None)
-    record.display = body.get("display", None)
-    record.format_data = format_data
-    record.vc_additional_data = vc_additional_data
+    record.credential_metadata = body.get("credential_metadata", None)
+    record.format_data = format_data if format_data else None
+    record.vc_additional_data = vc_additional_data if vc_additional_data else None
 
     await record.save(session)
     return record
@@ -537,23 +550,34 @@ async def update_supported_credential_jwt_vc(request: web.Request):
     """Update a JWT Supported Credential record."""
 
     context: AdminRequestContext = request["context"]
-    body: Dict[str, Any] = await request.json()
     supported_cred_id = request.match_info["supported_cred_id"]
+    body: Dict[str, Any] = await request.json()
+    # Backward compat: accept top-level @context/type (old API) alongside
+    # the OID4VCI 1.0 credential_definition wrapping.
+    if "credential_definition" not in body:
+        compat: Dict[str, Any] = {}
+        for key in ("@context", "type", "credentialSubject", "order"):
+            if key in body:
+                compat[key] = body.pop(key)
+        if compat:
+            body["credential_definition"] = compat
+    body = JwtSupportedCredCreateRequestSchema().load(body)
 
-    LOGGER.info(f"body: {body}")
+    LOGGER.debug(
+        "Updating JWT VC supported credential %s with request payload: %s",
+        supported_cred_id,
+        body,
+    )
+
     try:
         async with context.session() as session:
             record = await SupportedCredential.retrieve_by_id(session, supported_cred_id)
-
             assert isinstance(session, AskarProfileSession)
             record = await jwt_supported_cred_update_helper(record, body, session)
-
     except StorageNotFoundError as err:
         raise web.HTTPNotFound(reason=err.roll_up) from err
-    except StorageError as err:
+    except (StorageError, BaseModelError) as err:
         raise web.HTTPBadRequest(reason=err.roll_up) from err
-    except Exception as err:
-        raise web.HTTPBadRequest(reason=str(err)) from err
 
     registered_processors = context.inject(CredProcessors)
     if record.format not in registered_processors.issuers:

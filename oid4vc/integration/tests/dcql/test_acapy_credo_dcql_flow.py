@@ -50,7 +50,7 @@ class TestDCQLSdJwtFlow:
             },
             "format_data": {
                 "cryptographic_binding_methods_supported": ["did:key", "jwk"],
-                "cryptographic_suites_supported": ["EdDSA"],
+                "credential_signing_alg_values_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/identity_credential",
                 "claims": {
                     "given_name": {"mandatory": True},
@@ -231,7 +231,7 @@ class TestDCQLSdJwtFlow:
             },
             "format_data": {
                 "cryptographic_binding_methods_supported": ["did:key", "jwk"],
-                "cryptographic_suites_supported": ["EdDSA"],
+                "credential_signing_alg_values_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/address_credential",
                 "claims": {
                     "address": {
@@ -370,7 +370,7 @@ class TestDCQLMdocFlow:
             "format": "mso_mdoc",
             "scope": "MobileDriversLicense",
             "cryptographic_binding_methods_supported": ["cose_key", "did:key", "did"],
-            "cryptographic_suites_supported": ["ES256"],
+            "credential_signing_alg_values_supported": ["ES256"],
             "proof_types_supported": {
                 "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
             },
@@ -530,7 +530,7 @@ class TestDCQLMdocFlow:
             "format": "mso_mdoc",
             "scope": "MobileDriversLicense",
             "cryptographic_binding_methods_supported": ["cose_key", "did:key"],
-            "cryptographic_suites_supported": ["ES256"],
+            "credential_signing_alg_values_supported": ["ES256"],
             "proof_types_supported": {
                 "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
             },
@@ -660,7 +660,7 @@ class TestDCQLSelectiveDisclosure:
             },
             "format_data": {
                 "cryptographic_binding_methods_supported": ["did:key", "jwk"],
-                "cryptographic_suites_supported": ["EdDSA"],
+                "credential_signing_alg_values_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/employee_credential",
                 "claims": {
                     "employee_id": {"mandatory": True},
@@ -811,7 +811,7 @@ class TestDCQLSelectiveDisclosure:
             "format": "mso_mdoc",
             "scope": "MobileDriversLicense",
             "cryptographic_binding_methods_supported": ["cose_key", "did:key"],
-            "cryptographic_suites_supported": ["ES256"],
+            "credential_signing_alg_values_supported": ["ES256"],
             "proof_types_supported": {
                 "jwt": {"proof_signing_alg_values_supported": ["ES256"]}
             },
@@ -949,7 +949,7 @@ class TestDCQLCredentialSets:
             },
             "format_data": {
                 "cryptographic_binding_methods_supported": ["did:key", "jwk"],
-                "cryptographic_suites_supported": ["EdDSA"],
+                "credential_signing_alg_values_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/identity",
                 "claims": {
                     "given_name": {"mandatory": True},
@@ -969,7 +969,7 @@ class TestDCQLCredentialSets:
             },
             "format_data": {
                 "cryptographic_binding_methods_supported": ["did:key", "jwk"],
-                "cryptographic_suites_supported": ["EdDSA"],
+                "credential_signing_alg_values_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/age_verification",
                 "claims": {
                     "is_over_18": {"mandatory": True},
@@ -1152,7 +1152,7 @@ class TestDCQLSpecCompliance:
             },
             "format_data": {
                 "cryptographic_binding_methods_supported": ["did:key", "jwk"],
-                "cryptographic_suites_supported": ["EdDSA"],
+                "credential_signing_alg_values_supported": ["EdDSA"],
                 "vct": "https://credentials.example.com/test",
                 "claims": {"test_claim": {"mandatory": True}},
             },

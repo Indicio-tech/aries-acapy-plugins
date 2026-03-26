@@ -7,6 +7,7 @@ These tests focus on Credo wallet behavior with JWT VC credentials:
 """
 
 import asyncio
+import uuid
 
 import pytest
 
@@ -86,7 +87,7 @@ async def test_issue_to_credo_verify_with_sphereon_jwt_vc(
 
     # Step 2: Create verification request (using patterns compatible with both wallets)
     presentation_definition = {
-        "id": "cross-wallet-test",
+        "id": str(uuid.uuid4()),
         "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256"]}},
         "input_descriptors": [
             {
@@ -196,12 +197,13 @@ async def test_credo_unsupported_algorithm_request(
     credo_credential = safely_get_first_credential(credo_response, "Credo")
 
     # Create verification request that ONLY accepts ES256 (not EdDSA)
+    algo_test_id = str(uuid.uuid4())
     presentation_definition = {
-        "id": "algo-test",
+        "id": algo_test_id,
         "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["ES256"]}},  # ES256 only
         "input_descriptors": [
             {
-                "id": "algo-test",
+                "id": algo_test_id,
                 "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["ES256"]}},
                 "constraints": {
                     "fields": [
@@ -336,12 +338,13 @@ async def test_selective_disclosure_credo_vs_sphereon_parity(
     sd_jwt_credential = safely_get_first_credential(credo_response, "Credo")
 
     # Request ONLY private_claim_1 (not 2 or 3)
+    sd_test_id = str(uuid.uuid4())
     presentation_definition = {
-        "id": "sd-test",
+        "id": sd_test_id,
         "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256"]}},
         "input_descriptors": [
             {
-                "id": "sd-test",
+                "id": sd_test_id,
                 "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA", "ES256"]}},
                 "constraints": {
                     "limit_disclosure": "required",
@@ -465,12 +468,13 @@ async def test_selective_disclosure_all_claims_disclosed(
     credential = safely_get_first_credential(credo_response, "Credo")
 
     # Request ALL claims
+    full_sd_test_id = str(uuid.uuid4())
     presentation_definition = {
-        "id": "full-sd-test",
+        "id": full_sd_test_id,
         "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA"]}},
         "input_descriptors": [
             {
-                "id": "full-sd-test",
+                "id": full_sd_test_id,
                 "format": {"vc+sd-jwt": {"sd-jwt_alg_values": ["EdDSA"]}},
                 "constraints": {
                     "limit_disclosure": "required",

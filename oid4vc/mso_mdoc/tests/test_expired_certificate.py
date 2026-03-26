@@ -290,7 +290,7 @@ class TestIssueRejectsExpiredCertificate:
         with (
             patch(
                 "mso_mdoc.cred_processor.isomdl_mdoc_sign",
-                return_value="mock-mdoc-b64",
+                return_value="oLHC0-T1",  # base64url without padding as returned by isomdl-uniffi
             ),
             patch(
                 "mso_mdoc.cred_processor.MdocSigningKeyRecord.query",

@@ -543,6 +543,10 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             # Surface the underlying exception text in the CredProcessorError
             raise CredProcessorError(f"Failed to issue mso_mdoc credential: {ex}") from ex
 
+        # issuer_signed_b64() already returns base64url without padding
+        # (ISO 18013-5 §8.3 compliant) — exactly what OID4VCI 1.0 §7.3.1 requires.
+        LOGGER.debug("mso_mdoc credential: %s", mso_mdoc)
+
         return mso_mdoc
 
     def _prepare_payload(

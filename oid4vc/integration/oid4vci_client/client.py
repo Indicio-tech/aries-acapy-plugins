@@ -39,7 +39,7 @@ class CredentialOffer:
     """Credential Offer."""
 
     credential_issuer: str
-    credentials: list[str]
+    credential_configuration_ids: list[str]
     authorization_code: dict | None = None
     pre_authorized_code: CredentialGrantPreAuth | None = None
 
@@ -101,7 +101,7 @@ class OpenID4VCIClient:
             ) as resp:
                 metadata = await resp.json()
 
-        token_endpoint = issuer_url + "/token"
+        token_endpoint = metadata.get("token_endpoint") or issuer_url + "/token"
         authorization_server = metadata.get("authorization_server")
         if authorization_server:
             token_endpoint = authorization_server + "/token"
@@ -126,6 +126,7 @@ class OpenID4VCIClient:
                 },
             ) as resp:
                 token = await resp.json()
+
         return TokenParams(
             token["access_token"],
             token["c_nonce"],
@@ -146,13 +147,27 @@ class OpenID4VCIClient:
         if not key:
             raise ValueError(f"No key for DID {holder_did}")
 
+        credential_configuration_id = (
+            offer.credential_configuration_ids[0]
+            if offer.credential_configuration_ids
+            else next(iter(metadata.credential_configurations_supported), None)
+        )
+        if credential_configuration_id is None:
+            raise ValueError("No credential_configuration_id in offer or metadata")
+
+        proofs = await crypto.proof_of_possession(
+            key, offer.credential_issuer, token.nonce
+        )
+        if isinstance(proofs.get("jwt"), str):
+            proofs["jwt"] = [proofs["jwt"]]
+
         request = {
-            "format": "jwt_vc_json",
-            "types": offer.credentials,
-            "proof": await crypto.proof_of_possession(
-                key, offer.credential_issuer, token.nonce
-            ),
+            "credential_configuration_id": credential_configuration_id,
+            "proofs": proofs,
         }
+        if offer.credential_configuration_ids:
+            request["type"] = offer.credential_configuration_ids
+
         async with ClientSession() as session:
             async with session.post(
                 metadata.credential_endpoint,

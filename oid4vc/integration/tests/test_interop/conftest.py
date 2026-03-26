@@ -67,7 +67,7 @@ async def offer(acapy_issuer, issuer_p256_did):
         "/oid4vci/credential-supported/create/jwt",
         json={
             "cryptographic_binding_methods_supported": ["did"],
-            "cryptographic_suites_supported": ["ES256"],
+            "credential_signing_alg_values_supported": ["ES256"],
             "format": "jwt_vc_json",
             "id": f"UniversityDegree_{uuid.uuid4().hex[:8]}",
             "@context": [

@@ -36,7 +36,7 @@ async def test_full_acapy_credo_oid4vc_flow(
         },
         "format_data": {
             "cryptographic_binding_methods_supported": ["did:key", "jwk"],
-            "cryptographic_suites_supported": ["EdDSA"],
+            "credential_signing_alg_values_supported": ["EdDSA"],
             "vct": "UniversityDegreeCredential",
             "claims": {
                 "given_name": {"mandatory": True},
@@ -561,7 +561,9 @@ async def test_acapy_credo_mdoc_selective_disclosure(
     credential_supported["format_data"]["cryptographic_binding_methods_supported"] = [
         "cose_key"
     ]
-    credential_supported["format_data"]["cryptographic_suites_supported"] = ["ES256"]
+    credential_supported["format_data"]["credential_signing_alg_values_supported"] = [
+        "ES256"
+    ]
     # Signing key is already registered via setup_issuer_certs
     credential_supported["vc_additional_data"] = {}
 

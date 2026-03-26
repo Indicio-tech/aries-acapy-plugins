@@ -1,7 +1,7 @@
 """Constants used across OID4VC integration tests."""
 
 import os
-from enum import Enum
+from enum import StrEnum
 from typing import Final
 
 # MDOC availability check
@@ -26,7 +26,7 @@ TEST_CONFIG = {
 }
 
 
-class CredentialFormat(str, Enum):
+class CredentialFormat(StrEnum):
     """Credential format identifiers."""
 
     SD_JWT = "vc+sd-jwt"

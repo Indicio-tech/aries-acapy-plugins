@@ -788,7 +788,7 @@ def sd_jwt_credential_config():
             "format_data": {
                 "cryptographic_binding_methods_supported": binding_methods
                 or ["did:key", "jwk"],
-                "cryptographic_suites_supported": crypto_suites or ["EdDSA"],
+                "credential_signing_alg_values_supported": crypto_suites or ["EdDSA"],
                 "vct": vct,
                 "claims": claims,
             },
@@ -851,7 +851,7 @@ def mdoc_credential_config():
             "format": "mso_mdoc",
             "cryptographic_binding_methods_supported": binding_methods
             or ["cose_key", "did:key", "did"],
-            "cryptographic_suites_supported": crypto_suites or ["ES256"],
+            "credential_signing_alg_values_supported": crypto_suites or ["ES256"],
             "format_data": {
                 "doctype": doctype,
                 "claims": namespace_claims,
@@ -890,7 +890,7 @@ async def offer(acapy_issuer_admin, issuer_p256_did):
         "/oid4vci/credential-supported/create/jwt",
         json={
             "cryptographic_binding_methods_supported": ["did"],
-            "cryptographic_suites_supported": ["ES256"],
+            "credential_signing_alg_values_supported": ["ES256"],
             "format": "jwt_vc_json",
             "id": f"UniversityDegree_{uuid.uuid4().hex[:8]}",
             "@context": [

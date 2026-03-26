@@ -9,7 +9,7 @@ def record():
     yield SupportedCredential(
         format="jwt_vc_json",
         identifier="MyCredential",
-        cryptographic_suites_supported=["EdDSA"],
+        credential_signing_alg_values_supported=["EdDSA"],
         proof_types_supported={"jwt": {"proof_signing_alg_values_supported": ["ES256"]}},
         format_data={
             "credentialSubject": {"name": "alice"},
@@ -37,7 +37,7 @@ async def test_save(profile: Profile, record: SupportedCredential):
         assert loaded == record
 
 
-def test_to_issuer_metadata(record: SupportedCredential):
+def test_metadata(record: SupportedCredential):
     assert record.to_issuer_metadata() == {
         "format": "jwt_vc_json",
         "credential_signing_alg_values_supported": ["EdDSA"],
@@ -49,3 +49,15 @@ def test_to_issuer_metadata(record: SupportedCredential):
             "type": ["VerifiableCredential", "UniversityDegreeCredential"],
         },
     }
+
+
+def test_metadata_parses_numeric_string_alg_values():
+    record = SupportedCredential(
+        format="jwt_vc_json",
+        identifier="MyCredential",
+        credential_signing_alg_values_supported=["-7", "EdDSA"],
+    )
+
+    metadata = record.to_issuer_metadata()
+
+    assert metadata["credential_signing_alg_values_supported"] == ["-7", "EdDSA"]
