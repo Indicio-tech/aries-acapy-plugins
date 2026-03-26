@@ -143,7 +143,7 @@ class TestMsoMdocCredProcessor:
             ),
         ):
             mock_sign.return_value = (
-                "oLHC0+T1"  # standard base64 as returned by isomdl-uniffi
+                "oLHC0-T1"  # base64url without padding as returned by isomdl-uniffi
             )
 
             # Setup input
@@ -169,7 +169,7 @@ class TestMsoMdocCredProcessor:
                 context=mock_context,
             )
 
-            # Verify result (base64 "oLHC0+T1" → bytes → base64url "oLHC0-T1")
+            # Verify result: issuer_signed_b64() returns base64url directly
             assert result == "oLHC0-T1"
 
             # Verify signer was called with correct arguments
