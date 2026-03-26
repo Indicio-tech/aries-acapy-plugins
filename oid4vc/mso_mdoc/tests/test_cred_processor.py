@@ -142,7 +142,9 @@ class TestMsoMdocCredProcessor:
                 AsyncMock(return_value=[key_rec]),
             ),
         ):
-            mock_sign.return_value = "oLHC0+T1"  # standard base64 as returned by isomdl-uniffi
+            mock_sign.return_value = (
+                "oLHC0+T1"  # standard base64 as returned by isomdl-uniffi
+            )
 
             # Setup input
             ex_record = MagicMock(spec=OID4VCIExchangeRecord)
