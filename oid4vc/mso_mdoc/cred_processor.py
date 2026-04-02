@@ -23,12 +23,12 @@ from oid4vc.models.presentation import OID4VPPresentation
 from oid4vc.models.supported_cred import SupportedCredential
 from oid4vc.pop_result import PopResult
 
-from .mdoc.issuer import MDL_MANDATORY_FIELDS, isomdl_mdoc_sign
+from .mdoc.issuer import MDL_MANDATORY_FIELDS
 from .mdoc.cred_verifier import MsoMdocCredVerifier
 from .mdoc.pres_verifier import MsoMdocPresVerifier
 from .payload import normalize_mdoc_result, prepare_mdoc_payload
+from .signing_backend import MdocSigningBackend
 from .trust_anchor import TrustAnchorRecord
-from .signing_key import MdocSigningKeyRecord
 
 __all__ = [
     "MsoMdocCredProcessor",
@@ -289,66 +289,38 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             headers["deviceKey"] = device_key_str
         return headers
 
-    async def _resolve_signing_key(
+    async def _resolve_signing_material(
         self,
         supported: SupportedCredential,
         profile: Optional[Profile] = None,
     ) -> Dict[str, Any]:
-        """Resolve the signing key for credential issuance.
+        """Resolve signing material via the pluggable signing backend.
 
-        Resolution order:
-        1. ``signing_key_id`` in ``vc_additional_data`` — fetch a specific
-           ``MdocSigningKeyRecord`` by ID.
-        2. ``MdocSigningKeyRecord`` query by doctype — first matching record.
-
-        Returns:
-            Dict with ``private_key_pem`` and ``certificate_pem``.
+        Delegates to the ``MdocSigningBackend`` bound on the injection context.
+        Falls back to a ``SoftwareSigningBackend`` if nothing is bound.
         """
+        if not profile:
+            raise CredProcessorError(
+                "Profile is required for signing material resolution"
+            )
+
+        backend = profile.inject_or(MdocSigningBackend)
+        if not backend:
+            from .signing_backend import SoftwareSigningBackend
+            backend = SoftwareSigningBackend()
+
         additional = supported.vc_additional_data or {}
         doctype = (supported.format_data or {}).get("doctype")
-
-        # 1. Explicit signing key record ID
         signing_key_id = additional.get("signing_key_id")
-        if signing_key_id and profile:
-            try:
-                async with profile.session() as session:
-                    key_record = await MdocSigningKeyRecord.retrieve_by_id(
-                        session, signing_key_id
-                    )
-                if key_record.private_key_pem and key_record.certificate_pem:
-                    return {
-                        "private_key_pem": key_record.private_key_pem,
-                        "certificate_pem": key_record.certificate_pem,
-                    }
-            except Exception as exc:
-                LOGGER.warning(
-                    "Could not load MdocSigningKeyRecord %s: %s", signing_key_id, exc
-                )
 
-        # 2. MdocSigningKeyRecord query by doctype (or any key if no doctype)
-        if profile:
-            try:
-                async with profile.session() as session:
-                    tag_filter = {"doctype": doctype} if doctype else None
-                    key_records = await MdocSigningKeyRecord.query(
-                        session, tag_filter=tag_filter
-                    )
-                    if not key_records and doctype:
-                        # fall back to wildcard keys (no doctype set)
-                        key_records = await MdocSigningKeyRecord.query(session)
-                    for key_record in key_records:
-                        if key_record.private_key_pem and key_record.certificate_pem:
-                            return {
-                                "private_key_pem": key_record.private_key_pem,
-                                "certificate_pem": key_record.certificate_pem,
-                            }
-            except Exception as exc:
-                LOGGER.debug("MdocSigningKeyRecord query failed: %s", exc)
-
-        raise CredProcessorError(
-            "No mDoc signing key configured. "
-            "Create a MdocSigningKeyRecord via POST /mso-mdoc/signing-keys."
-        )
+        try:
+            return await backend.resolve_signing_material(
+                profile,
+                signing_key_id=signing_key_id,
+                doctype=doctype,
+            )
+        except ValueError as err:
+            raise CredProcessorError(str(err)) from err
 
     async def _assign_status_entry(
         self,
@@ -463,13 +435,15 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
 
             # Resolve signing key — check MdocSigningKeyRecord first, then
             # fall back to vc_additional_data and env vars
-            key_data = await self._resolve_signing_key(supported, context.profile)
-            private_key_pem = key_data["private_key_pem"]
-            certificate_pem = key_data["certificate_pem"]
+            signing_material = await self._resolve_signing_material(
+                supported, context.profile
+            )
+            certificate_pem = signing_material.get("certificate_pem", "")
 
             # Validity-period guard: reject expired or not-yet-valid certificates
-            # before passing them to the Rust signing library.
-            check_certificate_not_expired(certificate_pem)
+            # before passing them to the signing backend.
+            if certificate_pem:
+                check_certificate_not_expired(certificate_pem)
 
             if not device_key_str and not pop.holder_jwk:
                 raise CredProcessorError(
@@ -504,7 +478,7 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             )
             # Use cleaned JWK if available, otherwise fall back to
             # the device key extracted from holder_kid / verification_method.
-            # isomdl_mdoc_sign expects a dict-like JWK.
+            # The signing backend expects a dict-like JWK.
             signing_holder_key = holder_jwk_clean
             if signing_holder_key is None and device_key_str:
                 try:
@@ -524,8 +498,14 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                     "Unable to resolve a holder JWK for device key binding."
                 )
 
-            mso_mdoc = isomdl_mdoc_sign(
-                signing_holder_key, headers, payload, certificate_pem, private_key_pem
+            # Sign via the pluggable backend
+            backend = context.profile.inject_or(MdocSigningBackend)
+            if not backend:
+                from .signing_backend import SoftwareSigningBackend
+                backend = SoftwareSigningBackend()
+
+            mso_mdoc = await backend.sign_mdoc(
+                signing_material, signing_holder_key, headers, payload
             )
 
             # Normalize mDoc result handling for robust string/bytes processing

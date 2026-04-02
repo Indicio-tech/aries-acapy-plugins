@@ -5,6 +5,7 @@ import logging
 from acapy_agent.config.injection_context import InjectionContext
 
 from mso_mdoc.cred_processor import MsoMdocCredProcessor
+from mso_mdoc.signing_backend import MdocSigningBackend, SoftwareSigningBackend
 from oid4vc.cred_processor import CredProcessors
 from . import routes as routes  # noqa: F401 — triggers ACA-Py route discovery
 
@@ -14,6 +15,14 @@ LOGGER = logging.getLogger(__name__)
 async def setup(context: InjectionContext):
     """Setup the plugin."""
     LOGGER.info("Setting up MSO_MDOC plugin")
+
+    # Register signing backend (default: software PEM-based signing).
+    # Deployments can override by binding a different MdocSigningBackend
+    # implementation before this plugin loads.
+    if not context.inject_or(MdocSigningBackend):
+        context.injector.bind_instance(
+            MdocSigningBackend, SoftwareSigningBackend()
+        )
 
     processors = context.inject_or(CredProcessors)
     if not processors:

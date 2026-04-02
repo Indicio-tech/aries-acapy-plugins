@@ -4,10 +4,9 @@ Provides CRUD endpoints for managing:
 - ``TrustAnchorRecord``: X.509 CA certificates trusted for mDoc verification
 - ``MdocSigningKeyRecord``: EC private keys and certificates for mDoc issuance
 
-These records replace the previous pattern of cramming signing material and
-trust anchors into ``SupportedCredential.vc_additional_data``.  Using
-``BaseRecord`` gives multi-tenant isolation automatically through profile
-session scoping.
+Signing keys can be generated server-side (following ACA-Py's wallet-managed
+key creation pattern) or imported from external sources (HSM, IACA ceremony).
+Curve validation (EC P-256) is enforced on both paths.
 """
 
 import logging
@@ -35,6 +34,7 @@ from .signing_key import (
     MdocSigningKeyImportSchema,
     MdocSigningKeyUpdateSchema,
     generate_ec_p256_key_pem,
+    validate_ec_p256_private_key,
     validate_cert_matches_private_key,
 )
 
@@ -252,8 +252,9 @@ async def create_signing_key(request: web.Request):
 async def import_signing_key(request: web.Request):
     """Import a pre-existing EC signing key and optional certificate.
 
-    Use this for keys already registered with a public trust registry
-    (IACA, etc.) that cannot be regenerated.
+    The private key must be an EC key on the P-256 curve (as required by
+    ISO 18013-5).  Use this for keys generated externally, e.g. via an
+    HSM, IACA key ceremony, or local tooling.
     """
     context: AdminRequestContext = request["context"]
     body = await request.json()
@@ -261,6 +262,11 @@ async def import_signing_key(request: web.Request):
     private_key_pem = body.get("private_key_pem")
     if not private_key_pem:
         raise web.HTTPBadRequest(reason="private_key_pem is required for import")
+
+    try:
+        validate_ec_p256_private_key(private_key_pem)
+    except ValueError as err:
+        raise web.HTTPBadRequest(reason=str(err)) from err
 
     certificate_pem = body.get("certificate_pem")
     if certificate_pem:
@@ -295,6 +301,11 @@ async def update_signing_key(request: web.Request):
 
     If ``certificate_pem`` is provided, the certificate's public key is
     validated against the stored private key to prevent mismatched pairs.
+
+    To re-import a key and certificate together (e.g. after certificate
+    renewal with a new key), supply both ``private_key_pem`` and
+    ``certificate_pem``.  The new private key is validated for curve
+    compliance (P-256).
     """
     context: AdminRequestContext = request["context"]
     signing_key_id = request.match_info["signing_key_id"]
@@ -304,11 +315,23 @@ async def update_signing_key(request: web.Request):
         async with context.profile.session() as session:
             record = await MdocSigningKeyRecord.retrieve_by_id(session, signing_key_id)
 
+            private_key_pem = body.get("private_key_pem")
             certificate_pem = body.get("certificate_pem")
-            if certificate_pem and record.private_key_pem:
+
+            # If a new private key is supplied, validate its curve
+            if private_key_pem:
+                try:
+                    validate_ec_p256_private_key(private_key_pem)
+                except ValueError as err:
+                    raise web.HTTPBadRequest(reason=str(err)) from err
+                record.private_key_pem = private_key_pem
+
+            # Validate cert matches whichever private key will be stored
+            effective_private_key = private_key_pem or record.private_key_pem
+            if certificate_pem and effective_private_key:
                 try:
                     validate_cert_matches_private_key(
-                        record.private_key_pem, certificate_pem
+                        effective_private_key, certificate_pem
                     )
                 except ValueError as err:
                     raise web.HTTPBadRequest(reason=str(err)) from err
