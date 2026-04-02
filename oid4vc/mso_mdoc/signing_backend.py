@@ -167,15 +167,16 @@ class SoftwareSigningBackend(MdocSigningBackend):
         if doctype == "org.iso.18013.5.1.mDL":
             # Use the typed mDL builder (OrgIso1801351::from_json) which
             # encodes ISO 18013-5 fields with proper CBOR types.
+            # The credential subject may be namespaced ({"org.iso.18013.5.1":
+            # {...}}) or flat; normalise here as the old code did.
+            mdl_ns = "org.iso.18013.5.1"
             aamva_key = "org.iso.18013.5.1.aamva"
-            mdl_items: Dict[str, Any] = {}
-            aamva_payload: Optional[Dict[str, Any]] = None
-            for k, v in payload.items():
-                if k == aamva_key and isinstance(v, dict):
-                    aamva_payload = v
-                else:
-                    mdl_items[k] = v
+            mdl_payload = payload.get(mdl_ns, payload)
+            mdl_items: Dict[str, Any] = {
+                k: v for k, v in mdl_payload.items() if k != aamva_key
+            }
             mdl_items.setdefault("driving_privileges", [])
+            aamva_payload: Optional[Dict[str, Any]] = payload.get(aamva_key)
             mdoc = Mdoc.create_and_sign_mdl(
                 mdl_items=json.dumps(mdl_items),
                 aamva_items=(
