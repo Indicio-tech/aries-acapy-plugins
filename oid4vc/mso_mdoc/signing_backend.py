@@ -173,7 +173,9 @@ class SoftwareSigningBackend(MdocSigningBackend):
             mdl_items.setdefault("driving_privileges", [])
             prepared = PreparedMdoc.new_mdl(
                 mdl_items=json.dumps(mdl_items),
-                aamva_items=json.dumps(aamva_payload) if aamva_payload is not None else None,
+                aamva_items=(
+                    json.dumps(aamva_payload) if aamva_payload is not None else None
+                ),
                 holder_jwk=holder_jwk_str,
                 signature_algorithm="ES256",
             )
