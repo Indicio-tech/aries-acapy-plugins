@@ -17,6 +17,10 @@ import logging
 from typing import Any, Dict, Mapping, Optional
 
 from acapy_agent.core.profile import Profile
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+from isomdl_uniffi import PreparedMdoc
 
 from .signing_key import MdocSigningKeyRecord
 
@@ -147,18 +151,9 @@ class SoftwareSigningBackend(MdocSigningBackend):
         the mDoc is completed with the raw signature and certificate chain.
         Private keys never cross the FFI boundary.
         """
-        from cryptography.hazmat.primitives import hashes, serialization
-        from cryptography.hazmat.primitives.asymmetric import ec
-        from cryptography.hazmat.primitives.asymmetric.utils import (
-            decode_dss_signature,
-        )
-        from isomdl_uniffi import PreparedMdoc
-
         doctype = headers.get("doctype", "")
         holder_jwk_str = (
-            json.dumps(holder_jwk)
-            if isinstance(holder_jwk, dict)
-            else str(holder_jwk)
+            json.dumps(holder_jwk) if isinstance(holder_jwk, dict) else str(holder_jwk)
         )
 
         # Prepare namespaces — each element value is JSON-encoded.
@@ -170,17 +165,13 @@ class SoftwareSigningBackend(MdocSigningBackend):
             mdl_items: Dict[str, str] = {}
             for k, v in payload.items():
                 if k == aamva_key and isinstance(v, dict):
-                    namespaces[aamva_key] = {
-                        ak: json.dumps(av) for ak, av in v.items()
-                    }
+                    namespaces[aamva_key] = {ak: json.dumps(av) for ak, av in v.items()}
                 else:
                     mdl_items[k] = json.dumps(v)
             mdl_items.setdefault("driving_privileges", json.dumps([]))
             namespaces[mdl_ns] = mdl_items
         else:
-            namespaces[doctype] = {
-                k: json.dumps(v) for k, v in payload.items()
-            }
+            namespaces[doctype] = {k: json.dumps(v) for k, v in payload.items()}
 
         # Prepare the mDoc (builds COSE structure, returns payload to sign)
         prepared = PreparedMdoc(
