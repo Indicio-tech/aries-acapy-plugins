@@ -69,7 +69,10 @@ class TrustAnchorQuerySchema(OpenAPISchema):
 
     doctype = fields.Str(
         required=False,
-        metadata={"description": "Filter by doctype", "example": "org.iso.18013.5.1.mDL"},
+        metadata={
+            "description": "Filter by doctype",
+            "example": "org.iso.18013.5.1.mDL",
+        },
     )
     purpose = fields.Str(
         required=False,
@@ -82,7 +85,10 @@ class SigningKeyQuerySchema(OpenAPISchema):
 
     doctype = fields.Str(
         required=False,
-        metadata={"description": "Filter by doctype", "example": "org.iso.18013.5.1.mDL"},
+        metadata={
+            "description": "Filter by doctype",
+            "example": "org.iso.18013.5.1.mDL",
+        },
     )
     label = fields.Str(
         required=False,

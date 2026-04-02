@@ -355,9 +355,7 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             return None
 
         try:
-            entry = await _status_handler.assign_status_list_entry(
-                context, definition_id
-            )
+            entry = await _status_handler.assign_status_list_entry(context, definition_id)
         except Exception as exc:
             LOGGER.warning(
                 "Failed to assign status list entry for definition %s: %s",
@@ -521,9 +519,7 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             # Log full exception for debugging before raising a generic error
             LOGGER.exception("mso_mdoc issuance error: %s", ex)
             # Surface the underlying exception text in the CredProcessorError
-            raise CredProcessorError(
-                f"Failed to issue mso_mdoc credential: {ex}"
-            ) from ex
+            raise CredProcessorError(f"Failed to issue mso_mdoc credential: {ex}") from ex
 
         # issuer_signed_b64() already returns base64url without padding
         # (ISO 18013-5 §8.3 compliant) — exactly what OID4VCI 1.0 §7.3.1 requires.
@@ -539,9 +535,7 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
     def _normalize_mdoc_result(self, result: Any) -> str:
         return normalize_mdoc_result(result)
 
-    def validate_credential_subject(
-        self, supported: SupportedCredential, subject: dict
-    ):
+    def validate_credential_subject(self, supported: SupportedCredential, subject: dict):
         """Validate the credential subject."""
         if not subject:
             raise CredProcessorError("Credential subject cannot be empty")

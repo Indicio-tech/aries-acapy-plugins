@@ -20,9 +20,7 @@ async def setup(context: InjectionContext):
     # Deployments can override by binding a different MdocSigningBackend
     # implementation before this plugin loads.
     if not context.inject_or(MdocSigningBackend):
-        context.injector.bind_instance(
-            MdocSigningBackend, SoftwareSigningBackend()
-        )
+        context.injector.bind_instance(MdocSigningBackend, SoftwareSigningBackend())
 
     processors = context.inject_or(CredProcessors)
     if not processors:
