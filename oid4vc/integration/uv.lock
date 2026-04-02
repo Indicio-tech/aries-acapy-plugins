@@ -779,9 +779,9 @@ wheels = [
 [[package]]
 name = "isomdl-uniffi"
 version = "0.1.0"
-source = { url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test12/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" }
+source = { url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test14/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" }
 wheels = [
-    { url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test12/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:05a6e8f9fa34436981d7a523efd0717271b921ec3485d43a37c10d334df396b0" },
+    { url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test14/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ef690f741b7399b14201b43f5ad322f1a6c6f96f172b921ee2d89eb64d9f8e2a" },
 ]
 
 [package.metadata]
@@ -1045,7 +1045,7 @@ requires-dist = [
     { name = "cwt", specifier = ">=1.6.0" },
     { name = "did-peer-4", specifier = ">=0.1.4" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "isomdl-uniffi", marker = "sys_platform == 'linux'", url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test12/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" },
+    { name = "isomdl-uniffi", marker = "sys_platform == 'linux'", url = "https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-test14/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" },
     { name = "jsonpointer", specifier = ">=3.0.0,<4.0.0" },
     { name = "jsonrpc-api-proxy-client", git = "https://github.com/Indicio-tech/json-rpc-api-proxy.git?subdirectory=clients%2Fpython&rev=main" },
     { name = "pycose", specifier = ">=1.0.0" },
