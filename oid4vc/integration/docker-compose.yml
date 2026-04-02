@@ -11,6 +11,7 @@ services:
       args:
         ACAPY_VERSION: 1.5.1
         ISOMDL_BRANCH: feat/prepare-complete-signing
+        ISOMDL_COMMIT: d0180670bc3f5ca11b9a49c753f87b48676d624b
     image: oid4vc-base:latest
     profiles:
       - base-only  # Only build when explicitly requested
@@ -55,6 +56,7 @@ services:
       args:
         ACAPY_VERSION: 1.5.1
         ISOMDL_BRANCH: feat/prepare-complete-signing
+        ISOMDL_COMMIT: d0180670bc3f5ca11b9a49c753f87b48676d624b
     ports:
       - "${ACAPY_ISSUER_INBOUND_PORT:-18020}:8020"  # inbound transport
       - "${ACAPY_ISSUER_ADMIN_PORT:-18021}:8021"  # admin
@@ -93,6 +95,7 @@ services:
       args:
         ACAPY_VERSION: 1.5.1
         ISOMDL_BRANCH: feat/prepare-complete-signing
+        ISOMDL_COMMIT: d0180670bc3f5ca11b9a49c753f87b48676d624b
     ports:
       - "${ACAPY_VERIFIER_INBOUND_PORT:-18030}:8030"  # inbound transport
       - "${ACAPY_VERIFIER_ADMIN_PORT:-18031}:8031"  # admin
