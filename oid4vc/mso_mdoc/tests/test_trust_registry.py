@@ -2,7 +2,7 @@
 
 Also covers the processor-layer functions that use these records:
 - ``_get_trust_anchors()`` — queries TrustAnchorRecord with doctype-aware filtering.
-- ``_resolve_signing_key()`` — resolves signing key from registry or legacy fallback.
+- ``_resolve_signing_material()`` — resolves signing material via pluggable backend.
 - ``_assign_status_entry()`` — assigns IETF Token Status List entry at issuance.
 """
 
@@ -289,12 +289,12 @@ class TestGetTrustAnchors:
 
 
 # ---------------------------------------------------------------------------
-# _resolve_signing_key processor method tests
+# _resolve_signing_material processor method tests
 # ---------------------------------------------------------------------------
 
 
 class TestResolveSigningKey:
-    """Tests for MsoMdocCredProcessor._resolve_signing_key()."""
+    """Tests for MsoMdocCredProcessor._resolve_signing_material()."""
 
     @pytest.fixture
     def processor(self):
@@ -320,7 +320,7 @@ class TestResolveSigningKey:
             format="mso_mdoc",
             format_data={"doctype": "org.iso.18013.5.1.mDL"},
         )
-        result = await processor._resolve_signing_key(supported, fresh_profile)
+        result = await processor._resolve_signing_material(supported, fresh_profile)
 
         assert result["private_key_pem"] == "PRIV_KEY_FROM_RECORD"
         assert result["certificate_pem"] == "CERT_FROM_RECORD"

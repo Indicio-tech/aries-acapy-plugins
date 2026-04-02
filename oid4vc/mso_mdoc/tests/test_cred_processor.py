@@ -134,17 +134,25 @@ class TestMsoMdocCredProcessor:
         key_rec.private_key_pem = "test-priv-key"
         key_rec.certificate_pem = "test-cert"
 
+        mock_backend = MagicMock()
+        mock_backend.resolve_signing_material = AsyncMock(
+            return_value={
+                "private_key_pem": key_rec.private_key_pem,
+                "certificate_pem": key_rec.certificate_pem,
+            }
+        )
+        mock_backend.sign_mdoc = AsyncMock(
+            return_value="oLHC0-T1"  # base64url without padding
+        )
+
         with (
-            patch("mso_mdoc.cred_processor.isomdl_mdoc_sign") as mock_sign,
             patch("mso_mdoc.cred_processor.check_certificate_not_expired"),
             patch(
-                "mso_mdoc.cred_processor.MdocSigningKeyRecord.query",
+                "mso_mdoc.signing_backend.MdocSigningKeyRecord.query",
                 AsyncMock(return_value=[key_rec]),
             ),
         ):
-            mock_sign.return_value = (
-                "oLHC0-T1"  # base64url without padding as returned by isomdl-uniffi
-            )
+            mock_context.profile.inject_or = MagicMock(return_value=mock_backend)
 
             # Setup input
             ex_record = MagicMock(spec=OID4VCIExchangeRecord)
@@ -172,11 +180,11 @@ class TestMsoMdocCredProcessor:
             # Verify result: issuer_signed_b64() returns base64url directly
             assert result == "oLHC0-T1"
 
-            # Verify signer was called with correct arguments
-            mock_sign.assert_called_once()
-            call_args = mock_sign.call_args
-            assert call_args[0][0] == pop.holder_jwk  # holder_jwk
-            assert call_args[0][1]["doctype"] == "org.iso.18013.5.1.mDL"  # headers
-            assert call_args[0][2] == sample_body  # payload
-            assert call_args[0][3] == "test-cert"  # cert
-            assert call_args[0][4] == "test-priv-key"  # priv key
+            # Verify backend was called
+            mock_backend.sign_mdoc.assert_called_once()
+            call_args = mock_backend.sign_mdoc.call_args
+            # signing_material, holder_jwk, headers, payload
+            assert call_args[0][0]["certificate_pem"] == "test-cert"
+            assert call_args[0][0]["private_key_pem"] == "test-priv-key"
+            assert call_args[0][1]["kty"] == "EC"  # holder_jwk
+            assert call_args[0][2]["doctype"] == "org.iso.18013.5.1.mDL"  # headers

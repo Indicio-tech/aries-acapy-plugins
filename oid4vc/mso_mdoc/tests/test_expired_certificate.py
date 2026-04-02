@@ -251,13 +251,23 @@ class TestIssueRejectsExpiredCertificate:
         ex_record = self._make_ex_record()
         pop = self._make_pop()
 
+        mock_backend = MagicMock()
+        mock_backend.resolve_signing_material = AsyncMock(
+            return_value={
+                "private_key_pem": private_key_pem,
+                "certificate_pem": expired_cert_pem,
+            }
+        )
+        mock_backend.sign_mdoc = AsyncMock()
+
         with (
-            patch("mso_mdoc.cred_processor.isomdl_mdoc_sign") as mock_sign,
             patch(
-                "mso_mdoc.cred_processor.MdocSigningKeyRecord.query",
+                "mso_mdoc.signing_backend.MdocSigningKeyRecord.query",
                 AsyncMock(return_value=[key_rec]),
             ),
         ):
+            profile.inject_or = MagicMock(return_value=mock_backend)
+            context = self._make_admin_context(profile)
             processor = MsoMdocCredProcessor()
 
             with pytest.raises(CredProcessorError, match=r"(?i)expir"):
@@ -269,8 +279,8 @@ class TestIssueRejectsExpiredCertificate:
                     context=context,
                 )
 
-            # The Rust signer must NEVER have been called with an expired cert.
-            mock_sign.assert_not_called()
+            # The signing backend must NEVER have been called with an expired cert.
+            mock_backend.sign_mdoc.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_issue_succeeds_when_certificate_is_valid(self):
@@ -287,16 +297,25 @@ class TestIssueRejectsExpiredCertificate:
         ex_record = self._make_ex_record()
         pop = self._make_pop()
 
+        mock_backend = MagicMock()
+        mock_backend.resolve_signing_material = AsyncMock(
+            return_value={
+                "private_key_pem": private_key_pem,
+                "certificate_pem": valid_cert_pem,
+            }
+        )
+        mock_backend.sign_mdoc = AsyncMock(
+            return_value="oLHC0-T1",  # base64url without padding
+        )
+
         with (
             patch(
-                "mso_mdoc.cred_processor.isomdl_mdoc_sign",
-                return_value="oLHC0-T1",  # base64url without padding as returned by isomdl-uniffi
-            ),
-            patch(
-                "mso_mdoc.cred_processor.MdocSigningKeyRecord.query",
+                "mso_mdoc.signing_backend.MdocSigningKeyRecord.query",
                 AsyncMock(return_value=[key_rec]),
             ),
         ):
+            profile.inject_or = MagicMock(return_value=mock_backend)
+            context = self._make_admin_context(profile)
             processor = MsoMdocCredProcessor()
 
             try:
