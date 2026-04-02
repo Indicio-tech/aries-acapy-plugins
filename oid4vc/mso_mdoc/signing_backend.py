@@ -156,30 +156,37 @@ class SoftwareSigningBackend(MdocSigningBackend):
             json.dumps(holder_jwk) if isinstance(holder_jwk, dict) else str(holder_jwk)
         )
 
-        # Prepare namespaces — each element value is JSON-encoded.
-        namespaces: Dict[str, Dict[str, str]] = {}
-
+        # Prepare the mDoc (builds COSE structure, returns payload to sign).
+        # For mDL we use PreparedMdoc.new_mdl() which routes namespace data
+        # through OrgIso1801351::from_json() — the same typed parser used by
+        # create_and_sign_mdl — so fields like birth_date are encoded as proper
+        # CBOR full-date values rather than plain text strings.
         if doctype == "org.iso.18013.5.1.mDL":
-            mdl_ns = "org.iso.18013.5.1"
             aamva_key = "org.iso.18013.5.1.aamva"
-            mdl_items: Dict[str, str] = {}
+            mdl_items: Dict[str, Any] = {}
+            aamva_payload: Optional[Dict[str, Any]] = None
             for k, v in payload.items():
                 if k == aamva_key and isinstance(v, dict):
-                    namespaces[aamva_key] = {ak: json.dumps(av) for ak, av in v.items()}
+                    aamva_payload = v
                 else:
-                    mdl_items[k] = json.dumps(v)
-            mdl_items.setdefault("driving_privileges", json.dumps([]))
-            namespaces[mdl_ns] = mdl_items
+                    mdl_items[k] = v
+            mdl_items.setdefault("driving_privileges", [])
+            prepared = PreparedMdoc.new_mdl(
+                mdl_items=json.dumps(mdl_items),
+                aamva_items=json.dumps(aamva_payload) if aamva_payload is not None else None,
+                holder_jwk=holder_jwk_str,
+                signature_algorithm="ES256",
+            )
         else:
-            namespaces[doctype] = {k: json.dumps(v) for k, v in payload.items()}
-
-        # Prepare the mDoc (builds COSE structure, returns payload to sign)
-        prepared = PreparedMdoc(
-            doc_type=doctype,
-            namespaces=namespaces,
-            holder_jwk=holder_jwk_str,
-            signature_algorithm="ES256",
-        )
+            namespaces: Dict[str, Dict[str, str]] = {
+                doctype: {k: json.dumps(v) for k, v in payload.items()}
+            }
+            prepared = PreparedMdoc(
+                doc_type=doctype,
+                namespaces=namespaces,
+                holder_jwk=holder_jwk_str,
+                signature_algorithm="ES256",
+            )
 
         sig_payload = prepared.signature_payload()
 
