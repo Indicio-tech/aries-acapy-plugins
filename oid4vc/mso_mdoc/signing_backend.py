@@ -20,7 +20,7 @@ from acapy_agent.core.profile import Profile
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
-from isomdl_uniffi import PreparedMdoc
+from isomdl_uniffi import Mdoc, PreparedMdoc
 
 from .signing_key import MdocSigningKeyRecord
 
@@ -144,24 +144,29 @@ class SoftwareSigningBackend(MdocSigningBackend):
         headers: Mapping[str, Any],
         payload: Mapping[str, Any],
     ) -> str:
-        """Sign an mDoc using the prepare/complete flow with PEM key material.
+        """Sign an mDoc using isomdl-uniffi with PEM key material.
 
-        The mDoc structure is prepared in the Rust FFI layer, the signature
-        payload is signed in Python using the ``cryptography`` library, and
-        the mDoc is completed with the raw signature and certificate chain.
-        Private keys never cross the FFI boundary.
+        For the ISO 18013-5 mDL doctype, ``Mdoc.create_and_sign_mdl()`` is
+        used directly so that mDL namespace elements are encoded with the
+        correct CBOR field types (e.g. ``birth_date`` as a CBOR full-date
+        rather than a plain text string).
+
+        For all other doctypes, the prepare/complete flow is used — the mDoc
+        structure is prepared in the Rust FFI layer, the signature payload is
+        signed in Python, and the mDoc is completed with the raw signature and
+        certificate chain.  Private keys never cross the FFI boundary in that
+        path.
         """
         doctype = headers.get("doctype", "")
         holder_jwk_str = (
             json.dumps(holder_jwk) if isinstance(holder_jwk, dict) else str(holder_jwk)
         )
+        cert_pem = signing_material["certificate_pem"]
+        key_pem = signing_material["private_key_pem"]
 
-        # Prepare the mDoc (builds COSE structure, returns payload to sign).
-        # For mDL we use PreparedMdoc.new_mdl() which routes namespace data
-        # through OrgIso1801351::from_json() — the same typed parser used by
-        # create_and_sign_mdl — so fields like birth_date are encoded as proper
-        # CBOR full-date values rather than plain text strings.
         if doctype == "org.iso.18013.5.1.mDL":
+            # Use the typed mDL builder (OrgIso1801351::from_json) which
+            # encodes ISO 18013-5 fields with proper CBOR types.
             aamva_key = "org.iso.18013.5.1.aamva"
             mdl_items: Dict[str, Any] = {}
             aamva_payload: Optional[Dict[str, Any]] = None
@@ -171,30 +176,33 @@ class SoftwareSigningBackend(MdocSigningBackend):
                 else:
                     mdl_items[k] = v
             mdl_items.setdefault("driving_privileges", [])
-            prepared = PreparedMdoc.new_mdl(
+            mdoc = Mdoc.create_and_sign_mdl(
                 mdl_items=json.dumps(mdl_items),
                 aamva_items=(
                     json.dumps(aamva_payload) if aamva_payload is not None else None
                 ),
                 holder_jwk=holder_jwk_str,
-                signature_algorithm="ES256",
+                iaca_cert_pem=cert_pem,
+                iaca_key_pem=key_pem,
             )
-        else:
-            namespaces: Dict[str, Dict[str, str]] = {
-                doctype: {k: json.dumps(v) for k, v in payload.items()}
-            }
-            prepared = PreparedMdoc(
-                doc_type=doctype,
-                namespaces=namespaces,
-                holder_jwk=holder_jwk_str,
-                signature_algorithm="ES256",
-            )
+            return mdoc.issuer_signed_b64()
+
+        # Generic doctype: prepare/complete flow (private key stays in Python)
+        namespaces: Dict[str, Dict[str, str]] = {
+            doctype: {k: json.dumps(v) for k, v in payload.items()}
+        }
+        prepared = PreparedMdoc(
+            doc_type=doctype,
+            namespaces=namespaces,
+            holder_jwk=holder_jwk_str,
+            signature_algorithm="ES256",
+        )
 
         sig_payload = prepared.signature_payload()
 
         # Sign with the DS private key via Python's cryptography library
         private_key = serialization.load_pem_private_key(
-            signing_material["private_key_pem"].encode("utf-8"),
+            key_pem.encode("utf-8"),
             password=None,
         )
         der_sig = private_key.sign(sig_payload, ec.ECDSA(hashes.SHA256()))
@@ -208,7 +216,7 @@ class SoftwareSigningBackend(MdocSigningBackend):
 
         # Complete the mDoc with signature and certificate chain
         mdoc = prepared.complete(
-            certificate_chain_pem=signing_material["certificate_pem"],
+            certificate_chain_pem=cert_pem,
             signature=raw_sig,
         )
 
