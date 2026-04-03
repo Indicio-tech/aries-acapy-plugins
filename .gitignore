@@ -197,3 +197,6 @@ settings.json
 /docs
 mkdocs.yml
 *.code-workspace
+
+# Local process documentation (not for upstream)
+ISOMDL_TAGGING.md
