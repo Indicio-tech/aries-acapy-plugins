@@ -200,3 +200,4 @@ mkdocs.yml
 
 # Local process documentation (not for upstream)
 ISOMDL_TAGGING.md
+ACAPY_TAGGING.md
