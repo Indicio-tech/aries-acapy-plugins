@@ -13,6 +13,58 @@ docker compose up
 
 **Important** The ngrok config only works with the paid version
 
+If you want to try the lightweight zrok draft instead of ngrok, copy `env.zrok.example` to `.env` and run the alternate compose file:
+
+```bash
+cp env.zrok.example .env
+docker compose -f docker-compose-zrok.yaml up
+```
+
+The zrok draft keeps the existing ngrok setup in `docker-compose.yaml` untouched. It assumes you have already reserved stable zrok names for issuer, auth-server, and demo frontend.
+
+#### Setting up zrok Shares
+
+Before running the zrok variant, you need to set up three persistent tunnel shares using the zrok CLI. This is a one-time setup per machine.
+
+1. **Install zrok** (if not already installed):
+   ```bash
+   # On macOS with Homebrew
+   brew install zrok
+   
+   # Or download from https://github.com/openziti/zrok/releases
+   ```
+
+2. **Authenticate with zrok**:
+   ```bash
+   zrok enable <your-zrok-token>
+   ```
+   You can get a free zrok account and token at https://zrok.io
+
+3. **Reserve the three tunnel shares** (run these commands once):
+   `--unique-name` values are globally unique in zrok's public namespace. Pick names that are unlikely to collide (for example, include your org/user/project prefix).
+   ```bash
+   # Reserve the issuer endpoint (points to demo issuer on port 8082)
+   zrok reserve public --unique-name myteamoid4vcissuer http://localhost:8082
+   
+   # Reserve the auth-server endpoint (points to auth-server on port 9001)
+   zrok reserve public --unique-name myteamoid4vcauthserver http://localhost:9001
+   
+   # Reserve the demo app endpoint (points to demo-app on port 3000)
+   zrok reserve public --unique-name myteamoid4vcdemo http://localhost:3000
+   ```
+
+4. **Run the demo with zrok**:
+   ```bash
+   docker compose --env-file env.zrok.example -f docker-compose-zrok.yaml up
+   ```
+
+The reserved shares will create stable public URLs (based on your unique names), for example:
+- `https://myteam-oid4vc-issuer.share.zrok.io` → demo issuer
+- `https://myteam-oid4vc-authserver.share.zrok.io` → auth-server
+- `https://myteam-oid4vc-demo.share.zrok.io` → demo app frontend
+
+Set the same names in `ISSUER_ZROK_NAME`, `AUTHSERVER_ZROK_NAME`, and `DEMO_ZROK_NAME` in your `.env` file, and update `OID4VCI_ENDPOINT`, `TENANT_ISSUER_BASE_URL`, and `AUTHSERVER_NGROK_URL` to match the resulting URLs.
+
 ### Demo Functionality
 
 * Issue credentials via OpendID4VCI 1.0 - JWT, SD-JWT and mDOC
