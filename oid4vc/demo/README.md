@@ -58,6 +58,14 @@ Before running the zrok variant, you need to set up three persistent tunnel shar
    docker compose --env-file env.zrok.example -f docker-compose-zrok.yaml up
    ```
 
+If you tear the stack down with `docker compose -f docker-compose-zrok.yaml down -v` and Docker later reports a missing network on restart, bring the stack back up with the same compose file and force recreation:
+
+```bash
+docker compose --env-file env.zrok.example -f docker-compose-zrok.yaml up --force-recreate --remove-orphans
+```
+
+That rebuilds any stale containers that were still pointing at the removed compose network.
+
 The reserved shares will create stable public URLs (based on your unique names), for example:
 - `https://myteam-oid4vc-issuer.share.zrok.io` → demo issuer
 - `https://myteam-oid4vc-authserver.share.zrok.io` → auth-server

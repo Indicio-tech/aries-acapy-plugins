@@ -1283,6 +1283,10 @@ app.get("/", (req, res) => {
   res.render("index", {"registrationId": uuidv4()});
 });
 
+app.get("/healthz", (req, res) => {
+  res.status(200).send("ok");
+});
+
 const fetchApiData = async (url, options) => {
   const response = await fetch(url, options);
   return await response.json();

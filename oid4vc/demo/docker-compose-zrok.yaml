@@ -165,12 +165,19 @@ services:
       WDS_SOCKET_PORT: 0
       API_BASE_URL: http://issuer:3001
       FORCE_COLOR: 3
-      ADMIN_MANAGE_AUTH_TOKEN: $ADMIN_MANAGE_AUTH_TOKEN
+      ADMIN_MANAGE_AUTH_TOKEN: ${ADMIN_MANAGE_AUTH_TOKEN:-adminsecrettoken}
       AUTHSERVER_NGROK_URL: ${AUTHSERVER_NGROK_URL:-https://authserver.share.zrok.io}
       TENANT_SECRET: tenantsecrettoken #Used by the issuer introspect tokens on auth server.
     depends_on:
       issuer:
         condition: service_healthy
+    healthcheck:
+      test:
+        ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      start_period: 30s
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 
   #setup Auth Server. 
@@ -197,12 +204,12 @@ services:
       ADMIN_APP_TITLE: OAuth 2.0 Authorization Server Admin API
       ADMIN_APP_VERSION: 0.2.0
       ADMIN_APP_ROOT_PATH: /
-      ADMIN_MANAGE_AUTH_TOKEN: $ADMIN_MANAGE_AUTH_TOKEN # Access the admin API with this token
-      ADMIN_INTERNAL_AUTH_TOKEN: $ADMIN_INTERNAL_AUTH_TOKEN # Admin API request to admin API
+      ADMIN_MANAGE_AUTH_TOKEN: ${ADMIN_MANAGE_AUTH_TOKEN:-adminsecrettoken} # Access the admin API with this token
+      ADMIN_INTERNAL_AUTH_TOKEN: ${ADMIN_INTERNAL_AUTH_TOKEN:-admininternaltoken} # Admin API request to admin API
       ADMIN_TENANT_DB_NAME: auth_server_tenant
       ADMIN_TENANT_DB_SCHEMA: auth
       TENANT_INTERNAL_BASE_URL: http://auth-server:9000/internal
-      TENANT_INTERNAL_AUTH_TOKEN: $TENANT_INTERNAL_AUTH_TOKEN # match ADMIN_INTERNAL_AUTH_TOKEN
+      TENANT_INTERNAL_AUTH_TOKEN: ${TENANT_INTERNAL_AUTH_TOKEN:-admininternaltoken} # match ADMIN_INTERNAL_AUTH_TOKEN
       TENANT_APP_ROOT_PATH: /
       TENANT_DB_HOST: db
       TENANT_DB_PORT: 5432
