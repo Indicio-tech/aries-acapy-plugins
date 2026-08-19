@@ -86,11 +86,13 @@ let sdJwtSupportedCredCreated = false;
 let mdocSupportedCredCreated = false;
 let sdJwtStatusListCreated = false;
 let jwtStatusListCreated = false;
+let mdocStatusListCreated = false;
 let jwtVcSupportedCredID = "";
 let sdJwtSupportedCredID = "";
 let mdocSupportedCredID = "";
 let jwtStatusListID = "";
 let sdJwtStatusListID = "";
+let mdocStatusListID = "";
 
 
 //    ###     ######     ###            ########  ##    ##
@@ -712,6 +714,42 @@ async function issue_mdoc_credential(req, res) {
 
   logger.info(mdocSupportedCredID);
   
+  // Create bitstring status list Configuration for mDoc (revocation)
+  const statusListCreateUrl = `${API_BASE_URL}/status-list/defs`;
+  const statusListCreateOptions = {
+    method: "POST",
+    headers: commonHeaders,
+    body: JSON.stringify({
+      issuer_did: issuerDID,
+      list_size: 131072,
+      list_type: "w3c",
+      shard_size: 131072,
+      status_message: [
+        {
+            status: "0x00",
+            message: "active"
+        },
+        {
+            status: "0x01",
+            message: "inactive"
+        },
+    ],
+    status_purpose: "revocation",
+    status_size: 1,
+    supported_cred_id: mdocSupportedCredID,
+    verification_method: issuerDID+"#0"
+    })
+  };
+
+  if (!mdocStatusListCreated){
+    events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: `Posting Create Status List Request to: ${statusListCreateUrl}`});
+    events.emit(`issuance-${req.body.registrationId}`, {type: "debug-message", message: "Request options", data: statusListCreateOptions});
+    const statusListResponse = await fetchApiData(statusListCreateUrl, statusListCreateOptions);
+    mdocStatusListID = statusListResponse.id;
+    events.emit(`issuance-${req.body.registrationId}`, {type: "message", message: `Created Status List ID: ${mdocStatusListID}`});
+    mdocStatusListCreated = true;
+  };
+
   // Create credential exchange
   const exchangeCreateUrl = `${API_BASE_URL}/oid4vci/exchange/create`;
  
@@ -1136,10 +1174,13 @@ async function create_mdoc_presentation(req, res) {
     headers: commonHeaders,
     body: JSON.stringify({
       dcql_query_id: dcqlQueryId,
+      // Request the holder to produce an mso_mdoc presentation. Include
+      // additional common VP formats as fallbacks for wallets that may
+      // prefer JWT-based VPs.
       vp_formats: {
-        mso_mdoc: {
-          alg: ["ES256"]
-        }
+        mso_mdoc: { alg: ["ES256"] },
+        jwt_vp: { alg: ["ES256", "EdDSA"] },
+        jwt_vp_json: { alg: ["ES256", "EdDSA"] }
       },
     }),
   };
@@ -1536,6 +1577,8 @@ app.post("/update-status", async (req, res, next) => {
       defId = jwtStatusListID;
     } else if (credType === "sdjwt") {
       defId = sdJwtStatusListID;
+    } else if (credType === "mdoc") {
+      defId = mdocStatusListID;
     } else {
       return res.status(400).send("Invalid credential type for status update.");
     }
