@@ -71,7 +71,11 @@ The reserved shares will create stable public URLs (based on your unique names),
 - `https://myteam-oid4vc-authserver.share.zrok.io` → auth-server
 - `https://myteam-oid4vc-demo.share.zrok.io` → demo app frontend
 
-Set the same names in `ISSUER_ZROK_NAME`, `AUTHSERVER_ZROK_NAME`, and `DEMO_ZROK_NAME` in your `.env` file, and update `OID4VCI_ENDPOINT`, `TENANT_ISSUER_BASE_URL`, and `AUTHSERVER_NGROK_URL` to match the resulting URLs.
+Set the same names in `ISSUER_ZROK_NAME`, `AUTHSERVER_ZROK_NAME`, and `DEMO_ZROK_NAME` in your `.env` file, and update `OID4VCI_ENDPOINT`, `TENANT_ISSUER_BASE_URL`, `AUTHSERVER_NGROK_URL`, and `DEMO_PUBLIC_URL` to match the resulting URLs.
+
+#### zrok Reliability
+
+zrok's reserved-share agent can silently lose its underlying OpenZiti circuit while still reporting the share as "active" ([openziti/zrok#1259](https://github.com/openziti/zrok/issues/1259)). Since the container never crashes, Docker's own restart policy won't recover it, and requests will start failing with a `502` from the zrok edge with no other visible symptom. The `zrok-watchdog` service in `docker-compose-zrok.yaml` polls each share's public URL and restarts the affected container when it stops answering. Make sure `DEMO_PUBLIC_URL` (in addition to the other public URL variables above) is set to your actual reserved domain, or the watchdog will poll the wrong URL for the demo share.
 
 ### Demo Functionality
 

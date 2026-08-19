@@ -22,9 +22,12 @@ liveliness_check () {
         done
 }
 
-liveliness_check "${TUNNEL_ENDPOINT}"
-
+# Only probe the ngrok tunnel-inspection API when OID4VCI_ENDPOINT hasn't
+# already been provided. zrok and other manual setups set it directly via
+# env and have no ngrok container to query, so the check would otherwise
+# fail after WAIT_ATTEMPTS and abort startup.
 if [[ -z "${OID4VCI_ENDPOINT:-}" ]]; then
+        liveliness_check "${TUNNEL_ENDPOINT}"
         export OID4VCI_ENDPOINT=$(curl --silent "${TUNNEL_ENDPOINT}/api/tunnels" | jq -r '.tunnels[] | select(.name == "issuer") | .public_url')
 fi
 

@@ -1,8 +1,10 @@
 services:
 
   issuer:
-    # from .. run
-    # DOCKER_DEFAULT_PLATFORM=linux/amd64 docker build -f ./docker/Dockerfile --tag oid4vci .
+    # isomdl-uniffi ships prebuilt wheels only for linux/amd64 (see
+    # docker/Dockerfile) — force amd64 so it builds/runs correctly under
+    # emulation on arm64 hosts (e.g. Apple Silicon).
+    platform: linux/amd64
     image: oid4vc
     build:
       dockerfile: docker/Dockerfile
@@ -114,10 +116,15 @@ services:
       - ${HOME}/.zrok:/home/ziggy/.zrok
     environment:
       PFXLOG_NO_JSON: "true"
-      ZROK_TARGET: http://issuer:8082
+    # zrok has no ZROK_TARGET env var — the backend target is either
+    # whatever was persisted server-side by the original `zrok reserve`
+    # command, or whatever --override-endpoint passes here. Without the
+    # flag, "localhost" resolves inside *this* container's own network
+    # namespace, not the sibling `issuer` container, so it must be passed
+    # explicitly on every run.
     # Reserve the name once, then keep sharing it from this container.
     # Example: zrok reserve public --unique-name issuer http://localhost:8082
-    command: share reserved "${ISSUER_ZROK_NAME:-issuer}" --headless
+    command: share reserved "${ISSUER_ZROK_NAME:-issuer}" --override-endpoint http://issuer:8082 --headless
     depends_on:
       issuer:
         condition: service_healthy
@@ -130,9 +137,10 @@ services:
       - ${HOME}/.zrok:/home/ziggy/.zrok
     environment:
       PFXLOG_NO_JSON: "true"
-      ZROK_TARGET: http://auth-server:9001
+    # See the note on issuer-zrok above: --override-endpoint is required,
+    # there is no env var for this.
     # Example: zrok reserve public --unique-name authserver http://localhost:9001
-    command: share reserved "${AUTHSERVER_ZROK_NAME:-authserver}" --headless
+    command: share reserved "${AUTHSERVER_ZROK_NAME:-authserver}" --override-endpoint http://auth-server:9001 --headless
     depends_on:
       auth-server:
         condition: service_healthy
@@ -145,12 +153,39 @@ services:
       - ${HOME}/.zrok:/home/ziggy/.zrok
     environment:
       PFXLOG_NO_JSON: "true"
-      ZROK_TARGET: http://demo-app:3000
+    # See the note on issuer-zrok above: --override-endpoint is required,
+    # there is no env var for this.
     # Example: zrok reserve public --unique-name demo http://localhost:3000
-    command: share reserved "${DEMO_ZROK_NAME:-demo}" --headless
+    command: share reserved "${DEMO_ZROK_NAME:-demo}" --override-endpoint http://demo-app:3000 --headless
     depends_on:
       demo-app:
         condition: service_healthy
+
+  # zrok's agent can silently lose its OpenZiti circuit while still reporting
+  # the share as "active" (openziti/zrok#1259). Docker never sees a crash, so
+  # nothing restarts it on its own. This polls each share's public URL and
+  # restarts the container when it stops answering.
+  zrok-watchdog:
+    image: docker:27-cli
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./zrok-watchdog.sh:/zrok-watchdog.sh:ro,z
+    environment:
+      CHECK_INTERVAL: 30
+      CHECK_TIMEOUT: 10
+      ISSUER_PUBLIC_URL: ${OID4VCI_ENDPOINT:-https://issuer.share.zrok.io}
+      AUTHSERVER_PUBLIC_URL: ${TENANT_ISSUER_BASE_URL:-https://authserver.share.zrok.io}
+      DEMO_PUBLIC_URL: ${DEMO_PUBLIC_URL:-https://demo.share.zrok.io}
+    entrypoint: >
+      /bin/sh -c 'apk add --no-cache curl >/dev/null && exec /zrok-watchdog.sh'
+    depends_on:
+      issuer-zrok:
+        condition: service_started
+      authserver-zrok:
+        condition: service_started
+      demo-zrok:
+        condition: service_started
 
   demo-app:
     build:
