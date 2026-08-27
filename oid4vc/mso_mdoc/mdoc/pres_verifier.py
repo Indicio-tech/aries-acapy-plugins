@@ -1,5 +1,6 @@
 """mso_mdoc OID4VP presentation verifier."""
 
+import base64
 import json
 import logging
 from typing import Any, List, Optional
@@ -27,7 +28,7 @@ LOGGER = logging.getLogger(__name__)
 async def _get_oid4vp_verification_params(
     profile: Profile,
     presentation_record: "OID4VPPresentation",
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, Optional[bytes]]:
     """Get OID4VP verification parameters.
 
     Args:
@@ -35,15 +36,18 @@ async def _get_oid4vp_verification_params(
         presentation_record: The presentation record
 
     Returns:
-        Tuple of (nonce, client_id, response_uri)
+        Tuple of (nonce, client_id, response_uri, encryption JWK thumbprint)
     """
     nonce = presentation_record.nonce
     config = Config.from_settings(profile.settings)
 
-    async with profile.session() as session:
-        jwk = await retrieve_or_create_did_jwk(session)
-
-    client_id = jwk.did
+    # Device authentication binds to the exact client_id sent in the
+    # Authorization Request. For x509_san_dns this is not the wallet DID-JWK.
+    client_id = presentation_record.client_id
+    if not client_id:
+        async with profile.session() as session:
+            jwk = await retrieve_or_create_did_jwk(session)
+        client_id = jwk.did
 
     wallet_id = (
         profile.settings.get("wallet.id")
@@ -56,7 +60,20 @@ async def _get_oid4vp_verification_params(
         f"{presentation_record.presentation_id}"
     )
 
-    return nonce, client_id, response_uri
+    jwk_thumbprint = None
+    encryption_jwk = presentation_record.response_encryption_jwk
+    if encryption_jwk:
+        kid = encryption_jwk.get("kid")
+        if not kid:
+            raise ValueError("Response-encryption JWK is missing its thumbprint kid")
+        try:
+            jwk_thumbprint = base64.urlsafe_b64decode(kid + "=" * (-len(kid) % 4))
+        except (TypeError, ValueError) as err:
+            raise ValueError("Invalid response-encryption JWK thumbprint") from err
+        if len(jwk_thumbprint) != 32:
+            raise ValueError("Response-encryption JWK thumbprint must be 32 bytes")
+
+    return nonce, client_id, response_uri, jwk_thumbprint
 
 
 def _verify_single_presentation(
@@ -65,6 +82,7 @@ def _verify_single_presentation(
     client_id: str,
     response_uri: str,
     trust_anchor_registry: List[str],
+    jwk_thumbprint: Optional[bytes] = None,
 ) -> Any:
     """Verify a single OID4VP presentation.
 
@@ -89,19 +107,35 @@ def _verify_single_presentation(
         len(response_bytes),
     )
 
-    # Try spec-compliant format (2024) first
-    verified_data = isomdl_uniffi.verify_oid4vp_response(
-        response_bytes,
-        nonce,
-        client_id,
-        response_uri,
-        trust_anchor_registry,
-        True,
-    )
+    if jwk_thumbprint is not None:
+        if not hasattr(isomdl_uniffi, "verify_oid4vp_response_with_jwk_thumbprint"):
+            raise RuntimeError(
+                "isomdl-uniffi does not support encrypted OID4VP handover"
+            )
+        verified_data = isomdl_uniffi.verify_oid4vp_response_with_jwk_thumbprint(
+            response_bytes,
+            nonce,
+            client_id,
+            response_uri,
+            jwk_thumbprint,
+            trust_anchor_registry,
+            True,
+        )
+    else:
+        verified_data = isomdl_uniffi.verify_oid4vp_response(
+            response_bytes,
+            nonce,
+            client_id,
+            response_uri,
+            trust_anchor_registry,
+            True,
+        )
 
     # If device auth failed but issuer is valid, try legacy format
     if (
-        verified_data.device_authentication != isomdl_uniffi.AuthenticationStatus.VALID
+        jwk_thumbprint is None
+        and verified_data.device_authentication
+        != isomdl_uniffi.AuthenticationStatus.VALID
         and verified_data.issuer_authentication
         == isomdl_uniffi.AuthenticationStatus.VALID
     ):
@@ -231,8 +265,8 @@ class MsoMdocPresVerifier(PresVerifier):
                 )
 
             # 2. Get verification parameters
-            nonce, client_id, response_uri = await _get_oid4vp_verification_params(
-                profile, presentation_record
+            nonce, client_id, response_uri, jwk_thumbprint = (
+                await _get_oid4vp_verification_params(profile, presentation_record)
             )
 
             # 3. Normalize presentation input
@@ -257,13 +291,9 @@ class MsoMdocPresVerifier(PresVerifier):
                     client_id,
                     response_uri,
                     trust_anchor_registry,
+                    jwk_thumbprint,
                 )
 
-                # Per ISO 18013-5, deviceSigned is optional (marked with '?' in
-                # the CDDL).  For OID4VP web-wallet flows a device key binding
-                # round-trip is not performed, so device_authentication will not
-                # be VALID.  Issuer authentication is sufficient to trust that
-                # the credential was issued by a known authority.
                 issuer_ok = (
                     verified_data.issuer_authentication
                     == isomdl_uniffi.AuthenticationStatus.VALID
@@ -273,14 +303,7 @@ class MsoMdocPresVerifier(PresVerifier):
                     == isomdl_uniffi.AuthenticationStatus.VALID
                 )
 
-                if issuer_ok:
-                    if not device_ok:
-                        LOGGER.info(
-                            "Device authentication not present/valid (issuer-only "
-                            "OID4VP presentation — deviceSigned is optional per "
-                            "ISO 18013-5): Device=%s",
-                            verified_data.device_authentication,
-                        )
+                if issuer_ok and device_ok:
                     try:
                         claims = extract_verified_claims(verified_data.verified_response)
                     except Exception as e:

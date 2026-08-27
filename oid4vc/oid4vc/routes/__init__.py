@@ -64,6 +64,7 @@ from .vp_presentation import (
     oid4vp_pres_remove,
 )
 from .vp_request import (
+    bootstrap_x509_identity,
     create_oid4vp_request,
     delete_x509_identity,
     get_x509_identity,
@@ -99,6 +100,7 @@ __all__ = [
     "create_oid4vp_request",
     "list_oid4vp_requests",
     # X.509 identity
+    "bootstrap_x509_identity",
     "register_x509_identity",
     "get_x509_identity",
     "delete_x509_identity",
@@ -176,6 +178,7 @@ async def register(app: web.Application):
             web.get("/oid4vp/requests", list_oid4vp_requests),
             web.get("/oid4vp/request/{request_id}", get_oid4vp_request_by_id),
             web.post("/oid4vp/x509-identity", register_x509_identity),
+            web.post("/oid4vp/x509-identity/bootstrap", bootstrap_x509_identity),
             web.get("/oid4vp/x509-identity", get_x509_identity, allow_head=False),
             web.delete("/oid4vp/x509-identity", delete_x509_identity),
             web.post("/oid4vp/presentation-definition", create_oid4vp_pres_def),

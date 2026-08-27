@@ -2,14 +2,22 @@
 
 import json
 import re
+from base64 import urlsafe_b64encode
+from datetime import datetime, timedelta, timezone
 from typing import List
 from urllib.parse import quote
 
 from acapy_agent.admin.request_context import AdminRequestContext
+from acapy_agent.askar.profile import AskarProfileSession
+from acapy_agent.askar.profile_anon import AskarAnonCredsProfileSession
 from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
 from acapy_agent.storage.base import BaseStorage, StorageRecord
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
+from acapy_agent.wallet.base import BaseWallet
+from acapy_agent.wallet.did_info import DIDInfo
+from acapy_agent.wallet.key_type import P256
+from acapy_agent.wallet.util import bytes_to_b64
 from aiohttp import web
 from aiohttp_apispec import (
     docs,
@@ -17,10 +25,17 @@ from aiohttp_apispec import (
     request_schema,
     response_schema,
 )
+from aries_askar import Key
+from cryptography import x509
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.hashes import SHA256
+from cryptography.hazmat.primitives.serialization import Encoding
+from cryptography.x509.oid import NameOID
 from marshmallow import fields
 
 from ..config import Config
 from ..did_utils import retrieve_or_create_did_jwk
+from ..jwk import DID_JWK
 from ..models.presentation import (
     OID4VPPresentation,
     OID4VPPresentationSchema,
@@ -275,18 +290,22 @@ class RegisterX509IdentitySchema(OpenAPISchema):
     )
 
 
-@docs(tags=["oid4vp"], summary="Register X.509 identity for OID4VP requests")
-@request_schema(RegisterX509IdentitySchema())
-async def register_x509_identity(request: web.Request):
-    """Store an X.509 certificate chain for x509_san_dns OID4VP requests."""
-    context: AdminRequestContext = request["context"]
-    body = await request.json()
+class BootstrapX509IdentitySchema(OpenAPISchema):
+    """Temporary X.509 reader bootstrap request."""
 
-    pem: str = body["cert_chain_pem"]
-    verification_method: str = body["verification_method"]
-    client_id: str = body["client_id"]
+    client_id = fields.Str(
+        required=True,
+        metadata={"description": "DNS name used as the x509_san_dns client_id."},
+    )
 
-    # Parse PEM → list of base64 DER strings (whitespace stripped)
+
+def _b64url(value: int) -> str:
+    """Encode an EC integer as an unpadded base64url value."""
+    return urlsafe_b64encode(value.to_bytes(32, "big")).rstrip(b"=").decode()
+
+
+async def _store_x509_identity(session, pem, verification_method, client_id):
+    """Store the active X.509 verifier identity and return its public record."""
     b64_certs: List[str] = [
         re.sub(r"\s+", "", cert)
         for cert in re.findall(
@@ -298,37 +317,191 @@ async def register_x509_identity(request: web.Request):
     if not b64_certs:
         raise web.HTTPBadRequest(reason="No certificates found in cert_chain_pem")
 
-    value = json.dumps(
-        {
-            "cert_chain": b64_certs,
-            "verification_method": verification_method,
-            "client_id": client_id,
-        }
-    )
-
-    async with context.session() as session:
-        storage = session.inject(BaseStorage)
-        # replace any existing record
-        try:
-            existing = await storage.get_record(
-                X509_IDENTITY_RECORD_TYPE, X509_IDENTITY_RECORD_ID
-            )
-            await storage.update_record(existing, value, {})
-        except StorageNotFoundError:
-            record = StorageRecord(
+    identity = {
+        "cert_chain": b64_certs,
+        "verification_method": verification_method,
+        "client_id": client_id,
+    }
+    storage = session.inject(BaseStorage)
+    try:
+        existing = await storage.get_record(
+            X509_IDENTITY_RECORD_TYPE, X509_IDENTITY_RECORD_ID
+        )
+        await storage.update_record(existing, json.dumps(identity), {})
+    except StorageNotFoundError:
+        await storage.add_record(
+            StorageRecord(
                 type=X509_IDENTITY_RECORD_TYPE,
-                value=value,
+                value=json.dumps(identity),
                 id=X509_IDENTITY_RECORD_ID,
             )
-            await storage.add_record(record)
+        )
+    return identity
+
+
+@docs(tags=["oid4vp"], summary="Bootstrap a temporary X.509 verifier identity")
+@request_schema(BootstrapX509IdentitySchema())
+async def bootstrap_x509_identity(request: web.Request):
+    """Create a wallet-backed P-256 key and a temporary matching certificate chain."""
+    context: AdminRequestContext = request["context"]
+    client_id = (await request.json())["client_id"]
+
+    try:
+        x509.DNSName(client_id)
+    except ValueError as err:
+        raise web.HTTPBadRequest(reason="client_id must be a valid DNS name") from err
+
+    now = datetime.now(timezone.utc)
+    ca_key = ec.generate_private_key(ec.SECP256R1())
+    leaf_key = ec.generate_private_key(ec.SECP256R1())
+    ca_name = x509.Name(
+        [x509.NameAttribute(NameOID.COMMON_NAME, "Proven Temporary Reader CA")]
+    )
+    leaf_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, client_id)])
+
+    ca_cert = (
+        x509.CertificateBuilder()
+        .subject_name(ca_name)
+        .issuer_name(ca_name)
+        .public_key(ca_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(minutes=5))
+        .not_valid_after(now + timedelta(days=30))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+        .add_extension(
+            x509.SubjectKeyIdentifier.from_public_key(ca_key.public_key()),
+            critical=False,
+        )
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()),
+            critical=False,
+        )
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=True,
+                crl_sign=True,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        .sign(ca_key, SHA256())
+    )
+    leaf_cert = (
+        x509.CertificateBuilder()
+        .subject_name(leaf_name)
+        .issuer_name(ca_name)
+        .public_key(leaf_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(minutes=5))
+        .not_valid_after(now + timedelta(days=30))
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .add_extension(
+            x509.SubjectAlternativeName([x509.DNSName(client_id)]), critical=False
+        )
+        .add_extension(
+            x509.SubjectKeyIdentifier.from_public_key(leaf_key.public_key()),
+            critical=False,
+        )
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()),
+            critical=False,
+        )
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=False,
+                crl_sign=False,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        .sign(ca_key, SHA256())
+    )
+
+    private_numbers = leaf_key.private_numbers()
+    public_numbers = private_numbers.public_numbers
+    private_jwk = json.dumps(
+        {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": _b64url(public_numbers.x),
+            "y": _b64url(public_numbers.y),
+            "d": _b64url(private_numbers.private_value),
+        }
+    )
+    wallet_key = Key.from_jwk(private_jwk)
+    thumbprint = wallet_key.get_jwk_thumbprint()
+    public_jwk = json.loads(wallet_key.get_jwk_public())
+    public_jwk["use"] = "sig"
+    did = "did:jwk:" + bytes_to_b64(
+        json.dumps(public_jwk).encode(), urlsafe=True, pad=False
+    )
+    verification_method = f"{did}#0"
+    leaf_pem = leaf_cert.public_bytes(Encoding.PEM).decode()
+    ca_pem = ca_cert.public_bytes(Encoding.PEM).decode()
+    cert_chain_pem = leaf_pem + ca_pem
+
+    async with context.session() as session:
+        assert isinstance(
+            session,
+            (AskarProfileSession, AskarAnonCredsProfileSession),
+        )
+        await session.handle.insert_key(thumbprint, wallet_key)
+        wallet = session.inject(BaseWallet)
+        await wallet.store_did(
+            DIDInfo(
+                did=did,
+                verkey=thumbprint,
+                metadata={"temporary_x509_identity": True},
+                method=DID_JWK,
+                key_type=P256,
+            )
+        )
+        await _store_x509_identity(
+            session, cert_chain_pem, verification_method, client_id
+        )
 
     return web.json_response(
         {
-            "cert_chain": b64_certs,
-            "verification_method": verification_method,
             "client_id": client_id,
+            "did": did,
+            "verification_method": verification_method,
+            "leaf_certificate_pem": leaf_pem,
+            "ca_certificate_pem": ca_pem,
+            "cert_chain_pem": cert_chain_pem,
+            "expires_at": leaf_cert.not_valid_after_utc.isoformat(),
         }
     )
+
+
+@docs(tags=["oid4vp"], summary="Register X.509 identity for OID4VP requests")
+@request_schema(RegisterX509IdentitySchema())
+async def register_x509_identity(request: web.Request):
+    """Store an X.509 certificate chain for x509_san_dns OID4VP requests."""
+    context: AdminRequestContext = request["context"]
+    body = await request.json()
+
+    pem: str = body["cert_chain_pem"]
+    verification_method: str = body["verification_method"]
+    client_id: str = body["client_id"]
+
+    async with context.session() as session:
+        identity = await _store_x509_identity(
+            session, pem, verification_method, client_id
+        )
+
+    return web.json_response(identity)
 
 
 @docs(tags=["oid4vp"], summary="Retrieve registered X.509 identity")

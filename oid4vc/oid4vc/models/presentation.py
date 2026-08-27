@@ -44,6 +44,7 @@ class OID4VPPresentation(BaseRecord):
         request_id: str,
         nonce: Optional[str] = None,
         client_id: Optional[str] = None,
+        response_encryption_jwk: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> None:
         """Initialize an OID4VP Presentation instance."""
@@ -58,6 +59,7 @@ class OID4VPPresentation(BaseRecord):
         self.dcql_query_id = dcql_query_id
         self.nonce = nonce  # in request
         self.client_id = client_id
+        self.response_encryption_jwk = response_encryption_jwk
 
     @property
     def presentation_id(self) -> str:
@@ -75,6 +77,7 @@ class OID4VPPresentation(BaseRecord):
                 "verified",
                 "nonce",
                 "client_id",
+                "response_encryption_jwk",
             )
         }
 
@@ -134,6 +137,14 @@ class OID4VPPresentationSchema(BaseRecordSchema):
 
     nonce = fields.Str(
         required=False,
+    )
+
+    response_encryption_jwk = fields.Dict(
+        required=False,
+        load_only=True,
+        metadata={
+            "description": "Ephemeral private JWK used to decrypt the response",
+        },
     )
 
     errors = fields.List(

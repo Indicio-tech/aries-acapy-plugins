@@ -7,6 +7,7 @@ import logging
 from acapy_agent.admin.decorators.auth import tenant_authentication
 from acapy_agent.admin.request_context import AdminRequestContext
 from acapy_agent.askar.profile import AskarProfileSession
+from acapy_agent.askar.profile_anon import AskarAnonCredsProfileSession
 from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
@@ -572,7 +573,10 @@ async def update_supported_credential_jwt_vc(request: web.Request):
     try:
         async with context.session() as session:
             record = await SupportedCredential.retrieve_by_id(session, supported_cred_id)
-            assert isinstance(session, AskarProfileSession)
+            assert isinstance(
+                session,
+                (AskarProfileSession, AskarAnonCredsProfileSession),
+            )
             record = await jwt_supported_cred_update_helper(record, body, session)
     except StorageNotFoundError as err:
         raise web.HTTPNotFound(reason=err.roll_up) from err

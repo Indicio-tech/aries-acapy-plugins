@@ -23,6 +23,7 @@ from aiohttp_apispec import (
     match_info_schema,
 )
 from marshmallow import fields
+from jwcrypto import jwe, jwk as jose_jwk
 
 from oid4vc.dcql import DCQLQueryEvaluator
 from oid4vc.jwt import jwt_sign
@@ -121,6 +122,21 @@ async def get_request(request: web.Request):
             else:
                 effective_client_id = jwk.did
             pres.client_id = effective_client_id
+
+            # HAIP requires a fresh P-256 response-encryption key for every
+            # Authorization Request. Persist the private half only on the
+            # presentation record; publish only the public half below.
+            response_encryption_key = None
+            if dcql_query is not None:
+                response_encryption_key = jose_jwk.JWK.generate(kty="EC", crv="P-256")
+                response_encryption_key.update(
+                    kid=response_encryption_key.thumbprint(),
+                    use="enc",
+                    alg="ECDH-ES",
+                )
+                pres.response_encryption_jwk = json.loads(
+                    response_encryption_key.export(private_key=True)
+                )
             await pres.save(session=session, reason="Retrieved presentation request")
 
     except StorageNotFoundError as err:
@@ -160,6 +176,9 @@ async def get_request(request: web.Request):
         # The x5c cert chain in the JWT header establishes the x509 binding.
         # Do NOT add a separate client_id_scheme parameter — it causes failures.
         "client_id": effective_client_id,
+        # Static Discovery Request Objects use the Self-Issued OP audience.
+        # OID4VP 1.0 section 5.8 requires this claim.
+        "aud": "https://self-issued.me/v2",
         "response_uri": (
             f"{oid4vp_base}{subpath}/oid4vp/response/{pres.presentation_id}"
         ),
@@ -171,16 +190,34 @@ async def get_request(request: web.Request):
         "scopes_supported": ["openid", "vp_token"],
         "subject_types_supported": ["pairwise"],
         "subject_syntax_types_supported": ["urn:ietf:params:oauth:jwk-thumbprint"],
-        # OID4VP Final: vp_formats MUST be inside client_metadata when using
-        # x509_san_dns (verifier has no metadata document URL).  Keep top-level
-        # vp_formats as well for broad wallet compatibility.
-        "client_metadata": {
-            "vp_formats": record.vp_formats,
-            "authorization_signed_response_alg": "ES256",
-        },
-        "vp_formats": record.vp_formats,
+        # OID4VP 1.0 requires verifier format capabilities in
+        # client_metadata.vp_formats_supported. mdoc algorithms are COSE
+        # identifiers rather than JOSE algorithm names.
+        "client_metadata": (
+            {
+                "jwks": {
+                    "keys": [
+                        json.loads(response_encryption_key.export(private_key=False))
+                    ]
+                },
+                "authorization_encrypted_response_alg": "ECDH-ES",
+                "authorization_encrypted_response_enc": "A256GCM",
+                "encrypted_response_enc_values_supported": ["A128GCM", "A256GCM"],
+                "vp_formats_supported": {
+                    "mso_mdoc": {
+                        "issuerauth_alg_values": [-7, -9],
+                        "deviceauth_alg_values": [-7, -9],
+                    }
+                }
+            }
+            if dcql_query is not None and "mso_mdoc" in record.vp_formats
+            else {
+                "vp_formats": record.vp_formats,
+                "authorization_signed_response_alg": "ES256",
+            }
+        ),
         "response_type": "vp_token",
-        "response_mode": "direct_post",
+        "response_mode": "direct_post.jwt" if dcql_query is not None else "direct_post",
         # NOTE: Do NOT include "scope" here. The @openid4vc/openid4vp library
         # validates that EXACTLY ONE of {scope, presentation_definition,
         # presentation_definition_uri, dcql_query} is present. Including scope
@@ -189,7 +226,21 @@ async def get_request(request: web.Request):
     if pres_def is not None:
         payload["presentation_definition"] = pres_def.pres_def
     if dcql_query is not None:
+        # These are verifier/authorization-server metadata, not Authorization
+        # Request parameters. Keep them only on the legacy Presentation
+        # Exchange path for compatibility with existing wallets.
+        for metadata_key in (
+            "id_token_signing_alg_values_supported",
+            "request_object_signing_alg_values_supported",
+            "response_types_supported",
+            "scopes_supported",
+            "subject_types_supported",
+            "subject_syntax_types_supported",
+        ):
+            payload.pop(metadata_key, None)
         payload["dcql_query"] = dcql_query.record_value
+    else:
+        payload["vp_formats"] = record.vp_formats
 
     if x509_id:
         headers = {
@@ -214,7 +265,10 @@ async def get_request(request: web.Request):
 
     LOGGER.debug("TOKEN: %s", token)
 
-    return web.Response(text=token)
+    return web.Response(
+        body=token.encode("ascii"),
+        content_type="application/oauth-authz-req+jwt",
+    )
 
 
 class OID4VPPresentationIDMatchSchema(OpenAPISchema):
@@ -233,8 +287,13 @@ class PostOID4VPResponseSchema(OpenAPISchema):
 
     presentation_submission = fields.Str(required=False, metadata={"description": ""})
 
+    response = fields.Str(
+        required=False,
+        metadata={"description": "Encrypted direct_post.jwt Authorization Response"},
+    )
+
     vp_token = fields.Str(
-        required=True,
+        required=False,
         metadata={
             "description": "",
         },
@@ -345,44 +404,55 @@ async def post_response(request: web.Request):
 
     form = await request.post()
 
-    # DEBUG: log raw POST form body
     LOGGER.debug("OID4VP POST form keys: %s", list(form.keys()))
-    raw_vp_token = form.get("vp_token")
-    LOGGER.debug(
-        "OID4VP POST vp_token (first 200 chars): %r",
-        raw_vp_token[:200] if isinstance(raw_vp_token, str) else raw_vp_token,
-    )
-    LOGGER.debug(
-        "OID4VP POST presentation_submission (first 500 chars): %r",
-        form.get("presentation_submission", "<MISSING>")[:500]
-        if isinstance(form.get("presentation_submission"), str)
-        else form.get("presentation_submission", "<MISSING>"),
-    )
-    LOGGER.debug("OID4VP POST state: %r", form.get("state"))
-
-    # presentation_submission is only present for PEX (pres_def) presentations;
-    # DCQL presentations omit it and send vp_token as a JSON object instead.
-    raw_submission = form.get("presentation_submission")
-    presentation_submission = (
-        PresentationSubmission.from_json(raw_submission)
-        if isinstance(raw_submission, str)
-        else None
-    )
-
-    vp_token = form.get("vp_token")
-    state = form.get("state")
-
-    if state and state != presentation_id:
-        raise web.HTTPBadRequest(reason="`state` must match the presentation id")
 
     async with context.session() as session:
         record = await OID4VPPresentation.retrieve_by_id(session, presentation_id)
 
     try:
-        if not isinstance(vp_token, str):
-            raise web.HTTPBadRequest(reason="vp_token must be a string")
+        encrypted_response = form.get("response")
+        if encrypted_response is not None:
+            if not isinstance(encrypted_response, str):
+                raise web.HTTPBadRequest(reason="response must be a string")
+            if not record.response_encryption_jwk:
+                raise web.HTTPBadRequest(
+                    reason="No response-encryption key exists for this presentation"
+                )
+
+            response_token = jwe.JWE()
+            response_token.deserialize(
+                encrypted_response,
+                key=jose_jwk.JWK(**record.response_encryption_jwk),
+            )
+            if response_token.jose_header.get("alg") != "ECDH-ES":
+                raise web.HTTPBadRequest(reason="Unsupported response JWE alg")
+            if response_token.jose_header.get("enc") not in ("A128GCM", "A256GCM"):
+                raise web.HTTPBadRequest(reason="Unsupported response JWE enc")
+            response_payload = json.loads(response_token.payload.decode("utf-8"))
+            if not isinstance(response_payload, dict):
+                raise web.HTTPBadRequest(reason="Response payload must be a JSON object")
+        else:
+            response_payload = form
+
+        # presentation_submission is only present for PEX presentations. DCQL
+        # responses carry a credential-query-id keyed vp_token object.
+        raw_submission = response_payload.get("presentation_submission")
+        presentation_submission = (
+            PresentationSubmission.deserialize(raw_submission)
+            if isinstance(raw_submission, dict)
+            else PresentationSubmission.from_json(raw_submission)
+            if isinstance(raw_submission, str)
+            else None
+        )
+        vp_token = response_payload.get("vp_token")
+        state = response_payload.get("state")
+
+        if state and state != presentation_id:
+            raise web.HTTPBadRequest(reason="`state` must match the presentation id")
 
         if record.pres_def_id:
+            if not isinstance(vp_token, str):
+                raise web.HTTPBadRequest(reason="vp_token must be a string")
             if presentation_submission is None:
                 raise web.HTTPBadRequest(
                     reason="presentation_submission is required for PEX presentations"
@@ -395,9 +465,13 @@ async def post_response(request: web.Request):
                 presentation=record,
             )
         elif record.dcql_query_id:
+            if isinstance(vp_token, str):
+                vp_token = json.loads(vp_token)
+            if not isinstance(vp_token, dict):
+                raise web.HTTPBadRequest(reason="DCQL vp_token must be a JSON object")
             verify_result = await verify_dcql_presentation(
                 profile=context.profile,
-                vp_token=json.loads(vp_token),
+                vp_token=vp_token,
                 dcql_query_id=record.dcql_query_id,
                 presentation=record,
             )
@@ -423,6 +497,7 @@ async def post_response(request: web.Request):
         record.errors = [f"Processing error: {error_msg}"]
         record.verified = False
         record.matched_credentials = {}
+        record.response_encryption_jwk = None
         async with context.session() as session:
             await record.save(session, reason="Presentation processing failed")
         return web.json_response({})
@@ -440,6 +515,7 @@ async def post_response(request: web.Request):
         if isinstance(verify_result, PexVerifyResult)
         else verify_result.cred_query_id_to_claims
     )
+    record.response_encryption_jwk = None
 
     async with context.session() as session:
         await record.save(
