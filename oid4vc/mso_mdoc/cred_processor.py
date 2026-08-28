@@ -364,11 +364,22 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
         """
         status_handler = context.inject_or(StatusHandler)
         if not status_handler:
+            LOGGER.info(
+                "No StatusHandler configured (OID4VCI_STATUS_HANDLER unset?); "
+                "issuing mdoc without a status claim"
+            )
             return None
 
-        return await status_handler.assign_status_entries(
+        status_claim = await status_handler.assign_status_entries(
             context, supported.supported_cred_id, ex_record.exchange_id
         )
+        LOGGER.info(
+            "Status claim for supported_cred_id=%s exchange_id=%s: %s",
+            supported.supported_cred_id,
+            ex_record.exchange_id,
+            status_claim,
+        )
+        return status_claim
 
     async def issue(
         self,
@@ -412,12 +423,12 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             # Get payload
             payload = prepare_mdoc_payload(ex_record.credential_subject, doctype)
 
-            # Optionally assign a status list entry and embed the status claim
+            # Optionally assign a status list entry and embed the status claim.
+            # Passed to isomdl_mdoc_sign separately (rather than merged into
+            # payload) since it's an MSO-level field, not a namespace element.
             status_claim = await self._assign_status_entry(
                 context, supported, ex_record
             )
-            if status_claim:
-                payload["status"] = status_claim
 
             # Resolve signing key — check MdocSigningKeyRecord first, then
             # fall back to vc_additional_data and env vars
@@ -483,7 +494,12 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                 )
 
             mso_mdoc = isomdl_mdoc_sign(
-                signing_holder_key, headers, payload, certificate_pem, private_key_pem
+                signing_holder_key,
+                headers,
+                payload,
+                certificate_pem,
+                private_key_pem,
+                status=status_claim,
             )
 
             # Normalize mDoc result handling for robust string/bytes processing
