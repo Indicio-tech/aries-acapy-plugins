@@ -714,7 +714,10 @@ async function issue_mdoc_credential(req, res) {
 
   logger.info(mdocSupportedCredID);
   
-  // Create bitstring status list Configuration for mDoc (revocation)
+  // Create IETF Token Status List Configuration for mDoc (revocation).
+  // Must be "ietf", not "w3c" — check_status_list_claim() in
+  // mso_mdoc/mdoc/utils.py only recognizes the IETF status_list.{idx,uri}
+  // shape embedded by the status_list plugin for that list_type.
   const statusListCreateUrl = `${API_BASE_URL}/status-list/defs`;
   const statusListCreateOptions = {
     method: "POST",
@@ -722,7 +725,7 @@ async function issue_mdoc_credential(req, res) {
     body: JSON.stringify({
       issuer_did: issuerDID,
       list_size: 131072,
-      list_type: "w3c",
+      list_type: "ietf",
       shard_size: 131072,
       status_message: [
         {
@@ -1273,7 +1276,7 @@ function handleEvents(event_type, req, res) {
         if (state == "request-retrieved")
           res.write(`event: status\ndata: <div style="text-align: center;">QRCode Scanned, awaiting presentation...</div>\n\n`);
         if (state == "presentation-invalid")
-          res.write(`event: status\ndata: <div style="text-align: center;">Presentaion verification failed</div>\n\n`);
+          res.write(`event: status\ndata: <div style="text-align: center;">Presentation verification failed</div>\n\n`);
         if (state == "presentation-valid")
           res.write(`event: status\ndata: <div style="text-align: center;">Presentation Verified!</div>\n\n`);
       }
@@ -1602,13 +1605,32 @@ app.post("/update-status", async (req, res, next) => {
       headers: commonHeaders,
       body: JSON.stringify({ status: "1" })
     });
-    
+
     const respData = await response.text();
-    
+
     if (respData.includes("StatusListCred record not found")) {
       res.send(`<div class="w3-panel w3-pale-red w3-border"><p>${respData}</p></div>`);
     } else if (response.ok) {
-      res.send(`<div class="w3-panel w3-pale-green w3-border"><p>Status successfully updated for Credential Exchange ID: ${credId}</p></div>`);
+      // The PATCH above only flips the bit in the StatusListShard DB
+      // record. Verifiers fetch a separately-published snapshot, so the
+      // update is invisible until that snapshot is regenerated.
+      let publishWarning = "";
+      try {
+        const publishUrl = `${API_BASE_URL}/status-list/defs/${defId}/publish`;
+        const publishResponse = await fetch(publishUrl, {
+          method: "PUT",
+          headers: commonHeaders,
+        });
+        if (!publishResponse.ok) {
+          const publishError = await publishResponse.text();
+          logger.warn("Failed to publish status list:", publishError);
+          publishWarning = `<p>Warning: status updated but publish failed: ${publishError}</p>`;
+        }
+      } catch (err) {
+        logger.warn("Failed to publish status list:", err?.message || err);
+        publishWarning = `<p>Warning: status updated but publish failed: ${err?.message || err}</p>`;
+      }
+      res.send(`<div class="w3-panel w3-pale-green w3-border"><p>Status successfully updated for Credential Exchange ID: ${credId}</p>${publishWarning}</div>`);
     } else {
       res.status(response.status).send(`<div class="w3-panel w3-pale-red w3-border"><p>Failed to update status: ${respData}</p></div>`);
     }
