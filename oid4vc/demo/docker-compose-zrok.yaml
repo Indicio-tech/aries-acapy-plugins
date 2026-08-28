@@ -1,9 +1,13 @@
 services:
 
   issuer:
-    # isomdl-uniffi ships prebuilt wheels only for linux/amd64 (see
-    # docker/Dockerfile) — force amd64 so it builds/runs correctly under
-    # emulation on arm64 hosts (e.g. Apple Silicon).
+    # Building isomdl-uniffi from source requires zig as the linker
+    # (.cargo/config.toml routes aarch64/x86_64 Linux targets through
+    # `zig cc`), but zig's LLD-based linker doesn't support
+    # --fix-cortex-a53-843419, which rustc adds by default for
+    # aarch64-unknown-linux-gnu — this breaks native arm64 builds on
+    # Apple Silicon hosts (confirmed; unresolved upstream in zig/LLD).
+    # Force amd64 to route around it; runs under emulation on arm64 hosts.
     platform: linux/amd64
     image: oid4vc
     build:
@@ -57,7 +61,6 @@ services:
         --multitenant
         --multitenant-admin
         --jwt-secret insecure
-        --log-level INFO
         --multitenancy-config wallet_type=single-wallet-askar key_derivation_method=RAW
         --block-plugin acapy_agent.anoncreds
         --block-plugin acapy_agent.ledger

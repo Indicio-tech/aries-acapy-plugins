@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 FROM python:3.13-slim-bookworm AS base
 WORKDIR /usr/src/app
 
@@ -20,16 +22,41 @@ RUN mkdir jwt_vc_json && touch jwt_vc_json/__init__.py
 RUN mkdir sd_jwt_vc && touch sd_jwt_vc/__init__.py
 RUN mkdir mso_mdoc && touch mso_mdoc/__init__.py
 RUN mkdir status_list && touch status_list/__init__.py
+RUN mkdir mso_mdoc/isomdl
 COPY pyproject.toml poetry.lock README.md ./
 RUN poetry install --without dev --all-extras
 
 # isomdl-uniffi isn't on PyPI and can't be a poetry dependency (it requires
-# a Rust toolchain to build) — install the prebuilt wheel from its GitHub
-# release instead, matching README.md's documented dev-setup instructions.
-# This image is built for linux/amd64 (see the `platform:` pin in the
-# compose files), so the manylinux x86_64 wheel is always the right one.
-RUN /usr/src/app/.venv/bin/pip install --no-cache-dir \
-    https://github.com/Indicio-tech/isomdl-uniffi/releases/download/v0.1.0-indicio.1/isomdl_uniffi-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+# a Rust toolchain to build). Build from source against the
+# feat/mso-status-claim branch (adds MSO-level status-claim support for
+# revocable mdoc issuance, not yet in a released wheel).
+#
+# Fetched via ADD (not RUN git clone) so BuildKit checks the remote ref on
+# every build and only invalidates this layer when the branch's commit
+# actually changes — a plain `RUN git clone <fixed args>` caches on the
+# command text and would keep reusing a stale checkout after new commits
+# land on the branch, requiring a full --no-cache rebuild every time.
+RUN apt-get update && apt-get install -y git build-essential && apt-get clean
+ADD https://github.com/Indicio-tech/isomdl-uniffi.git#feat/mso-status-claim /usr/src/app/isomdl-uniffi
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# isomdl-uniffi's .cargo/config.toml routes both x86_64 and aarch64 Linux
+# targets through `zig cc` (see its mise.toml, which pins zig) even for
+# native builds; without `zig` on PATH the Rust link step fails with
+# "zig: not found".
+RUN pip install --no-cache-dir ziglang \
+    && printf '#!/bin/sh\nexec python3 -m ziglang "$@"\n' > /usr/local/bin/zig \
+    && chmod +x /usr/local/bin/zig
+
+WORKDIR /usr/src/app/isomdl-uniffi/python
+# Cache cargo's downloaded crate registry and this crate's compiled build
+# artifacts across builds, so an isomdl-uniffi source change (a new commit
+# on the branch above) only recompiles the crates that actually changed
+# instead of all ~250 dependencies from scratch every time.
+RUN --mount=type=cache,target=/root/.cargo/registry,id=cargo-registry \
+    --mount=type=cache,target=/usr/src/app/isomdl-uniffi/rust/target,id=isomdl-uniffi-target \
+    python build.py
 
 USER $user
 
@@ -45,6 +72,10 @@ COPY sd_jwt_vc/ sd_jwt_vc/
 COPY oid4vc/ oid4vc/
 ADD https://github.com/openwallet-foundation/acapy-plugins.git#main:status_list/status_list/ status_list/
 COPY docker/*.yml ./
+
+# Install the isomdl library built in the base stage.
+COPY --from=base /usr/src/app/isomdl-uniffi/python/isomdl_uniffi /usr/src/app/mso_mdoc/isomdl
+ENV PYTHONPATH="/usr/src/app/mso_mdoc/isomdl:$PYTHONPATH"
 
 ENTRYPOINT ["/bin/bash", "-c", "aca-py \"$@\"", "--"]
 CMD ["start", "--arg-file", "default.yml"]
