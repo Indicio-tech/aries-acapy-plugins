@@ -2,12 +2,12 @@
 
 import json
 
-from acapy_agent.askar.profile import AskarProfileSession
 from acapy_agent.core.profile import ProfileSession
 from acapy_agent.storage.base import BaseStorage, StorageRecord
 from acapy_agent.storage.error import StorageNotFoundError
 from acapy_agent.wallet.base import BaseWallet
 from acapy_agent.wallet.did_info import DIDInfo
+from acapy_agent.wallet.error import WalletError
 from acapy_agent.wallet.key_type import ED25519
 from acapy_agent.wallet.util import bytes_to_b64
 from aries_askar import Key, KeyAlg
@@ -40,15 +40,19 @@ async def _create_default_did(session: ProfileSession) -> DIDInfo:
     the resulting DID is stored exactly the same way and can be resolved
     by jwt_sign / key_material_for_kid.
     """
-    assert isinstance(session, AskarProfileSession), (
-        "did_utils requires an Askar-backed profile session"
-    )
-
     wallet = session.inject(BaseWallet)
     storage = session.inject(BaseStorage)
 
+    # Both ``askar`` and ``askar-anoncreds`` profiles expose the underlying
+    # Aries Askar session handle. Do not require the legacy AskarProfileSession
+    # concrete type: ACA-Py uses AskarAnonCredsProfileSession when the agent is
+    # configured with ``--wallet-type askar-anoncreds``.
+    handle = getattr(session, "handle", None)
+    if handle is None:
+        raise WalletError("did:jwk creation requires an Askar-backed profile session")
+
     key = Key.generate(KeyAlg.ED25519)
-    await session.handle.insert_key(key.get_jwk_thumbprint(), key)
+    await handle.insert_key(key.get_jwk_thumbprint(), key)
 
     jwk = json.loads(key.get_jwk_public())
     jwk["use"] = "sig"
