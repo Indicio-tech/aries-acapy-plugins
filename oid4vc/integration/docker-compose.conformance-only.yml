@@ -23,6 +23,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+    networks:
+      default:
+        aliases:
+          # Current OIDF suite releases default to this hostname.
+          - mongodb
 
   conformance-server:
     build:
