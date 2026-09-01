@@ -71,7 +71,7 @@ The reserved shares will create stable public URLs (based on your unique names),
 - `https://myteam-oid4vc-authserver.share.zrok.io` → auth-server
 - `https://myteam-oid4vc-demo.share.zrok.io` → demo app frontend
 
-Set the same names in `ISSUER_ZROK_NAME`, `AUTHSERVER_ZROK_NAME`, and `DEMO_ZROK_NAME` in your `.env` file, and update `OID4VCI_ENDPOINT`, `TENANT_ISSUER_BASE_URL`, `AUTHSERVER_NGROK_URL`, and `DEMO_PUBLIC_URL` to match the resulting URLs.
+Set the same names in `ISSUER_ZROK_NAME`, `AUTHSERVER_ZROK_NAME`, and `DEMO_ZROK_NAME` in your `.env` file, and update `OID4VCI_ENDPOINT`, `TENANT_ISSUER_BASE_URL`, and `DEMO_PUBLIC_URL` to match the resulting URLs (the demo app's own public auth-server URL is derived from `TENANT_ISSUER_BASE_URL`, no separate variable needed).
 
 #### zrok Reliability
 

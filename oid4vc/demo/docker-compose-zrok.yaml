@@ -204,7 +204,10 @@ services:
       API_BASE_URL: http://issuer:3001
       FORCE_COLOR: 3
       ADMIN_MANAGE_AUTH_TOKEN: ${ADMIN_MANAGE_AUTH_TOKEN:-adminsecrettoken}
-      AUTHSERVER_NGROK_URL: ${AUTHSERVER_NGROK_URL:-https://authserver.share.zrok.io}
+      # Reuses the same public URL already configured for the auth-server
+      # service itself (TENANT_ISSUER_BASE_URL) — no separate zrok-specific
+      # variable needed.
+      AUTHSERVER_PUBLIC_URL: ${TENANT_ISSUER_BASE_URL:-https://authserver.share.zrok.io}
       TENANT_SECRET: tenantsecrettoken #Used by the issuer introspect tokens on auth server.
     depends_on:
       issuer:
