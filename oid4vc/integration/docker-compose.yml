@@ -330,6 +330,11 @@ services:
       retries: 12
     profiles:
       - conformance
+    networks:
+      default:
+        aliases:
+          # Current OIDF suite releases default to this hostname.
+          - mongodb
 
   conformance-server:
     build:

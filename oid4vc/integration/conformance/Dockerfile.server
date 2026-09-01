@@ -1,11 +1,11 @@
 # Multi-stage build for the OIDF Conformance Suite.
 #
 # Stage 1 (builder): clones the GitLab repo and builds the fat JAR with Maven.
-# Stage 2 (server):  runs the JAR with Eclipse Temurin 17 JRE.
+# Stage 2 (server):  runs the JAR with Eclipse Temurin 21 JRE.
 #
 # Build args:
 #   CONFORMANCE_SUITE_REPO   — git repository URL (default: official GitLab)
-#   CONFORMANCE_SUITE_BRANCH — branch / tag to build (default: main)
+#   CONFORMANCE_SUITE_BRANCH — branch, tag, or commit to build (default: master)
 #
 # The resulting image is used by the `conformance-server` service in the
 # docker-compose `conformance` profile.
@@ -14,8 +14,8 @@ ARG CONFORMANCE_SUITE_REPO=https://gitlab.com/openid/conformance-suite.git
 ARG CONFORMANCE_SUITE_BRANCH=master
 
 # ── Stage 1: builder ──────────────────────────────────────────────────────────
-# eclipse-temurin-17 (no alpine) has arm64 + amd64 manifests.
-FROM maven:3.9-eclipse-temurin-17 AS builder
+# The upstream suite currently targets Java 21.
+FROM maven:3.9-eclipse-temurin-21 AS builder
 
 ARG CONFORMANCE_SUITE_REPO
 ARG CONFORMANCE_SUITE_BRANCH
@@ -26,10 +26,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-# Shallow clone at the requested branch/tag
-RUN git clone --depth=1 \
-        --branch "${CONFORMANCE_SUITE_BRANCH}" \
-        "${CONFORMANCE_SUITE_REPO}" .
+# Fetch the requested branch, tag, or immutable commit without repository history.
+RUN git init . \
+    && git remote add origin "${CONFORMANCE_SUITE_REPO}" \
+    && git fetch --depth=1 origin "${CONFORMANCE_SUITE_BRANCH}" \
+    && git checkout --detach FETCH_HEAD
 
 # Download dependencies in a separate layer for better cache reuse
 RUN mvn dependency:go-offline \
@@ -48,7 +49,7 @@ RUN mvn clean package \
 RUN cp /build/target/fapi-test-suite.jar /server.jar
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
-FROM eclipse-temurin:17-jre-jammy
+FROM eclipse-temurin:21-jre-jammy
 
 # Add curl for health checks
 RUN apt-get update && apt-get install -y --no-install-recommends \

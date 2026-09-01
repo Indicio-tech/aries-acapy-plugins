@@ -666,10 +666,6 @@ def build_oid4vci_issuer_config(setup: dict) -> tuple[str, dict, dict]:
     plan_name = "oid4vci-1_0-issuer-test-plan"
     variant = {
         "vci_grant_type": "pre_authorization_code",
-        # ACA-Py's credential-offer deeplink uses ?credential_offer=<JSON> (by_value),
-        # NOT ?credential_offer_uri=<URL> (by_reference).
-        "vci_credential_offer_variant": "by_value",
-        "vci_credential_issuance_mode": "immediate",
         "credential_format": "sd_jwt_vc",
         "vci_credential_encryption": "plain",
         # "none" was removed in a recent conformance suite update.

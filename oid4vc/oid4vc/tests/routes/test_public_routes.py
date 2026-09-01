@@ -20,6 +20,7 @@ from oid4vc.public_routes import (
     issue_cred,
     receive_notification,
 )
+from oid4vc.public_routes.verification import _build_client_metadata
 
 
 @pytest.fixture
@@ -34,6 +35,19 @@ def req(context: AdminRequestContext):
     match_info = {"wallet_id": items["wallet_id"]}
     mock.match_info = match_info
     yield mock
+
+
+def test_client_metadata_supports_final_and_legacy_format_names():
+    """Advertise VP formats to final-spec and pre-final wallets."""
+    vp_formats = {"mso_mdoc": {"alg": ["ES256"]}}
+
+    final_metadata = _build_client_metadata(vp_formats, include_final_format_name=True)
+    legacy_metadata = _build_client_metadata(vp_formats, include_final_format_name=False)
+
+    assert final_metadata["vp_formats"] == vp_formats
+    assert final_metadata["vp_formats_supported"] == vp_formats
+    assert legacy_metadata["vp_formats"] == vp_formats
+    assert "vp_formats_supported" not in legacy_metadata
 
 
 @pytest.mark.asyncio
