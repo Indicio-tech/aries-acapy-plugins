@@ -85,13 +85,17 @@ async def _get_x509_identity(session: ProfileSession) -> Optional[Dict[str, Any]
         return None
 
 
-def _build_client_metadata(vp_formats: Dict[str, Any]) -> Dict[str, Any]:
-    """Build final-spec metadata with the pre-final format-name alias."""
-    return {
+def _build_client_metadata(
+    vp_formats: Dict[str, Any], *, include_final_format_name: bool
+) -> Dict[str, Any]:
+    """Build client metadata for the selected OID4VP interoperability mode."""
+    metadata = {
         "vp_formats": vp_formats,
-        "vp_formats_supported": vp_formats,
         "authorization_signed_response_alg": "ES256",
     }
+    if include_final_format_name:
+        metadata["vp_formats_supported"] = vp_formats
+    return metadata
 
 
 @docs(tags=["oid4vp"], summary="Retrive OID4VP authorization request token")
@@ -183,7 +187,12 @@ async def get_request(request: web.Request):
         # OID4VP Final: vp_formats_supported MUST be inside client_metadata when
         # using x509_san_dns (verifier has no metadata document URL). Keep the
         # pre-final vp_formats aliases for broad wallet compatibility.
-        "client_metadata": _build_client_metadata(record.vp_formats),
+        "client_metadata": _build_client_metadata(
+            record.vp_formats,
+            # The final-spec OIDF flow uses x509_san_dns. Current Credo
+            # did:jwk holders still infer a pre-final version from vp_formats.
+            include_final_format_name=x509_id is not None,
+        ),
         "vp_formats": record.vp_formats,
         "response_type": "vp_token",
         "response_mode": "direct_post",

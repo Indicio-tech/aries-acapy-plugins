@@ -41,10 +41,13 @@ def test_client_metadata_supports_final_and_legacy_format_names():
     """Advertise VP formats to final-spec and pre-final wallets."""
     vp_formats = {"mso_mdoc": {"alg": ["ES256"]}}
 
-    metadata = _build_client_metadata(vp_formats)
+    final_metadata = _build_client_metadata(vp_formats, include_final_format_name=True)
+    legacy_metadata = _build_client_metadata(vp_formats, include_final_format_name=False)
 
-    assert metadata["vp_formats"] == vp_formats
-    assert metadata["vp_formats_supported"] == vp_formats
+    assert final_metadata["vp_formats"] == vp_formats
+    assert final_metadata["vp_formats_supported"] == vp_formats
+    assert legacy_metadata["vp_formats"] == vp_formats
+    assert "vp_formats_supported" not in legacy_metadata
 
 
 @pytest.mark.asyncio
