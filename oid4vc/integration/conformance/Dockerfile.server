@@ -5,7 +5,7 @@
 #
 # Build args:
 #   CONFORMANCE_SUITE_REPO   — git repository URL (default: official GitLab)
-#   CONFORMANCE_SUITE_BRANCH — branch / tag to build (default: main)
+#   CONFORMANCE_SUITE_BRANCH — branch, tag, or commit to build (default: master)
 #
 # The resulting image is used by the `conformance-server` service in the
 # docker-compose `conformance` profile.
@@ -26,10 +26,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-# Shallow clone at the requested branch/tag
-RUN git clone --depth=1 \
-        --branch "${CONFORMANCE_SUITE_BRANCH}" \
-        "${CONFORMANCE_SUITE_REPO}" .
+# Fetch the requested branch, tag, or immutable commit without repository history.
+RUN git init . \
+    && git remote add origin "${CONFORMANCE_SUITE_REPO}" \
+    && git fetch --depth=1 origin "${CONFORMANCE_SUITE_BRANCH}" \
+    && git checkout --detach FETCH_HEAD
 
 # Download dependencies in a separate layer for better cache reuse
 RUN mvn dependency:go-offline \

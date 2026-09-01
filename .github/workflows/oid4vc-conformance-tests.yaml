@@ -83,7 +83,7 @@ jobs:
           # Keep the release gate reproducible. Upstream master changes its
           # plan variants and protocol expectations without notice.
           build-args: |
-            CONFORMANCE_SUITE_BRANCH=release-v5.1.41
+            CONFORMANCE_SUITE_BRANCH=b7be6bb4a365aa570108e4e40b6682d52b9382e9
           cache-from: type=gha,scope=conformance-server
           cache-to: type=gha,mode=max,scope=conformance-server
 
@@ -105,7 +105,7 @@ jobs:
       - name: Run conformance tests
         env:
           DOCKER_PLATFORM: linux/amd64
-          CONFORMANCE_SUITE_BRANCH: release-v5.1.41
+          CONFORMANCE_SUITE_BRANCH: b7be6bb4a365aa570108e4e40b6682d52b9382e9
         run: |
           bash oid4vc/integration/run-conformance-tests.sh run all
 
