@@ -85,6 +85,15 @@ async def _get_x509_identity(session: ProfileSession) -> Optional[Dict[str, Any]
         return None
 
 
+def _build_client_metadata(vp_formats: Dict[str, Any]) -> Dict[str, Any]:
+    """Build final-spec metadata with the pre-final format-name alias."""
+    return {
+        "vp_formats": vp_formats,
+        "vp_formats_supported": vp_formats,
+        "authorization_signed_response_alg": "ES256",
+    }
+
+
 @docs(tags=["oid4vp"], summary="Retrive OID4VP authorization request token")
 @match_info_schema(OID4VPRequestIDMatchSchema())
 async def get_request(request: web.Request):
@@ -171,13 +180,10 @@ async def get_request(request: web.Request):
         "scopes_supported": ["openid", "vp_token"],
         "subject_types_supported": ["pairwise"],
         "subject_syntax_types_supported": ["urn:ietf:params:oauth:jwk-thumbprint"],
-        # OID4VP Final: vp_formats MUST be inside client_metadata when using
-        # x509_san_dns (verifier has no metadata document URL).  Keep top-level
-        # vp_formats as well for broad wallet compatibility.
-        "client_metadata": {
-            "vp_formats": record.vp_formats,
-            "authorization_signed_response_alg": "ES256",
-        },
+        # OID4VP Final: vp_formats_supported MUST be inside client_metadata when
+        # using x509_san_dns (verifier has no metadata document URL). Keep the
+        # pre-final vp_formats aliases for broad wallet compatibility.
+        "client_metadata": _build_client_metadata(record.vp_formats),
         "vp_formats": record.vp_formats,
         "response_type": "vp_token",
         "response_mode": "direct_post",
