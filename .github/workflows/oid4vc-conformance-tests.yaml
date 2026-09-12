@@ -53,7 +53,7 @@ jobs:
           tags: oid4vc-integration-acapy-issuer:latest
           build-args: |
             ACAPY_VERSION=1.4.0
-            ISOMDL_BRANCH=fix/python-build-system
+            ISOMDL_BRANCH=feat/prepare-complete-signing
           cache-from: type=gha,scope=acapy-oid4vc
           cache-to: type=gha,mode=max,scope=acapy-oid4vc
 
@@ -67,7 +67,7 @@ jobs:
           tags: oid4vc-integration-acapy-verifier:latest
           build-args: |
             ACAPY_VERSION=1.4.0
-            ISOMDL_BRANCH=fix/python-build-system
+            ISOMDL_BRANCH=feat/prepare-complete-signing
           # Issuer + verifier share all layers; use same cache scope.
           cache-from: type=gha,scope=acapy-oid4vc
 

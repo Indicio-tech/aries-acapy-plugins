@@ -4,18 +4,19 @@ A ``MdocSigningKeyRecord`` persists the EC private key and X.509 certificate
 used by the issuer to sign mDoc credentials.  Records are scoped to the
 current wallet session, giving multi-tenant isolation automatically.
 
-The recommended workflow is:
+Two key-creation workflows are supported:
 
 1. **Generate** – ``POST /mso-mdoc/signing-keys`` creates a new EC P-256
-   key pair server-side.  The response includes the ``public_key_pem`` (and
-   optionally a CSR) so that the caller can submit the public key to an
-   IACA for certificate signing.
-2. **Attach certificate** – ``PUT /mso-mdoc/signing-keys/{id}`` uploads the
-   CA-signed certificate once it has been obtained.
+   key pair server-side (following ACA-Py's convention of wallet-managed
+   key generation).  The response includes the ``public_key_pem`` so the
+   caller can submit it to an IACA for certificate signing.
+2. **Import** – ``POST /mso-mdoc/signing-keys/import`` loads a pre-existing
+   EC P-256 private key and (optionally) X.509 certificate in a single
+   step.  Use this for keys produced by an HSM, IACA ceremony, or other
+   external tooling.
 
-For pre-existing keys already registered with a public trust registry,
-use ``POST /mso-mdoc/signing-keys/import`` to load the private key and
-certificate in a single step.
+In both cases, ``PUT /mso-mdoc/signing-keys/{id}`` can attach or replace
+the CA-signed certificate once it has been obtained.
 """
 
 from typing import Optional
@@ -28,6 +29,10 @@ from acapy_agent.messaging.models.openapi import OpenAPISchema
 from marshmallow import fields
 
 
+ALLOWED_CURVES = (ec.SECP256R1,)  # P-256 only; extend as needed
+"""EC curves accepted for mDoc signing keys (ISO 18013-5 mandates P-256)."""
+
+
 def generate_ec_p256_key_pem() -> str:
     """Generate an EC P-256 private key and return it as a PKCS8 PEM string."""
     private_key = ec.generate_private_key(ec.SECP256R1())
@@ -36,6 +41,30 @@ def generate_ec_p256_key_pem() -> str:
         format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption(),
     ).decode("utf-8")
+
+
+def validate_ec_p256_private_key(private_key_pem: str) -> ec.EllipticCurvePrivateKey:
+    """Load a PEM private key and verify it is an EC key on an allowed curve.
+
+    Returns the validated private key object.
+    Raises ``ValueError`` for non-EC keys or unsupported curves.
+    """
+    private_key = serialization.load_pem_private_key(
+        private_key_pem.encode("utf-8"), password=None
+    )
+    if not isinstance(private_key, ec.EllipticCurvePrivateKey):
+        raise ValueError(
+            "Only EC private keys are supported for mDoc signing; "
+            f"received {type(private_key).__name__}"
+        )
+    if not any(isinstance(private_key.curve, c) for c in ALLOWED_CURVES):
+        curve_name = private_key.curve.name if private_key.curve else "unknown"
+        allowed = ", ".join(c.name for c in ALLOWED_CURVES)
+        raise ValueError(
+            f"EC curve '{curve_name}' is not supported for mDoc signing; "
+            f"allowed curves: {allowed}"
+        )
+    return private_key
 
 
 def public_key_pem_from_private(private_key_pem: str) -> str:
@@ -244,6 +273,15 @@ class MdocSigningKeyImportSchema(OpenAPISchema):
 class MdocSigningKeyUpdateSchema(OpenAPISchema):
     """Request schema for ``PUT /mso-mdoc/signing-keys/{id}``."""
 
+    private_key_pem = fields.Str(
+        required=False,
+        metadata={
+            "description": (
+                "PEM-encoded EC private key.  Supply together with "
+                "certificate_pem to re-import after key rotation."
+            )
+        },
+    )
     certificate_pem = fields.Str(
         required=False,
         metadata={

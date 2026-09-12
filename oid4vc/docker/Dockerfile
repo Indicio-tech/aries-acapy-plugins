@@ -16,9 +16,17 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Accept branch, tag, or commit ref to build from
 ARG ISOMDL_BRANCH=main
+# Optional: pin to an exact commit SHA to bypass Docker layer caching of git clone.
+# When this value changes, Docker invalidates the clone layer and fetches fresh source.
+ARG ISOMDL_COMMIT=""
 
 RUN git clone --depth 1 --branch "${ISOMDL_BRANCH}" \
-    https://github.com/Indicio-tech/isomdl-uniffi.git /build/isomdl-uniffi
+    https://github.com/Indicio-tech/isomdl-uniffi.git /build/isomdl-uniffi \
+    && if [ -n "${ISOMDL_COMMIT}" ]; then \
+        cd /build/isomdl-uniffi \
+        && git fetch --depth=1 origin "${ISOMDL_COMMIT}" \
+        && git checkout FETCH_HEAD; \
+    fi
 
 WORKDIR /build/isomdl-uniffi/python
 
