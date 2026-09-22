@@ -298,7 +298,9 @@ class MsoMdocPresVerifier(PresVerifier):
                         "verified_data.status_list for presentation verification: %s",
                         status_json,
                     )
-                    revocation_error = await check_status_list_claim(status_claim)
+                    revocation_error = await check_status_list_claim(
+                        profile, status_claim
+                    )
                     if revocation_error:
                         LOGGER.warning(
                             "mDoc presentation rejected — credential revoked: %s",
