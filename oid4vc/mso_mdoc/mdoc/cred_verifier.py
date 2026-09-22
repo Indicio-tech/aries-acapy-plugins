@@ -195,7 +195,9 @@ class MsoMdocCredVerifier(CredVerifier):
                         json.loads(status_json) if isinstance(status_json, str) else None
                     )
                     LOGGER.info("mdoc.status_list() for verification: %s", status_json)
-                    revocation_error = await check_status_list_claim(status_claim)
+                    revocation_error = await check_status_list_claim(
+                        profile, status_claim
+                    )
                     if revocation_error:
                         LOGGER.warning(
                             "mDoc credential rejected — credential revoked: %s",
