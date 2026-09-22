@@ -338,71 +338,52 @@ class TestAssignStatusEntry:
     def processor(self):
         return MsoMdocCredProcessor()
 
-    @pytest.mark.asyncio
-    async def test_returns_none_when_no_status_list_def_id(self, processor, context):
-        """No status_list_def_id in vc_additional_data → returns None."""
+    @pytest.fixture
+    def supported(self):
         from oid4vc.models.supported_cred import SupportedCredential
 
-        supported = SupportedCredential(format="mso_mdoc", vc_additional_data={})
-        result = await processor._assign_status_entry(context, supported, "org.example")
-        assert result is None
+        return SupportedCredential(
+            format="mso_mdoc", supported_cred_id="supported-123", vc_additional_data={}
+        )
+
+    @pytest.fixture
+    def ex_record(self):
+        from oid4vc.models.exchange import OID4VCIExchangeRecord
+
+        return OID4VCIExchangeRecord(
+            exchange_id="exchange-456",
+            state=OID4VCIExchangeRecord.STATE_OFFER_CREATED,
+            supported_cred_id="supported-123",
+            credential_subject={},
+            verification_method="did:key:zTest#zTest",
+            issuer_id="did:key:zTest",
+        )
 
     @pytest.mark.asyncio
-    async def test_returns_none_when_status_list_plugin_not_installed(
-        self, processor, context
+    async def test_returns_none_when_no_status_handler(
+        self, processor, context, supported, ex_record
     ):
-        """When status_list plugin ImportError occurs → returns None gracefully."""
-        from oid4vc.models.supported_cred import SupportedCredential
+        """No StatusHandler bound in the context → returns None."""
+        with patch.object(AdminRequestContext, "inject_or", return_value=None):
+            result = await processor._assign_status_entry(context, supported, ex_record)
 
-        supported = SupportedCredential(
-            format="mso_mdoc",
-            vc_additional_data={
-                "status_list_def_id": "def-123",
-                "status_list_base_uri": "http://issuer/status",
-            },
-        )
-
-        with patch.dict("sys.modules", {"status_list.status_list.v1_0": None}):
-            result = await processor._assign_status_entry(
-                context, supported, "org.example"
-            )
-        # Should fail-gracefully when plugin not available
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_returns_status_claim_when_entry_assigned(self, processor, context):
-        """When status handler assigns an entry, returns {status_list: {idx, uri}}."""
-        from oid4vc.models.supported_cred import SupportedCredential
+    async def test_returns_status_claim_from_handler(
+        self, processor, context, supported, ex_record
+    ):
+        """The configured StatusHandler's claim is returned unchanged."""
+        from oid4vc.status_handler import StatusHandler
 
-        supported = SupportedCredential(
-            format="mso_mdoc",
-            vc_additional_data={
-                "status_list_def_id": "def-456",
-                "status_list_base_uri": "http://issuer/status",
-            },
+        claim = {"status_list": {"idx": 7, "uri": "http://issuer/status/0"}}
+        handler = MagicMock(spec=StatusHandler)
+        handler.assign_status_entries = AsyncMock(return_value=claim)
+
+        with patch.object(AdminRequestContext, "inject_or", return_value=handler):
+            result = await processor._assign_status_entry(context, supported, ex_record)
+
+        assert result == claim
+        handler.assign_status_entries.assert_awaited_once_with(
+            context, "supported-123", "exchange-456"
         )
-
-        mock_entry = {"list_number": "0", "list_index": 7}
-        mock_status_handler = MagicMock()
-        mock_status_handler.assign_status_list_entry = AsyncMock(return_value=mock_entry)
-
-        # _assign_status_entry does:
-        #   from status_list.status_list.v1_0 import status_handler as _status_handler
-        # Python resolves this by looking at
-        # sys.modules["status_list.status_list.v1_0"].status_handler
-        mock_module = MagicMock(status_handler=mock_status_handler)
-
-        sys_modules_patch = {
-            "status_list": MagicMock(),
-            "status_list.status_list": MagicMock(),
-            "status_list.status_list.v1_0": mock_module,
-            "status_list.status_list.v1_0.status_handler": mock_status_handler,
-        }
-        with patch.dict("sys.modules", sys_modules_patch):
-            result = await processor._assign_status_entry(
-                context, supported, "org.example"
-            )
-
-        assert result is not None
-        assert result["status_list"]["idx"] == 7
-        assert result["status_list"]["uri"] == "http://issuer/status/0"
