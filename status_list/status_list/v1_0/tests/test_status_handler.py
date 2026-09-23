@@ -55,6 +55,16 @@ def test_with_retries():
         assert mock_sleep.call_count == 2
 
 
+def test_write_to_file_is_world_readable(tmp_path):
+    """Published lists must be readable by a web server running as another user."""
+    file_path = tmp_path / "published"
+
+    status_handler.write_to_file(str(file_path), b"status list", with_alt=True)
+
+    assert file_path.stat().st_mode & 0o777 == 0o644
+    assert status_handler.alt_name(file_path).stat().st_mode & 0o777 == 0o644
+
+
 def test_write_to_file_success(tmp_path):
     file_path = tmp_path / "test.txt"
     content = b"hello world"
