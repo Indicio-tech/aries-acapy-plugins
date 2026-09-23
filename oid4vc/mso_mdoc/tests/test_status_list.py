@@ -136,6 +136,74 @@ async def test_status_claim_without_status_list_key_is_valid(profile):
 
 
 # ---------------------------------------------------------------------------
+# Several status entries (one status list definition per entry)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_of_claims_all_active(monkeypatch, profile):
+    """A credential covered by several definitions carries a list of claims."""
+    requested_urls = _patch_fetch(monkeypatch)
+    _patch_verify(monkeypatch)
+
+    result = await check_status_list_claim(
+        profile,
+        [
+            {"status_list": {"idx": 3, "uri": URI}},
+            {"status_list": {"idx": 7, "uri": URI}},
+        ],
+    )
+
+    assert result is None
+    assert requested_urls == [URI, URI]
+
+
+@pytest.mark.asyncio
+async def test_list_of_claims_rejects_when_any_entry_revoked(monkeypatch, profile):
+    """One revoked entry rejects the credential even if the others are clear."""
+    _patch_fetch(monkeypatch)
+    _patch_verify(monkeypatch, payload=_payload(revoked_indices=[7]))
+
+    result = await check_status_list_claim(
+        profile,
+        [
+            {"status_list": {"idx": 3, "uri": URI}},
+            {"status_list": {"idx": 7, "uri": URI}},
+        ],
+    )
+
+    assert result == "Credential is revoked or suspended (status_list idx=7, status=1)"
+
+
+@pytest.mark.asyncio
+async def test_list_of_claims_fails_closed_on_unresolvable_entry(monkeypatch, profile):
+    """An entry whose status cannot be determined rejects the credential."""
+    _patch_fetch(monkeypatch)
+    _patch_verify(monkeypatch, verified=False)
+
+    result = await check_status_list_claim(
+        profile, [{"status_list": {"idx": 3, "uri": URI}}]
+    )
+
+    assert result is not None
+    assert "signature verification failed" in result
+
+
+@pytest.mark.asyncio
+async def test_empty_list_of_claims_is_valid(profile):
+    assert await check_status_list_claim(profile, []) is None
+
+
+@pytest.mark.asyncio
+async def test_non_object_status_list_entry_fails_closed(profile):
+    """A status_list that is not an object cannot be evaluated."""
+    result = await check_status_list_claim(profile, {"status_list": "nonsense"})
+
+    assert result is not None
+    assert "not an object" in result
+
+
+# ---------------------------------------------------------------------------
 # Bitstring evaluation
 # ---------------------------------------------------------------------------
 

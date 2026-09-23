@@ -5,7 +5,7 @@ import logging
 import re
 import time
 import zlib
-from typing import List, Optional
+from typing import Any, List, Optional, Union
 
 from acapy_agent.core.profile import Profile
 
@@ -116,17 +116,57 @@ def flatten_trust_anchors(trust_anchors: List[str]) -> List[str]:
 
 
 async def check_status_list_claim(
-    profile: Profile, status_claim: Optional[dict]
+    profile: Profile, status_claim: Union[dict, list, None]
 ) -> Optional[str]:
     """Check IETF Token Status List revocation status from an MSO status claim.
 
-    *status_claim* is the credential's MSO-level status claim (e.g.
-    ``{"status_list": {"idx": ..., "uri": ...}}``), read back via
-    ``Mdoc.status()`` for direct credential verification or the reader-side
-    ``status`` field for OID4VP presentation verification — not discovered
-    by searching namespace claims; status isn't a namespace-embedded data
-    element, it lives on the MSO itself. If present, fetches the published
-    status list token, verifies its signature and claims, decodes the
+    *status_claim* is the credential's MSO-level status claim, read back via
+    ``Mdoc.status_list()`` for direct credential verification or the
+    reader-side ``status_list`` field for OID4VP presentation verification —
+    not discovered by searching namespace claims; status isn't a
+    namespace-embedded data element, it lives on the MSO itself.
+
+    The claim is a single ``{"status_list": {"idx": ..., "uri": ...}}`` object
+    when one status list definition covers the credential, and a list of those
+    objects when several do — the status list plugin assigns one entry per
+    matching definition, so a credential configuration with both a W3C and an
+    IETF definition produces a list. Every entry is checked, and the
+    credential is rejected as soon as one reports it revoked or cannot be
+    resolved; treating an unrecognised shape as "no status" would let a
+    revoked credential verify.
+
+    Args:
+        profile: Profile used to resolve each status list token's signing key.
+        status_claim: The MSO's status claim: one claim object, a list of
+            them, or ``None``/empty when the credential has no status claim.
+
+    Returns:
+        ``None`` if every status entry reports the credential valid, or if it
+        has no status claim at all. An error string if any entry reports it
+        revoked or suspended, or if any entry's status could not be
+        determined — this fails closed rather than treating an inconclusive
+        check as "valid".
+    """
+    if status_claim is None:
+        return None
+
+    claims = status_claim if isinstance(status_claim, list) else [status_claim]
+    for claim in claims:
+        if not isinstance(claim, dict) or "status_list" not in claim:
+            # An entry without a status_list carries no revocation information.
+            continue
+        error = await _check_single_status_list(profile, claim["status_list"])
+        if error:
+            return error
+
+    return None
+
+
+# Resolves and evaluates one IETF Token Status List entry from an MSO status claim.
+async def _check_single_status_list(profile: Profile, status_entry: Any) -> Optional[str]:
+    """Check one ``status_list`` entry, fetching and verifying its token.
+
+    Fetches the published status list token, verifies it, decodes the
     little-endian compressed bitstring, and checks the bit(s) at ``idx``.
 
     The fetched token is verified before any of its content is trusted:
@@ -153,21 +193,24 @@ async def check_status_list_claim(
 
     Args:
         profile: Profile used to resolve the status list token's signing key.
-        status_claim: The MSO's status claim dict, or ``None``/empty if the
-            credential has no status claim at all.
+        status_entry: The entry's ``status_list`` value, expected to carry
+            ``idx`` and ``uri``.
 
     Returns:
-        ``None`` if the credential is valid (or has no status claim).
-        An error string if the credential is revoked/suspended, or if its
-        status could not be determined (fetch failure, bad signature,
-        unexpected token type or subject, expired or not-yet-valid token,
-        decode failure, malformed claim, out-of-range index) — this fails
-        closed rather than treating an inconclusive check as "valid".
+        ``None`` when the entry reports the credential valid. An error string
+        when it reports it revoked or suspended, or when its status cannot be
+        determined (fetch failure, bad signature, unexpected token type or
+        subject, expired or not-yet-valid token, decode failure, malformed
+        claim, out-of-range index) — this fails closed rather than treating
+        an inconclusive check as "valid".
     """
-    if not isinstance(status_claim, dict) or "status_list" not in status_claim:
-        return None  # No revocable status claim -> credential is valid
+    if not isinstance(status_entry, dict):
+        LOGGER.warning("Malformed status_list claim - not an object")
+        return (
+            "Could not verify credential status: malformed status_list claim "
+            "(not an object)"
+        )
 
-    status_entry = status_claim["status_list"]
     idx = status_entry.get("idx")
     uri = status_entry.get("uri")
 
