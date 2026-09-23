@@ -115,6 +115,11 @@ def write_to_file(
                 os.fsync(tmp.fileno())
                 temp_path = Path(tmp.name)
 
+            # NamedTemporaryFile always creates 0600, which a separate web server
+            # serving the published lists cannot read. Set this before the .alt
+            # copy below, which copies the mode along with the contents.
+            os.chmod(temp_path, 0o644)
+
             if with_alt:
                 alt_path = alt_name(full_path)
                 alt_temp = alt_path.with_suffix(alt_path.suffix + ".tmp")
