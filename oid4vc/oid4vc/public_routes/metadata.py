@@ -209,8 +209,10 @@ async def openid_configuration(request: web.Request):
             "token_endpoint": f"{base_url}/token",
             "response_types_supported": ["code"],
             # DPoP support - required by HAIP profile (DPOP-5.1).
-            # Advertise the algorithms supported for DPoP proof JWTs.
-            "dpop_signing_alg_values_supported": ["ES256", "ES384", "ES512"],
+            # Advertise the algorithms supported for DPoP proof JWTs. HAIP
+            # requires ES256, the only ECDSA algorithm jwt_verify supports;
+            # ES384/ES512 were advertised without support behind them.
+            "dpop_signing_alg_values_supported": ["ES256"],
             # OAuth 2.0 AS Metadata fields
             "grant_types_supported": [
                 "urn:ietf:params:oauth:grant-type:pre-authorized_code"

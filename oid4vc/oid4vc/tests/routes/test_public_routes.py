@@ -18,6 +18,7 @@ from oid4vc.public_routes import (
     credential_issuer_metadata,
     handle_proof_of_posession,
     issue_cred,
+    openid_configuration,
     receive_notification,
 )
 from oid4vc.public_routes.verification import _build_client_metadata
@@ -437,3 +438,13 @@ async def test_issue_cred(monkeypatch, context, dummy_request):
     assert "credentials" in data
     assert len(data["credentials"]) == 1
     assert "credential" in data["credentials"][0]
+
+
+@pytest.mark.asyncio
+async def test_openid_configuration_advertises_es256_dpop_only(req):
+    """AS metadata advertises only the DPoP algorithm the server supports."""
+    with patch("aiohttp.web.json_response") as mock_json_response:
+        await openid_configuration(req)
+
+    metadata = mock_json_response.call_args.args[0]
+    assert metadata["dpop_signing_alg_values_supported"] == ["ES256"]
