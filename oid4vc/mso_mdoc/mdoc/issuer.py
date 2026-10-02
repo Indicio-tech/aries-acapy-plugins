@@ -34,6 +34,7 @@ from typing import Any, Mapping, Optional
 # - P-256 elliptic curve cryptography (ISO 18013-5 § 9.1.3.5)
 from isomdl_uniffi import Mdoc  # ISO 18013-5 § 8.3: Mobile document structure
 
+from .typed_values import TYPED_ELEMENT_KEY, wrap_typed_value
 from .utils import extract_signing_cert
 
 LOGGER = logging.getLogger(__name__)
@@ -97,19 +98,50 @@ def _prepare_mdl_namespaces(
     return json.dumps(mdl_items), aamva_items_json
 
 
-def _prepare_generic_namespaces(doctype: str, payload: Mapping[str, Any]) -> dict:
+def _prepare_generic_namespaces(
+    doctype: str,
+    payload: Mapping[str, Any],
+    value_types: Optional[Mapping[str, str]] = None,
+) -> dict:
     """Prepare namespaces for generic doctypes.
 
     Args:
         doctype: The document type
         payload: The credential payload
+        value_types: Optional ``{element: value_type}`` map from the credential
+            configuration's claims. A typed element is checked and wrapped as
+            ``{"$isomdl": <type>, "value": <input>}`` so isomdl-uniffi writes
+            the ISO 18013-5 CBOR type (bstr, full-date, tdate).
 
     Returns:
         Dictionary of namespaces with JSON-encoded element values
         for use with Mdoc.create_and_sign.
     """
-    encoded_payload = {k: json.dumps(v) for k, v in payload.items()}
+    value_types = value_types or {}
+    encoded_payload = {
+        k: json.dumps(wrap_typed_value(k, value_types[k], v) if k in value_types else v)
+        for k, v in payload.items()
+    }
     return {doctype: encoded_payload}
+
+
+def _check_typed_support(mdoc: Mdoc, value_types: Mapping[str, str]) -> None:
+    """Fail if the installed isomdl-uniffi wrote a typed envelope as a map.
+
+    A library without typed-element support converts the envelope like any
+    other JSON object, so the element would silently become a CBOR map.
+    """
+    for elements in mdoc.details().values():
+        for element in elements:
+            if (
+                element.identifier in value_types
+                and element.value is not None
+                and TYPED_ELEMENT_KEY in element.value
+            ):
+                raise ValueError(
+                    "installed isomdl-uniffi does not support typed elements "
+                    f"(element '{element.identifier}' was written as a map)"
+                )
 
 
 def isomdl_mdoc_sign(
@@ -119,6 +151,7 @@ def isomdl_mdoc_sign(
     iaca_cert_pem: str,
     iaca_key_pem: str,
     status: Optional[dict] = None,
+    value_types: Optional[Mapping[str, str]] = None,
 ) -> str:
     """Create a signed mso_mdoc using isomdl-uniffi.
 
@@ -141,6 +174,9 @@ def isomdl_mdoc_sign(
         status: Optional status claim (e.g. an IETF status-list
             `{"status_list": {"idx": ..., "uri": ...}}` object) to embed in
             the MSO for revocation checking.
+        value_types: Optional ``{element: value_type}`` map for a generic
+            doctype (see ``typed_values``). Not used for the mDL doctype, whose
+            element types come from the ISO 18013-5 namespace definition.
 
     Returns:
         CBOR-encoded mDoc as string
@@ -188,7 +224,7 @@ def isomdl_mdoc_sign(
                 status_json,
             )
         else:
-            namespaces = _prepare_generic_namespaces(doctype, payload)
+            namespaces = _prepare_generic_namespaces(doctype, payload, value_types)
             LOGGER.info("Creating mdoc with namespaces: %s", list(namespaces.keys()))
             mdoc = Mdoc.create_and_sign(
                 doctype,
@@ -198,6 +234,8 @@ def isomdl_mdoc_sign(
                 iaca_key_pem,
                 status_json,
             )
+            if value_types:
+                _check_typed_support(mdoc, value_types)
 
         LOGGER.info("Generated mdoc with doctype: %s", mdoc.doctype())
 
