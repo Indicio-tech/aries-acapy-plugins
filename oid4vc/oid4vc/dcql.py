@@ -106,6 +106,15 @@ class ClaimsPathPointer:
         return selected
 
 
+def _with_verifier_error(line: str, payload: Any) -> str:
+    """Append the verifier's error text to a failure line, if it gave one."""
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, str) and error:
+            return f"{line}: {error}"
+    return line
+
+
 @dataclass
 class DCQLVerifyResult:
     """Result of verification."""
@@ -172,7 +181,10 @@ class DCQLQueryEvaluator:
         if not vp_result.verified:
             return (
                 False,
-                f"Presentation for {cred.credential_query_id} failed verification",
+                _with_verifier_error(
+                    f"Presentation for {cred.credential_query_id} failed verification",
+                    vp_result.payload,
+                ),
                 None,
             )
 
@@ -185,7 +197,10 @@ class DCQLQueryEvaluator:
         if not vc_result.verified:
             return (
                 False,
-                f"Credential for {cred.credential_query_id} failed verification",
+                _with_verifier_error(
+                    f"Credential for {cred.credential_query_id} failed verification",
+                    vc_result.payload,
+                ),
                 None,
             )
 
