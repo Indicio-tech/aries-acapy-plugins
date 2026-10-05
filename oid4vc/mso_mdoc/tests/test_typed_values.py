@@ -73,10 +73,15 @@ class TestValueTypesFor:
         assert value_types_for({"claims": {DOCTYPE: {"a": {}}}}, DOCTYPE) == {}
         assert value_types_for(FORMAT_DATA, "other.ns") == {}
 
-    def test_unknown_value_type_is_refused(self):
-        bad = {"claims": {DOCTYPE: {"portrait": {"value_type": "jpeg"}}}}
-        with pytest.raises(TypedValueError, match="'portrait'"):
-            value_types_for(bad, DOCTYPE)
+    @pytest.mark.parametrize("other", ["boolean", "string", "jpeg", 1, None])
+    def test_other_value_types_are_ignored(self, other):
+        claims = {
+            DOCTYPE: {
+                "portrait": {"value_type": "bstr"},
+                "age_over_18": {"value_type": other},
+            }
+        }
+        assert value_types_for({"claims": claims}, DOCTYPE) == {"portrait": "bstr"}
 
 
 class TestCheckTypedValue:
@@ -161,16 +166,29 @@ class TestPrepareGenericNamespaces:
 
 
 class TestProcessorHooks:
-    def test_registration_refuses_unknown_value_type(self):
+    def test_registration_accepts_other_value_types(self):
+        # Claim metadata already uses value_type for other purposes, for
+        # example an mDL configuration with "boolean" and "string".
         processor = MsoMdocCredProcessor()
-        bad = SupportedCredential(
+        mdl = SupportedCredential(
             format_data={
-                "doctype": DOCTYPE,
-                "claims": {DOCTYPE: {"portrait": {"value_type": "png"}}},
+                "doctype": "org.iso.18013.5.1.mDL",
+                "claims": {
+                    "org.iso.18013.5.1": {
+                        "age_over_18": {"mandatory": True, "value_type": "boolean"},
+                        "given_name": {"value_type": "string"},
+                    }
+                },
             }
         )
-        with pytest.raises(CredProcessorError, match="'portrait'"):
-            processor.validate_supported_credential(bad)
+        assert processor.validate_supported_credential(mdl)
+        generic = SupportedCredential(
+            format_data={
+                "doctype": DOCTYPE,
+                "claims": {DOCTYPE: {"categories": {"value_type": "string"}}},
+            }
+        )
+        assert processor.validate_supported_credential(generic)
 
     def test_registration_accepts_known_value_types(self):
         processor = MsoMdocCredProcessor()
@@ -185,6 +203,16 @@ class TestProcessorHooks:
         with pytest.raises(CredProcessorError, match="'portrait'") as info:
             processor.validate_credential_subject(supported, subject)
         assert IMAGE_B64 not in str(info.value)
+
+    def test_exchange_accepts_other_value_types(self):
+        processor = MsoMdocCredProcessor()
+        claims = json.loads(json.dumps(CLAIMS))
+        claims[DOCTYPE]["categories"] = {"value_type": "string"}
+        claims[DOCTYPE]["given_name"]["value_type"] = "boolean"
+        supported = SupportedCredential(
+            format_data={"doctype": DOCTYPE, "claims": claims}
+        )
+        assert processor.validate_credential_subject(supported, SUBJECT)
 
     def test_exchange_accepts_namespace_wrapped_subject(self):
         processor = MsoMdocCredProcessor()
@@ -293,6 +321,20 @@ class TestRealSigning:
         assert bytes.fromhex("c074") + b"2026-10-02T21:15:00Z" in raw["signed_at"]
         assert values["given_name"] == "Sample"
         assert values["categories"] == ["A", "B"]
+
+    def test_other_value_types_write_values_as_before(self):
+        claims = json.loads(json.dumps(CLAIMS))
+        claims[DOCTYPE]["categories"] = {"value_type": "string"}
+        value_types = value_types_for({"claims": claims}, DOCTYPE)
+        assert value_types == VALUE_TYPES
+        try:
+            values, _ = _element_values(self._sign(value_types))
+        except ValueError as ex:
+            if "does not support typed elements" in str(ex):
+                pytest.skip("installed isomdl_uniffi has no typed-element support")
+            raise
+        assert values["categories"] == ["A", "B"]
+        assert values["given_name"] == "Sample"
 
     def test_untyped_configuration_writes_text_as_before(self):
         values, _ = _element_values(self._sign(None))

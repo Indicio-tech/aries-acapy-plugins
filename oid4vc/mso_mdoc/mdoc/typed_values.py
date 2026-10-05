@@ -16,8 +16,9 @@ Supported ``value_type`` values and the input each expects:
 
 The issuer wraps a typed element as ``{"$isomdl": "<type>", "value": "<text>"}``
 before JSON-encoding it; isomdl-uniffi writes the CBOR type. Elements without a
-``value_type`` are unchanged. Error messages name the element and the type,
-never the value.
+``value_type``, or with any other ``value_type`` (configurations already use it
+as claim metadata, for example ``"boolean"`` or ``"string"``), are unchanged.
+Error messages name the element and the type, never the value.
 """
 
 import base64
@@ -46,10 +47,9 @@ def value_types_for(
 
     Reads the namespace-keyed ``claims`` dict stored with the credential
     configuration, or the OID4VCI 1.0 list form (``[{"path": [ns, el], ...}]``).
-    Elements without a ``value_type`` are left out.
-
-    Raises:
-        TypedValueError: If a ``value_type`` is not one of ``VALUE_TYPES``.
+    Only elements whose ``value_type`` is one of ``VALUE_TYPES`` are returned;
+    elements without one, or with any other value, are left out and converted
+    as before.
     """
     if not format_data or not namespace:
         return {}
@@ -77,36 +77,9 @@ def value_types_for(
         if not isinstance(descriptor, Mapping) or "value_type" not in descriptor:
             continue
         value_type = descriptor["value_type"]
-        if value_type not in VALUE_TYPES:
-            raise TypedValueError(
-                f"claim '{element}': unknown value_type; expected one of "
-                f"{', '.join(VALUE_TYPES)}"
-            )
-        value_types[element] = value_type
+        if isinstance(value_type, str) and value_type in VALUE_TYPES:
+            value_types[element] = value_type
     return value_types
-
-
-def validate_value_types(format_data: Optional[Mapping[str, Any]]) -> None:
-    """Check every ``value_type`` in a configuration's claims, all namespaces.
-
-    Raises:
-        TypedValueError: On an unknown ``value_type``.
-    """
-    claims = (format_data or {}).get("claims")
-    if isinstance(claims, Mapping):
-        namespaces = list(claims.keys())
-    elif isinstance(claims, list):
-        namespaces = {
-            entry["path"][0]
-            for entry in claims
-            if isinstance(entry, Mapping)
-            and isinstance(entry.get("path"), list)
-            and entry["path"]
-        }
-    else:
-        return
-    for namespace in namespaces:
-        value_types_for(format_data, namespace)
 
 
 def _is_base64(text: str) -> bool:

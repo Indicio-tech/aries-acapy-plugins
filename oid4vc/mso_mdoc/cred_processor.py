@@ -28,7 +28,6 @@ from .mdoc.issuer import MDL_MANDATORY_FIELDS, isomdl_mdoc_sign
 from .mdoc.typed_values import (
     TypedValueError,
     check_typed_payload,
-    validate_value_types,
     value_types_for,
 )
 from .mdoc.cred_verifier import MsoMdocCredVerifier
@@ -593,12 +592,6 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
 
         # Validate doctype presence and format
         self._validate_and_get_doctype({}, supported)
-
-        # Validate any typed element declarations (value_type)
-        try:
-            validate_value_types(supported.format_data)
-        except TypedValueError as ex:
-            raise CredProcessorError(str(ex)) from ex
 
         return True
 
