@@ -25,6 +25,11 @@ from oid4vc.pop_result import PopResult
 from oid4vc.status_handler import StatusHandler
 
 from .mdoc.issuer import MDL_MANDATORY_FIELDS, isomdl_mdoc_sign
+from .mdoc.typed_values import (
+    TypedValueError,
+    check_typed_payload,
+    value_types_for,
+)
 from .mdoc.cred_verifier import MsoMdocCredVerifier
 from .mdoc.pres_verifier import MsoMdocPresVerifier
 from .payload import normalize_mdoc_result, prepare_mdoc_payload
@@ -429,6 +434,10 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
             # Get payload
             payload = prepare_mdoc_payload(ex_record.credential_subject, doctype)
 
+            # Element types named in the configuration's claims (generic
+            # doctypes: the namespace equals the doctype)
+            value_types = value_types_for(supported.format_data, doctype)
+
             # Resolve signing key — check MdocSigningKeyRecord first, then
             # fall back to vc_additional_data and env vars
             key_data = await self._resolve_signing_key(supported, context.profile)
@@ -503,6 +512,7 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                 certificate_pem,
                 private_key_pem,
                 status=status_claim,
+                value_types=value_types,
             )
 
             # Normalize mDoc result handling for robust string/bytes processing
@@ -561,6 +571,17 @@ class MsoMdocCredProcessor(Issuer, CredVerifier, PresVerifier):
                     f"mDL credential_subject is missing mandatory ISO 18013-5 "
                     f"data element(s): {', '.join(missing)}"
                 )
+        elif doctype:
+            # Generic doctypes: check typed element inputs (value_type) at
+            # exchange creation, so a bad value fails before an offer exists.
+            try:
+                value_types = value_types_for(supported.format_data, doctype)
+                if value_types:
+                    check_typed_payload(
+                        prepare_mdoc_payload(subject, doctype), value_types
+                    )
+            except TypedValueError as ex:
+                raise CredProcessorError(str(ex)) from ex
 
         return True
 
