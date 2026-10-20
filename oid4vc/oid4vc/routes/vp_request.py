@@ -2,7 +2,7 @@
 
 import json
 import re
-from typing import List
+from typing import List, Optional
 from urllib.parse import quote
 
 from acapy_agent.admin.request_context import AdminRequestContext
@@ -17,7 +17,7 @@ from aiohttp_apispec import (
     request_schema,
     response_schema,
 )
-from marshmallow import fields
+from marshmallow import ValidationError, fields
 
 from ..config import Config
 from ..did_utils import retrieve_or_create_did_jwk
@@ -54,6 +54,43 @@ class CreateOID4VPReqResponseSchema(OpenAPISchema):
     )
 
 
+CLIENT_NAME_MAX_LENGTH = 80
+CLIENT_NAME_CONTROL_CHARS = re.compile(r"[\u0000-\u001f\u007f-\u009f]")
+
+
+def normalize_client_name(value) -> str:
+    """Return the trimmed client_name, or raise ValueError if it is not valid.
+
+    A valid client_name is a string of 1 to 80 characters after trimming,
+    with no control characters.
+    """
+    if not isinstance(value, str):
+        raise ValueError("client_name must be a string")
+    value = value.strip()
+    if not 1 <= len(value) <= CLIENT_NAME_MAX_LENGTH:
+        raise ValueError(f"client_name must be 1 to {CLIENT_NAME_MAX_LENGTH} characters")
+    if CLIENT_NAME_CONTROL_CHARS.search(value):
+        raise ValueError("client_name must not contain control characters")
+    return value
+
+
+def _validate_client_name(value):
+    try:
+        normalize_client_name(value)
+    except ValueError as err:
+        raise ValidationError(str(err)) from err
+
+
+def _client_name_from_body(body: dict) -> Optional[str]:
+    """Return the request's client_name, or None when it is not set."""
+    if "client_name" not in body:
+        return None
+    try:
+        return normalize_client_name(body["client_name"])
+    except ValueError as err:
+        raise web.HTTPBadRequest(reason=str(err)) from err
+
+
 class CreateOID4VPReqRequestSchema(OpenAPISchema):
     """Request schema for creating an OID4VP Request."""
 
@@ -78,6 +115,18 @@ class CreateOID4VPReqRequestSchema(OpenAPISchema):
         },
     )
 
+    client_name = fields.Str(
+        required=False,
+        validate=_validate_client_name,
+        metadata={
+            "description": (
+                "Verifier name shown to the holder in client_metadata;"
+                " not verified. 1 to 80 characters, no control characters"
+            ),
+            "example": "Example Clinic",
+        },
+    )
+
 
 @docs(
     tags=["oid4vp"],
@@ -90,6 +139,7 @@ async def create_oid4vp_request(request: web.Request):
 
     context: AdminRequestContext = request["context"]
     body = await request.json()
+    client_name = _client_name_from_body(body)
 
     async with context.session() as session:
         # Get the DID:JWK that will be used as fallback client_id
@@ -115,7 +165,9 @@ async def create_oid4vp_request(request: web.Request):
 
         if pres_def_id := body.get("pres_def_id"):
             req_record = OID4VPRequest(
-                pres_def_id=pres_def_id, vp_formats=body["vp_formats"]
+                pres_def_id=pres_def_id,
+                vp_formats=body["vp_formats"],
+                client_name=client_name,
             )
             await req_record.save(session=session)
 
@@ -129,7 +181,9 @@ async def create_oid4vp_request(request: web.Request):
 
         elif dcql_query_id := body.get("dcql_query_id"):
             req_record = OID4VPRequest(
-                dcql_query_id=dcql_query_id, vp_formats=body["vp_formats"]
+                dcql_query_id=dcql_query_id,
+                vp_formats=body["vp_formats"],
+                client_name=client_name,
             )
             await req_record.save(session=session)
 
