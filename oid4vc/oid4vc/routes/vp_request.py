@@ -55,22 +55,31 @@ class CreateOID4VPReqResponseSchema(OpenAPISchema):
 
 
 CLIENT_NAME_MAX_LENGTH = 80
-CLIENT_NAME_CONTROL_CHARS = re.compile(r"[\u0000-\u001f\u007f-\u009f]")
+# Control characters, zero-width and bidi format characters, the byte order
+# mark and lone surrogates: any of these can hide or reorder what the holder
+# sees, so they are refused anywhere in the value, before trimming.
+CLIENT_NAME_REFUSED_CHARS = re.compile(
+    r"[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069"
+    r"\ufeff\ud800-\udfff]"
+)
 
 
 def normalize_client_name(value) -> str:
     """Return the trimmed client_name, or raise ValueError if it is not valid.
 
-    A valid client_name is a string of 1 to 80 characters after trimming,
-    with no control characters.
+    A valid client_name is a string with no control characters (U+0000-001F,
+    U+007F-009F), format characters (U+200B-200F, U+202A-202E, U+2066-2069,
+    U+FEFF) or lone surrogates, and 1 to 80 characters after trimming.
     """
     if not isinstance(value, str):
         raise ValueError("client_name must be a string")
+    if CLIENT_NAME_REFUSED_CHARS.search(value):
+        raise ValueError(
+            "client_name must not contain control or format characters or lone surrogates"
+        )
     value = value.strip()
     if not 1 <= len(value) <= CLIENT_NAME_MAX_LENGTH:
         raise ValueError(f"client_name must be 1 to {CLIENT_NAME_MAX_LENGTH} characters")
-    if CLIENT_NAME_CONTROL_CHARS.search(value):
-        raise ValueError("client_name must not contain control characters")
     return value
 
 
@@ -121,7 +130,8 @@ class CreateOID4VPReqRequestSchema(OpenAPISchema):
         metadata={
             "description": (
                 "Verifier name shown to the holder in client_metadata;"
-                " not verified. 1 to 80 characters, no control characters"
+                " not verified. 1 to 80 characters, no control or format"
+                " characters"
             ),
             "example": "Example Clinic",
         },

@@ -261,6 +261,29 @@ def _patch_create_route(context, monkeypatch):
 
 VP_FORMATS = {"jwt_vp_json": {"alg": ["ES256"]}}
 
+# Values refused for a control or format character or a lone surrogate,
+# wherever it appears (leading and trailing ones are not trimmed away).
+REFUSED_CHARACTER_VALUES = [
+    "Example\nClinic",
+    "Example\tClinic",
+    "Example\x00Clinic",
+    "Example Clinic\x1f",
+    "\x1cExample Clinic",
+    "Example\x7fClinic",
+    "Example Clinic\x85",
+    "Example\x9fClinic",
+    "Example\u200bClinic",
+    "Example\u200fClinic",
+    "Example\u202aClinic",
+    "Example\u202eClinic",
+    "Example\u2066Clinic",
+    "Example\u2069Clinic",
+    "\ufeffExample Clinic",
+    "Example\ud800Clinic",
+    "Example Clinic\udfff",
+    json.loads('"Example\\udc00Clinic"'),
+]
+
 
 class TestClientName:
     """Optional client_name on request create."""
@@ -324,11 +347,7 @@ class TestClientName:
             "",
             "   ",
             "x" * 81,
-            "Example\nClinic",
-            "Example\tClinic",
-            "Example\x00Clinic",
-            "Example\x7fClinic",
-            "Example\x85Clinic",
+            *REFUSED_CHARACTER_VALUES,
             None,
             42,
             ["Example Clinic"],
@@ -356,7 +375,9 @@ class TestClientName:
             ("x" * 80, True),
             ("", False),
             ("x" * 81, False),
-            ("Example\nClinic", False),
+            ("\u00a0Example Clinic\u3000", True),
+            ("\U0001f3e5 Example Clinic", True),
+            *((value, False) for value in REFUSED_CHARACTER_VALUES),
             (None, False),
         ],
     )
