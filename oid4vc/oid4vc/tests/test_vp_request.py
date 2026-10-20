@@ -261,8 +261,9 @@ def _patch_create_route(context, monkeypatch):
 
 VP_FORMATS = {"jwt_vp_json": {"alg": ["ES256"]}}
 
-# Values refused for a control or format character or a lone surrogate,
-# wherever it appears (leading and trailing ones are not trimmed away).
+# Values refused for a control, format or separator character or a lone
+# surrogate, wherever it appears (leading and trailing ones are not trimmed
+# away).
 REFUSED_CHARACTER_VALUES = [
     "Example\nClinic",
     "Example\tClinic",
@@ -272,8 +273,11 @@ REFUSED_CHARACTER_VALUES = [
     "Example\x7fClinic",
     "Example Clinic\x85",
     "Example\x9fClinic",
+    "Example\u061cClinic",
     "Example\u200bClinic",
     "Example\u200fClinic",
+    "Example\u2028Clinic",
+    "Example Clinic\u2029",
     "Example\u202aClinic",
     "Example\u202eClinic",
     "Example\u2066Clinic",

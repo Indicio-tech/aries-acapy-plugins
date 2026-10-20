@@ -55,12 +55,13 @@ class CreateOID4VPReqResponseSchema(OpenAPISchema):
 
 
 CLIENT_NAME_MAX_LENGTH = 80
-# Control characters, zero-width and bidi format characters, the byte order
-# mark and lone surrogates: any of these can hide or reorder what the holder
-# sees, so they are refused anywhere in the value, before trimming.
+# Control characters, zero-width and bidi format characters, line and
+# paragraph separators, the byte order mark and lone surrogates: any of these
+# can hide or reorder what the holder sees, so they are refused anywhere in
+# the value, before trimming.
 CLIENT_NAME_REFUSED_CHARS = re.compile(
-    r"[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069"
-    r"\ufeff\ud800-\udfff]"
+    r"[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u2029"
+    r"\u202a-\u202e\u2066-\u2069\ufeff\ud800-\udfff]"
 )
 
 
@@ -68,14 +69,16 @@ def normalize_client_name(value) -> str:
     """Return the trimmed client_name, or raise ValueError if it is not valid.
 
     A valid client_name is a string with no control characters (U+0000-001F,
-    U+007F-009F), format characters (U+200B-200F, U+202A-202E, U+2066-2069,
-    U+FEFF) or lone surrogates, and 1 to 80 characters after trimming.
+    U+007F-009F), format characters (U+061C, U+200B-200F, U+202A-202E,
+    U+2066-2069, U+FEFF), line or paragraph separators (U+2028-2029) or lone
+    surrogates, and 1 to 80 characters after trimming.
     """
     if not isinstance(value, str):
         raise ValueError("client_name must be a string")
     if CLIENT_NAME_REFUSED_CHARS.search(value):
         raise ValueError(
-            "client_name must not contain control or format characters or lone surrogates"
+            "client_name must not contain control, format or separator characters"
+            " or lone surrogates"
         )
     value = value.strip()
     if not 1 <= len(value) <= CLIENT_NAME_MAX_LENGTH:
@@ -129,9 +132,11 @@ class CreateOID4VPReqRequestSchema(OpenAPISchema):
         validate=_validate_client_name,
         metadata={
             "description": (
-                "Verifier name shown to the holder in client_metadata;"
-                " not verified. 1 to 80 characters, no control or format"
-                " characters"
+                "Verifier name shown to the holder; not verified. Sent in the"
+                " request's client_metadata. Trimmed; 1 to 80 characters."
+                " Control characters, format characters (U+061C, U+200B-200F,"
+                " U+202A-202E, U+2066-2069, U+FEFF), line and paragraph"
+                " separators (U+2028-2029) and lone surrogates are refused."
             ),
             "example": "Example Clinic",
         },
