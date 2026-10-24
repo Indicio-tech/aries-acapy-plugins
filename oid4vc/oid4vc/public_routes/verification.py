@@ -5,16 +5,14 @@ import logging
 import time
 import uuid
 from secrets import token_urlsafe
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from acapy_agent.admin.request_context import AdminRequestContext
-from acapy_agent.core.profile import ProfileSession
 from acapy_agent.messaging.models.base import BaseModelError
 from acapy_agent.messaging.models.openapi import OpenAPISchema
 from acapy_agent.protocols.present_proof.dif.pres_exch import (
     PresentationDefinition,
 )
-from acapy_agent.storage.base import BaseStorage
 from acapy_agent.storage.error import StorageError, StorageNotFoundError
 from aiohttp import web
 from aiohttp_apispec import (
@@ -36,9 +34,14 @@ from oid4vc.pex import (
     PresentationSubmission,
 )
 
-from ..config import Config
+from ..config import oid4vp_response_uri
 from ..cred_processor import CredProcessors
 from ..did_utils import retrieve_or_create_did_jwk
+from ..x509_identity import (
+    X509IdentityUnusable,
+    conflict_response,
+    resolve_client_identity,
+)
 from .constants import NONCE_BYTES
 
 LOGGER = logging.getLogger(__name__)
@@ -53,36 +56,6 @@ class OID4VPRequestIDMatchSchema(OpenAPISchema):
             "description": "OID4VP Request identifier",
         },
     )
-
-
-# ---------------------------------------------------------------------------
-# X.509 identity – stores a certificate chain + signing key for x509_san_dns
-# client_id_scheme in OID4VP request objects (JAR, RFC 9101).
-# ---------------------------------------------------------------------------
-
-X509_IDENTITY_RECORD_TYPE = "OID4VP.x509_identity"
-X509_IDENTITY_RECORD_ID = "OID4VP.x509_identity"
-
-
-async def _get_x509_identity(session: ProfileSession) -> Optional[Dict[str, Any]]:
-    """Return stored X.509 identity dict, or None if not configured.
-
-    The dict has the shape::
-
-        {
-            "cert_chain": ["<base64DER_leaf>", ...],  # leaf-first
-            "verification_method": "did:jwk:...#0",
-            "client_id": "acapy-verifier.example.com",
-        }
-    """
-    storage = session.inject(BaseStorage)
-    try:
-        record = await storage.get_record(
-            X509_IDENTITY_RECORD_TYPE, X509_IDENTITY_RECORD_ID
-        )
-        return json.loads(record.value)
-    except StorageNotFoundError:
-        return None
 
 
 def _build_client_metadata(
@@ -110,29 +83,41 @@ async def get_request(request: web.Request):
     try:
         async with context.session() as session:
             record = await OID4VPRequest.retrieve_by_id(session, request_id)
-            await record.delete_record(session)
+            # An identity that cannot sign (expired, or failing its checks)
+            # stops the request before it is used up: no fallback to did:jwk.
+            try:
+                identity = await resolve_client_identity(
+                    session, context.profile.settings
+                )
+            except X509IdentityUnusable as err:
+                return conflict_response(str(err))
 
             pres = await OID4VPPresentation.retrieve_by_request_id(
                 session=session, request_id=request_id
             )
+            jwk = await retrieve_or_create_did_jwk(session)
+            # Use the X.509 identity's client_id when one is registered
+            # (x509_hash:{hash} or x509_san_dns:{dns_name}); otherwise did:jwk.
+            # OID4VP Final encodes the scheme as a URI prefix in client_id.
+            effective_client_id = identity.client_id if identity else jwk.did
+            # The link from create carries the client_id of that moment, and
+            # OpenID4VP 1.0 5.10.1 needs the request object's to be identical.
+            # If the identity changed since (registered, renewed, rolled back
+            # or deleted), stop clearly instead of sending a mismatch.
+            if pres.client_id and pres.client_id != effective_client_id:
+                return conflict_response(
+                    "The verifier identity changed after this request "
+                    "was created; create a new request"
+                )
+            await record.delete_record(session)
 
             if record.pres_def_id:
                 pres_def = await OID4VPPresDef.retrieve_by_id(session, record.pres_def_id)
             elif record.dcql_query_id:
                 dcql_query = await DCQLQuery.retrieve_by_id(session, record.dcql_query_id)
-            jwk = await retrieve_or_create_did_jwk(session)
-            x509_id = await _get_x509_identity(session)
 
             pres.state = OID4VPPresentation.REQUEST_RETRIEVED
             pres.nonce = token_urlsafe(NONCE_BYTES)
-            # Use x509 client_id when configured (x509_san_dns scheme).
-            # OID4VP Final (ID3+) encodes the scheme as a URI prefix in client_id:
-            #   x509_san_dns:{dns_name}  (e.g. "x509_san_dns:acapy-tls-proxy.local")
-            # This replaces the old separate client_id_scheme parameter.
-            if x509_id:
-                effective_client_id = f"x509_san_dns:{x509_id['client_id']}"
-            else:
-                effective_client_id = jwk.did
             pres.client_id = effective_client_id
             await pres.save(session=session, reason="Retrieved presentation request")
 
@@ -142,16 +127,6 @@ async def get_request(request: web.Request):
         raise web.HTTPBadRequest(reason=err.roll_up) from err
 
     now = int(time.time())
-    config = Config.from_settings(context.settings)
-    wallet_id = (
-        context.profile.settings.get("wallet.id")
-        if context.profile.settings.get("multitenant.enabled")
-        else None
-    )
-    subpath = f"/tenant/{wallet_id}" if wallet_id else ""
-    # Use OID4VP_ENDPOINT when available (may differ from the OID4VCI endpoint;
-    # e.g. behind a dedicated TLS-terminating proxy for conformance tests).
-    oid4vp_base = config.oid4vp_endpoint or config.endpoint
     payload = {
         "iss": effective_client_id,
         # NOTE: Do NOT include 'sub' equal to client_id in OID4VP JAR.
@@ -162,19 +137,16 @@ async def get_request(request: web.Request):
         "nbf": now,
         "exp": now + 120,
         "jti": str(uuid.uuid4()),
-        # client_id: when using x509_san_dns the value is a DNS name that
-        # matches the SAN of the leaf certificate.  For did:jwk the value is
-        # the DID itself (scheme inferred from prefix, no explicit
-        # client_id_scheme — see note below).
+        # client_id: for an X.509 identity, "x509_hash:{base64url SHA-256 of
+        # the leaf}" or "x509_san_dns:{dns_name}"; for did:jwk, the DID itself.
         # NOTE: Do NOT include "client_id_scheme" in OID4VP Final (ID3+): the
         # scheme is encoded as a URI prefix in client_id itself.
-        # For x509_san_dns: client_id = "x509_san_dns:{dns_name}".
-        # For did:jwk: client_id = the DID itself ("did:jwk:...").
         # The x5c cert chain in the JWT header establishes the x509 binding.
         # Do NOT add a separate client_id_scheme parameter — it causes failures.
         "client_id": effective_client_id,
-        "response_uri": (
-            f"{oid4vp_base}{subpath}/oid4vp/response/{pres.presentation_id}"
+        # The mdoc verifier rebuilds the same value (oid4vp_response_uri).
+        "response_uri": oid4vp_response_uri(
+            context.profile.settings, pres.presentation_id
         ),
         "state": pres.presentation_id,
         "nonce": pres.nonce,
@@ -189,9 +161,9 @@ async def get_request(request: web.Request):
         # pre-final vp_formats aliases for broad wallet compatibility.
         "client_metadata": _build_client_metadata(
             record.vp_formats,
-            # The final-spec OIDF flow uses x509_san_dns. Current Credo
+            # The final-spec flows use an X.509 client_id. Current Credo
             # did:jwk holders still infer a pre-final version from vp_formats.
-            include_final_format_name=x509_id is not None,
+            include_final_format_name=identity is not None,
         ),
         "vp_formats": record.vp_formats,
         "response_type": "vp_token",
@@ -206,13 +178,13 @@ async def get_request(request: web.Request):
     if dcql_query is not None:
         payload["dcql_query"] = dcql_query.record_value
 
-    if x509_id:
+    if identity:
         headers = {
-            "x5c": x509_id["cert_chain"],
+            "x5c": identity.x5c,
             "typ": "oauth-authz-req+jwt",
             "alg": "ES256",
         }
-        signing_vm = x509_id["verification_method"]
+        signing_vm = identity.verification_method
     else:
         headers = {
             "kid": f"{jwk.did}#0",
