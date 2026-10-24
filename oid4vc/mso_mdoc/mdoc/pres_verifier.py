@@ -8,7 +8,7 @@ import isomdl_uniffi
 from acapy_agent.core.profile import Profile
 from cryptography import x509 as _x509
 
-from oid4vc.config import Config
+from oid4vc.config import oid4vp_response_uri
 from oid4vc.cred_processor import PresVerifier, VerifyResult
 from oid4vc.did_utils import retrieve_or_create_did_jwk
 from oid4vc.models.presentation import OID4VPPresentation
@@ -30,6 +30,11 @@ async def _get_oid4vp_verification_params(
 ) -> tuple[str, str, str]:
     """Get OID4VP verification parameters.
 
+    The session transcript must use the client_id and response_uri the
+    request object carried: the client_id stored on the presentation when
+    the wallet fetched the request (did:jwk, x509_hash or x509_san_dns), and
+    the response_uri built by the same helper as the request object.
+
     Args:
         profile: The profile
         presentation_record: The presentation record
@@ -38,22 +43,16 @@ async def _get_oid4vp_verification_params(
         Tuple of (nonce, client_id, response_uri)
     """
     nonce = presentation_record.nonce
-    config = Config.from_settings(profile.settings)
 
-    async with profile.session() as session:
-        jwk = await retrieve_or_create_did_jwk(session)
+    client_id = getattr(presentation_record, "client_id", None)
+    if not client_id:
+        # Records from before client_id was stored used the did:jwk.
+        async with profile.session() as session:
+            jwk = await retrieve_or_create_did_jwk(session)
+        client_id = jwk.did
 
-    client_id = jwk.did
-
-    wallet_id = (
-        profile.settings.get("wallet.id")
-        if profile.settings.get("multitenant.enabled")
-        else None
-    )
-    subpath = f"/tenant/{wallet_id}" if wallet_id else ""
-    response_uri = (
-        f"{config.endpoint}{subpath}/oid4vp/response/"
-        f"{presentation_record.presentation_id}"
+    response_uri = oid4vp_response_uri(
+        profile.settings, presentation_record.presentation_id
     )
 
     return nonce, client_id, response_uri

@@ -32,6 +32,8 @@ class Config:
     status_handler: str | None = None
     auth_server_url: str | None = None
     auth_server_client: str | None = None
+    # PEM bundle of roots a registered verifier certificate chain must end at.
+    verifier_trust_roots: str | None = None
 
     @classmethod
     def from_settings(cls, settings: BaseSettings) -> "Config":
@@ -54,6 +56,9 @@ class Config:
         )
         auth_server_client = plugin_settings.get("auth_server_client") or getenv(
             "OID4VCI_AUTH_SERVER_CLIENT"
+        )
+        verifier_trust_roots = plugin_settings.get("verifier_trust_roots") or getenv(
+            "OID4VP_VERIFIER_TRUST_ROOTS"
         )
         if not host:
             raise ConfigError("host", "OID4VCI_HOST")
@@ -85,4 +90,19 @@ class Config:
             status_handler=status_handler,
             auth_server_url=auth_server_url,
             auth_server_client=auth_server_client,
+            verifier_trust_roots=verifier_trust_roots,
         )
+
+
+def oid4vp_response_uri(settings: BaseSettings, presentation_id: str) -> str:
+    """Return the response_uri that a request object for this presentation carries.
+
+    The request object and the verification of the response (for example the
+    mdoc session transcript) must use the same value, so both build it here.
+    """
+    config = Config.from_settings(settings)
+    wallet_id = settings.get("wallet.id") if settings.get("multitenant.enabled") else None
+    subpath = f"/tenant/{wallet_id}" if wallet_id else ""
+    # OID4VP_ENDPOINT may differ from the OID4VCI endpoint (e.g. a separate proxy).
+    oid4vp_base = config.oid4vp_endpoint or config.endpoint
+    return f"{oid4vp_base}{subpath}/oid4vp/response/{presentation_id}"

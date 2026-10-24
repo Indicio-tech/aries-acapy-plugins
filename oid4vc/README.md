@@ -259,6 +259,29 @@ The Plugin expects the following configuration options. These options can either
   - Optional authorization server URL
 - `OID4VCI_AUTH_SERVER_CLIENT` or `oid4vci.auth_server_client`
   - Optional authorization server client credential, e.g. `{"auth_type": "client_secret_basic", "client_id": "client_id", "client_secret": "client_secret"}`
+- `OID4VP_VERIFIER_TRUST_ROOTS` or `oid4vci.verifier_trust_roots`
+  - Optional path to a PEM bundle of roots. When set, a registered verifier certificate chain must end at one of them.
+
+### Verifier X.509 identity (x509_hash)
+
+By default a tenant signs OID4VP request objects with a `did:jwk` and uses that DID as `client_id`. A tenant can instead hold one checked X.509 identity:
+
+1. `POST /oid4vp/x509-identity/csr` with `{"subject": {"common_name": "Example Clinic"}}` makes a P-256 key in the wallet and returns a CSR signed through the wallet. The private key never leaves the wallet.
+2. A CA issues a certificate for that CSR. `POST /oid4vp/x509-identity` with `{"cert_chain_pem": "<leaf first>"}` registers it only if every check passes:
+   - the leaf holds the wallet key and is not self-signed;
+   - each certificate is issued by the next;
+   - all certificates are in date;
+   - the leaf allows `digitalSignature`;
+   - when roots are configured, the chain ends at one of them.
+
+   A failed check is refused with 400. A missing ISO 18013-5 reader EKU is logged, not refused.
+
+   A self-signed trust anchor at the end of the submitted chain is checked but not stored, so it is never sent in `x5c` (HAIP 1.0, clause 5). Intermediates are kept.
+3. Requests then use `client_id` `x509_hash:<base64url SHA-256 of the leaf>`, ES256, and the chain in the `x5c` header. `client_id_scheme: "x509_san_dns"` with a matching dNSName SAN is also accepted. A `client_id` sent without `client_id_scheme: "x509_san_dns"` is refused (400); before this change the route took a DNS `client_id` with no scheme.
+
+`GET /oid4vp/x509-identity` shows the identity, any open CSR, `expired`, `expires_in_days` and `expiry_warning` (from 30 days before expiry). `DELETE` removes it (`?pending=true` removes an open CSR). After a renewal the previous identity is kept, and `POST /oid4vp/x509-identity/rollback` restores it while it is in date; older verifier keys are deleted.
+
+An expired or not-yet-valid certificate anywhere in the chain stops request creation and request fetch (409); there is no fallback to `did:jwk`. A request whose verifier identity changed after it was created is refused at fetch (409), because the request object's `client_id` must equal the one in the link (OpenID4VP 1.0, 5.10.1). A record registered before these checks existed is checked on first use and refused if it fails. Tenants without an identity are unchanged.
 
 ### Creating Supported Credential Records
 

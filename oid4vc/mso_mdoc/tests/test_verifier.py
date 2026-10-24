@@ -141,13 +141,14 @@ class TestMsoMdocPresVerifier:
 
         with (
             patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_isomdl,
-            patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
+            patch(
+                "mso_mdoc.mdoc.pres_verifier.oid4vp_response_uri",
+                return_value="http://test-endpoint/oid4vp/response/pres-1",
+            ),
             patch(
                 "mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk"
             ) as mock_did_jwk,
         ):
-            mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
-
             # Mock the DID JWK retrieval as async
             mock_jwk = MagicMock()
             mock_jwk.did = "did:jwk:test"
@@ -187,13 +188,14 @@ class TestMsoMdocPresVerifier:
 
         with (
             patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_isomdl,
-            patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
+            patch(
+                "mso_mdoc.mdoc.pres_verifier.oid4vp_response_uri",
+                return_value="http://test-endpoint/oid4vp/response/pres-1",
+            ),
             patch(
                 "mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk"
             ) as mock_did_jwk,
         ):
-            mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
-
             # Mock the DID JWK retrieval
             mock_jwk = MagicMock()
             mock_jwk.did = "did:jwk:test"
@@ -228,13 +230,14 @@ class TestMsoMdocPresVerifier:
 
         with (
             patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_isomdl,
-            patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
+            patch(
+                "mso_mdoc.mdoc.pres_verifier.oid4vp_response_uri",
+                return_value="http://test-endpoint/oid4vp/response/pres-1",
+            ),
             patch(
                 "mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk"
             ) as mock_did_jwk,
         ):
-            mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
-
             # Mock the DID JWK retrieval
             mock_jwk = MagicMock()
             mock_jwk.did = "did:jwk:test"
@@ -248,3 +251,53 @@ class TestMsoMdocPresVerifier:
 
             assert result.verified is False
             assert "Native error" in str(result.payload["error"])
+
+
+class TestOid4vpVerificationParams:
+    """The session transcript uses what the request object carried."""
+
+    @pytest.mark.asyncio
+    async def test_uses_stored_client_id_and_shared_response_uri(self):
+        from mso_mdoc.mdoc.pres_verifier import _get_oid4vp_verification_params
+
+        profile, _ = create_mock_profile_with_session()
+        pres = MagicMock(spec=OID4VPPresentation)
+        pres.nonce = "nonce-1"
+        pres.client_id = "x509_hash:ZXhhbXBsZQ"
+        pres.presentation_id = "pres-1"
+
+        with (
+            patch(
+                "mso_mdoc.mdoc.pres_verifier.oid4vp_response_uri",
+                return_value="https://verifier.example/oid4vp/response/pres-1",
+            ) as response_uri,
+            patch("mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk") as did_jwk,
+        ):
+            nonce, client_id, uri = await _get_oid4vp_verification_params(profile, pres)
+
+        assert (nonce, client_id) == ("nonce-1", "x509_hash:ZXhhbXBsZQ")
+        assert uri == "https://verifier.example/oid4vp/response/pres-1"
+        response_uri.assert_called_once_with(profile.settings, "pres-1")
+        did_jwk.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_did_jwk_for_old_records(self):
+        from mso_mdoc.mdoc.pres_verifier import _get_oid4vp_verification_params
+
+        profile, _ = create_mock_profile_with_session()
+        pres = MagicMock(spec=OID4VPPresentation)
+        pres.nonce = "nonce-1"
+        pres.client_id = None
+        pres.presentation_id = "pres-1"
+
+        with (
+            patch(
+                "mso_mdoc.mdoc.pres_verifier.oid4vp_response_uri",
+                return_value="https://verifier.example/oid4vp/response/pres-1",
+            ),
+            patch("mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk") as did_jwk,
+        ):
+            did_jwk.return_value = MagicMock(did="did:jwk:example")
+            _, client_id, _ = await _get_oid4vp_verification_params(profile, pres)
+
+        assert client_id == "did:jwk:example"

@@ -331,12 +331,14 @@ class TestEmptyTrustAnchorsPresVerifier:
 
         with (
             patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_iso,
-            patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
+            patch(
+                "mso_mdoc.mdoc.pres_verifier.oid4vp_response_uri",
+                return_value="https://issuer.example/oid4vp/response/pres-1",
+            ),
             patch(
                 "mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk"
             ) as mock_jwk_fn,
         ):
-            mock_config.from_settings.return_value.endpoint = "https://issuer.example"
             mock_jwk = MagicMock()
             mock_jwk.did = "did:jwk:test"
             mock_jwk_fn.return_value = mock_jwk

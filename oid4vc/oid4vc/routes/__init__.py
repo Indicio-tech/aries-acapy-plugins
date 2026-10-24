@@ -65,10 +65,12 @@ from .vp_presentation import (
 )
 from .vp_request import (
     create_oid4vp_request,
+    create_x509_identity_csr,
     delete_x509_identity,
     get_x509_identity,
     list_oid4vp_requests,
     register_x509_identity,
+    rollback_x509_identity,
 )
 
 # Public API for backward compatibility
@@ -102,6 +104,8 @@ __all__ = [
     "register_x509_identity",
     "get_x509_identity",
     "delete_x509_identity",
+    "create_x509_identity_csr",
+    "rollback_x509_identity",
     # DCQL
     "create_dcql_query",
     "list_dcql_queries",
@@ -178,6 +182,8 @@ async def register(app: web.Application):
             web.post("/oid4vp/x509-identity", register_x509_identity),
             web.get("/oid4vp/x509-identity", get_x509_identity, allow_head=False),
             web.delete("/oid4vp/x509-identity", delete_x509_identity),
+            web.post("/oid4vp/x509-identity/csr", create_x509_identity_csr),
+            web.post("/oid4vp/x509-identity/rollback", rollback_x509_identity),
             web.post("/oid4vp/presentation-definition", create_oid4vp_pres_def),
             web.get("/oid4vp/presentation-definitions", list_oid4vp_pres_defs),
             web.get(
