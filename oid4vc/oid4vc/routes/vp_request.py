@@ -1,8 +1,9 @@
 """OID4VP request routes for admin API."""
 
 import json
+import logging
 import re
-from typing import List, Optional
+from typing import List
 from urllib.parse import quote
 
 from acapy_agent.admin.request_context import AdminRequestContext
@@ -19,6 +20,7 @@ from aiohttp_apispec import (
 )
 from marshmallow import ValidationError, fields
 
+from ..client_name import normalize_client_name
 from ..config import Config
 from ..did_utils import retrieve_or_create_did_jwk
 from ..models.presentation import (
@@ -29,6 +31,8 @@ from ..models.request import (
     OID4VPRequest,
     OID4VPRequestSchema,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 class CreateOID4VPReqResponseSchema(OpenAPISchema):
@@ -54,53 +58,19 @@ class CreateOID4VPReqResponseSchema(OpenAPISchema):
     )
 
 
-CLIENT_NAME_MAX_LENGTH = 80
-# Control characters, zero-width and bidi format characters, line and
-# paragraph separators, the byte order mark and lone surrogates: any of these
-# can hide or reorder what the holder sees, so they are refused anywhere in
-# the value, before trimming.
-CLIENT_NAME_REFUSED_CHARS = re.compile(
-    r"[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u2029"
-    r"\u202a-\u202e\u2066-\u2069\ufeff\ud800-\udfff]"
-)
+class ClientNameField(fields.Str):
+    """client_name, checked and trimmed when the request body is loaded.
 
-
-def normalize_client_name(value) -> str:
-    """Return the trimmed client_name, or raise ValueError if it is not valid.
-
-    A valid client_name is a string with no control characters (U+0000-001F,
-    U+007F-009F), format characters (U+061C, U+200B-200F, U+202A-202E,
-    U+2066-2069, U+FEFF), line or paragraph separators (U+2028-2029) or lone
-    surrogates, and 1 to 80 characters after trimming.
+    The admin server's request validation loads the body with this field, so a
+    refused value is answered with 422 and the handler gets the trimmed value.
     """
-    if not isinstance(value, str):
-        raise ValueError("client_name must be a string")
-    if CLIENT_NAME_REFUSED_CHARS.search(value):
-        raise ValueError(
-            "client_name must not contain control, format or separator characters"
-            " or lone surrogates"
-        )
-    value = value.strip()
-    if not 1 <= len(value) <= CLIENT_NAME_MAX_LENGTH:
-        raise ValueError(f"client_name must be 1 to {CLIENT_NAME_MAX_LENGTH} characters")
-    return value
 
-
-def _validate_client_name(value):
-    try:
-        normalize_client_name(value)
-    except ValueError as err:
-        raise ValidationError(str(err)) from err
-
-
-def _client_name_from_body(body: dict) -> Optional[str]:
-    """Return the request's client_name, or None when it is not set."""
-    if "client_name" not in body:
-        return None
-    try:
-        return normalize_client_name(body["client_name"])
-    except ValueError as err:
-        raise web.HTTPBadRequest(reason=str(err)) from err
+    def _deserialize(self, value, attr, data, **kwargs):
+        value = super()._deserialize(value, attr, data, **kwargs)
+        try:
+            return normalize_client_name(value)
+        except ValueError as err:
+            raise ValidationError(str(err)) from err
 
 
 class CreateOID4VPReqRequestSchema(OpenAPISchema):
@@ -127,16 +97,19 @@ class CreateOID4VPReqRequestSchema(OpenAPISchema):
         },
     )
 
-    client_name = fields.Str(
+    client_name = ClientNameField(
         required=False,
-        validate=_validate_client_name,
         metadata={
             "description": (
-                "Verifier name shown to the holder; not verified. Sent in the"
-                " request's client_metadata. Trimmed; 1 to 80 characters."
-                " Control characters, format characters (U+061C, U+200B-200F,"
-                " U+202A-202E, U+2066-2069, U+FEFF), line and paragraph"
-                " separators (U+2028-2029) and lone surrogates are refused."
+                "Verifier name shown to the holder in the request's"
+                " client_metadata (RFC 7591 client_name). Self-asserted by the"
+                " verifier tenant: not bound to client_id or to any"
+                " certificate. Trimmed; 1 to 80 code points. Refused with 422:"
+                " null, a non-string, and any character in Unicode categories"
+                " Cc, Cf, Cs, Co, Cn, Zl or Zp, a variation selector"
+                " (U+FE00-FE0F, U+E0100-E01EF), U+034F, the Hangul fillers"
+                " U+115F, U+1160, U+3164 and U+FFA0, or U+2800. Omit the field"
+                " to send no name."
             ),
             "example": "Example Clinic",
         },
@@ -154,7 +127,9 @@ async def create_oid4vp_request(request: web.Request):
 
     context: AdminRequestContext = request["context"]
     body = await request.json()
-    client_name = _client_name_from_body(body)
+    # Checked and trimmed by ClientNameField when the admin server validated
+    # the body; absent when the request has no client_name.
+    client_name = request["data"].get("client_name")
 
     async with context.session() as session:
         # Get the DID:JWK that will be used as fallback client_id
@@ -220,6 +195,13 @@ async def create_oid4vp_request(request: web.Request):
     # single-wallet-askar mode), just read it directly.
     wallet_id = context.profile.settings.get("wallet.id")
     subpath = f"/tenant/{wallet_id}" if wallet_id else ""
+    if client_name is not None:
+        LOGGER.info(
+            "OID4VP request %s for wallet %s carries self-asserted client_name %r",
+            req_record._id,
+            wallet_id,
+            client_name,
+        )
     # Use OID4VP_ENDPOINT when available (may differ from OID4VCI endpoint,
     # e.g.served via a separate TLS-terminating proxy for conformance tests).
     oid4vp_base = config.oid4vp_endpoint or config.endpoint

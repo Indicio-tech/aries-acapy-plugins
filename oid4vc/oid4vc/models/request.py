@@ -96,7 +96,10 @@ class OID4VPRequestSchema(BaseRecordSchema):
     client_name = fields.Str(
         required=False,
         metadata={
-            "description": "Verifier name shown to the holder; not verified",
+            "description": (
+                "Verifier name shown to the holder; self-asserted by the"
+                " verifier, not bound to client_id or to any certificate"
+            ),
             "example": "Example Clinic",
         },
     )

@@ -24,6 +24,7 @@ from aiohttp_apispec import (
 )
 from marshmallow import fields
 
+from oid4vc.client_name import normalize_client_name
 from oid4vc.dcql import DCQLQueryEvaluator
 from oid4vc.jwt import jwt_sign
 from oid4vc.models.dcql_query import DCQLQuery
@@ -98,9 +99,14 @@ def _build_client_metadata(
     }
     if include_final_format_name:
         metadata["vp_formats_supported"] = vp_formats
-    # RFC 7591 client_name: asserted by the verifier, not verified.
-    if client_name:
-        metadata["client_name"] = client_name
+    # RFC 7591 client_name: self-asserted by the verifier, not verified. The
+    # stored value was checked on create; checked again here in case the
+    # record was written another way.
+    if client_name is not None:
+        try:
+            metadata["client_name"] = normalize_client_name(client_name)
+        except ValueError:
+            LOGGER.warning("Stored client_name refused; request sent without it")
     return metadata
 
 
