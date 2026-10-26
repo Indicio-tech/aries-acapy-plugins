@@ -86,3 +86,122 @@ async def test_dcql_verify(profile: Profile):
         )
 
         assert verified.verified
+
+
+failure_query = {
+    "credentials": [
+        {
+            "id": "mdoc_cred",
+            "format": "mso_mdoc",
+            "meta": {"doctype_value": "org.example.doc.1"},
+            "claims": [{"path": ["org.example.doc.1", "given_name"]}],
+        }
+    ]
+}
+
+STATUS_ERROR = "Credential is revoked or suspended (status_list idx=44444, status=1)"
+
+
+async def verify_with_results(
+    profile: Profile, pres_result: VerifyResult, cred_result: VerifyResult
+):
+    mock_cred_processors = mock.MagicMock(CredProcessors)
+
+    mock_pres_verifier = mock.MagicMock()
+    mock_pres_verifier.verify_presentation = mock.AsyncMock(return_value=pres_result)
+    mock_cred_processors.pres_verifier_for_format = mock.MagicMock(
+        return_value=mock_pres_verifier
+    )
+
+    mock_cred_verifier = mock.MagicMock()
+    mock_cred_verifier.verify_credential = mock.AsyncMock(return_value=cred_result)
+    mock_cred_processors.cred_verifier_for_format = mock.MagicMock(
+        return_value=mock_cred_verifier
+    )
+
+    profile.context.injector.bind_instance(CredProcessors, mock_cred_processors)
+
+    evaluator = DCQLQueryEvaluator.compile(failure_query)
+    return await evaluator.verify(
+        profile=profile,
+        vp_token={"mdoc_cred": "blah"},
+        presentation_record=mock.MagicMock(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_dcql_presentation_failure_keeps_verifier_error(profile: Profile):
+    verified = await verify_with_results(
+        profile,
+        VerifyResult(False, {"error": STATUS_ERROR, "docType": "org.example.doc.1"}),
+        VerifyResult(True, {}),
+    )
+
+    assert not verified.verified
+    assert verified.details == (
+        "Presentation for mdoc_cred failed verification: Credential is revoked "
+        "or suspended (status_list idx=44444, status=1)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_dcql_presentation_failure_without_error_is_bare(profile: Profile):
+    verified = await verify_with_results(
+        profile,
+        VerifyResult(False, {"docType": "org.example.doc.1"}),
+        VerifyResult(True, {}),
+    )
+
+    assert not verified.verified
+    assert verified.details == "Presentation for mdoc_cred failed verification"
+
+
+@pytest.mark.asyncio
+async def test_dcql_presentation_failure_non_dict_payload_is_bare(profile: Profile):
+    verified = await verify_with_results(
+        profile,
+        VerifyResult(False, "not a dict"),
+        VerifyResult(True, {}),
+    )
+
+    assert not verified.verified
+    assert verified.details == "Presentation for mdoc_cred failed verification"
+
+
+@pytest.mark.asyncio
+async def test_dcql_credential_failure_keeps_verifier_error(profile: Profile):
+    verified = await verify_with_results(
+        profile,
+        VerifyResult(True, {"docType": "org.example.doc.1"}),
+        VerifyResult(False, {"error": STATUS_ERROR, "docType": "org.example.doc.1"}),
+    )
+
+    assert not verified.verified
+    assert verified.details == (
+        "Credential for mdoc_cred failed verification: Credential is revoked "
+        "or suspended (status_list idx=44444, status=1)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_dcql_credential_failure_without_error_is_bare(profile: Profile):
+    verified = await verify_with_results(
+        profile,
+        VerifyResult(True, {"docType": "org.example.doc.1"}),
+        VerifyResult(False, {"docType": "org.example.doc.1"}),
+    )
+
+    assert not verified.verified
+    assert verified.details == "Credential for mdoc_cred failed verification"
+
+
+@pytest.mark.asyncio
+async def test_dcql_credential_failure_non_dict_payload_is_bare(profile: Profile):
+    verified = await verify_with_results(
+        profile,
+        VerifyResult(True, {"docType": "org.example.doc.1"}),
+        VerifyResult(False, "not a dict"),
+    )
+
+    assert not verified.verified
+    assert verified.details == "Credential for mdoc_cred failed verification"
