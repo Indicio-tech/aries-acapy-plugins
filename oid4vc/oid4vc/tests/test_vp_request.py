@@ -1,4 +1,8 @@
-"""Tests for Diff-2: wallet.id used without gating on multitenant.enabled."""
+"""Tests for OID4VP request create.
+
+Diff-2: wallet.id used without gating on multitenant.enabled.
+Optional client_name: checked, trimmed and stored on the request record.
+"""
 
 import json
 from typing import cast
@@ -8,7 +12,11 @@ import pytest
 from acapy_agent.storage.error import StorageNotFoundError
 from aiohttp import web
 
-from oid4vc.routes.vp_request import create_oid4vp_request
+from oid4vc.models.request import OID4VPRequest
+from oid4vc.routes.vp_request import (
+    CreateOID4VPReqRequestSchema,
+    create_oid4vp_request,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -211,3 +219,197 @@ class TestWalletIdWithoutMultitenantEnabled:
             "Old guard always returned None in single-wallet-askar mode because "
             "multitenant.enabled is absent from sub-wallet profile settings."
         )
+
+
+def _patch_create_route(context, monkeypatch):
+    """Patch the create route's collaborators; return the OID4VPRequest mock."""
+    mock_jwk = MagicMock()
+    mock_jwk.did = "did:jwk:abc123"
+
+    mock_req = MagicMock()
+    mock_req._id = "req-id-003"
+    mock_req.serialize = MagicMock(return_value={"request_id": "req-id-003"})
+    mock_req.save = AsyncMock()
+
+    mock_pres = MagicMock()
+    mock_pres.serialize = MagicMock(return_value={"pres_id": "pres-id-003"})
+    mock_pres.save = AsyncMock()
+
+    request_cls = MagicMock(return_value=mock_req)
+    monkeypatch.setattr(
+        "oid4vc.routes.vp_request.retrieve_or_create_did_jwk",
+        AsyncMock(return_value=mock_jwk),
+    )
+    monkeypatch.setattr("oid4vc.routes.vp_request.OID4VPRequest", request_cls)
+    monkeypatch.setattr(
+        "oid4vc.routes.vp_request.OID4VPPresentation",
+        MagicMock(return_value=mock_pres),
+    )
+
+    session = _make_mock_session(storage_raises=True)
+    monkeypatch.setattr(context, "session", MagicMock(return_value=session))
+
+    mock_config = MagicMock()
+    mock_config.endpoint = "http://localhost:8020"
+    mock_config.oid4vp_endpoint = None
+    monkeypatch.setattr(
+        "oid4vc.routes.vp_request.Config.from_settings",
+        MagicMock(return_value=mock_config),
+    )
+    return request_cls
+
+
+VP_FORMATS = {"jwt_vp_json": {"alg": ["ES256"]}}
+
+# Values refused for a control, format or separator character or a lone
+# surrogate, wherever it appears (leading and trailing ones are not trimmed
+# away).
+REFUSED_CHARACTER_VALUES = [
+    "Example\nClinic",
+    "Example\tClinic",
+    "Example\x00Clinic",
+    "Example Clinic\x1f",
+    "\x1cExample Clinic",
+    "Example\x7fClinic",
+    "Example Clinic\x85",
+    "Example\x9fClinic",
+    "Example\u061cClinic",
+    "Example\u200bClinic",
+    "Example\u200fClinic",
+    "Example\u2028Clinic",
+    "Example Clinic\u2029",
+    "Example\u202aClinic",
+    "Example\u202eClinic",
+    "Example\u2066Clinic",
+    "Example\u2069Clinic",
+    "\ufeffExample Clinic",
+    "Example\ud800Clinic",
+    "Example Clinic\udfff",
+    json.loads('"Example\\udc00Clinic"'),
+]
+
+
+class TestClientName:
+    """Optional client_name on request create."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("id_field", ["pres_def_id", "dcql_query_id"])
+    async def test_client_name_stored_trimmed(
+        self, context, vp_request_factory, monkeypatch, id_field
+    ):
+        request_cls = _patch_create_route(context, monkeypatch)
+        body = {
+            id_field: "id-001",
+            "vp_formats": VP_FORMATS,
+            "client_name": "  Example Clinic  ",
+        }
+
+        response = await create_oid4vp_request(
+            cast(web.Request, vp_request_factory(body))
+        )
+
+        assert response.status == 200
+        request_cls.assert_called_once_with(
+            **{id_field: "id-001"},
+            vp_formats=VP_FORMATS,
+            client_name="Example Clinic",
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("id_field", ["pres_def_id", "dcql_query_id"])
+    async def test_without_client_name(
+        self, context, vp_request_factory, monkeypatch, id_field
+    ):
+        request_cls = _patch_create_route(context, monkeypatch)
+        body = {id_field: "id-001", "vp_formats": VP_FORMATS}
+
+        response = await create_oid4vp_request(
+            cast(web.Request, vp_request_factory(body))
+        )
+
+        assert response.status == 200
+        request_cls.assert_called_once_with(
+            **{id_field: "id-001"}, vp_formats=VP_FORMATS, client_name=None
+        )
+
+    @pytest.mark.asyncio
+    async def test_client_name_at_max_length(
+        self, context, vp_request_factory, monkeypatch
+    ):
+        request_cls = _patch_create_route(context, monkeypatch)
+        name = "é" * 80
+        body = {"pres_def_id": "id-001", "vp_formats": VP_FORMATS, "client_name": name}
+
+        await create_oid4vp_request(cast(web.Request, vp_request_factory(body)))
+
+        assert request_cls.call_args.kwargs["client_name"] == name
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "client_name",
+        [
+            "",
+            "   ",
+            "x" * 81,
+            *REFUSED_CHARACTER_VALUES,
+            None,
+            42,
+            ["Example Clinic"],
+        ],
+    )
+    async def test_client_name_refused(
+        self, context, vp_request_factory, monkeypatch, client_name
+    ):
+        request_cls = _patch_create_route(context, monkeypatch)
+        body = {
+            "pres_def_id": "id-001",
+            "vp_formats": VP_FORMATS,
+            "client_name": client_name,
+        }
+
+        with pytest.raises(web.HTTPBadRequest):
+            await create_oid4vp_request(cast(web.Request, vp_request_factory(body)))
+        request_cls.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "client_name, valid",
+        [
+            ("Example Clinic", True),
+            (" Example Clinic ", True),
+            ("x" * 80, True),
+            ("", False),
+            ("x" * 81, False),
+            ("\u00a0Example Clinic\u3000", True),
+            ("\U0001f3e5 Example Clinic", True),
+            *((value, False) for value in REFUSED_CHARACTER_VALUES),
+            (None, False),
+        ],
+    )
+    def test_schema_validates_client_name(self, client_name, valid):
+        errors = CreateOID4VPReqRequestSchema().validate(
+            {
+                "pres_def_id": "id-001",
+                "vp_formats": VP_FORMATS,
+                "client_name": client_name,
+            }
+        )
+        assert ("client_name" not in errors) is valid
+
+    def test_schema_client_name_optional(self):
+        errors = CreateOID4VPReqRequestSchema().validate(
+            {"pres_def_id": "id-001", "vp_formats": VP_FORMATS}
+        )
+        assert errors == {}
+
+    def test_record_value_holds_client_name_only_when_set(self):
+        with_name = OID4VPRequest(
+            pres_def_id="id-001", vp_formats=VP_FORMATS, client_name="Example Clinic"
+        )
+        without_name = OID4VPRequest(pres_def_id="id-001", vp_formats=VP_FORMATS)
+
+        assert with_name.record_value["client_name"] == "Example Clinic"
+        assert without_name.record_value == {
+            "vp_formats": VP_FORMATS,
+            "pres_def_id": "id-001",
+        }
+        assert "client_name" not in without_name.serialize()

@@ -21,7 +21,7 @@ from oid4vc.public_routes import (
     openid_configuration,
     receive_notification,
 )
-from oid4vc.public_routes.verification import _build_client_metadata
+from oid4vc.public_routes.verification import _build_client_metadata, get_request
 
 
 @pytest.fixture
@@ -49,6 +49,90 @@ def test_client_metadata_supports_final_and_legacy_format_names():
     assert final_metadata["vp_formats_supported"] == vp_formats
     assert legacy_metadata["vp_formats"] == vp_formats
     assert "vp_formats_supported" not in legacy_metadata
+
+
+@pytest.mark.parametrize("include_final_format_name", [True, False])
+def test_client_metadata_client_name_only_when_set(include_final_format_name):
+    """client_name is added when set; without it the metadata is as before."""
+    vp_formats = {"mso_mdoc": {"alg": ["ES256"]}}
+    expected = {
+        "vp_formats": vp_formats,
+        "authorization_signed_response_alg": "ES256",
+    }
+    if include_final_format_name:
+        expected["vp_formats_supported"] = vp_formats
+
+    without_name = _build_client_metadata(
+        vp_formats, include_final_format_name=include_final_format_name
+    )
+    none_name = _build_client_metadata(
+        vp_formats,
+        include_final_format_name=include_final_format_name,
+        client_name=None,
+    )
+    with_name = _build_client_metadata(
+        vp_formats,
+        include_final_format_name=include_final_format_name,
+        client_name="Example Clinic",
+    )
+
+    assert json.dumps(without_name) == json.dumps(expected)
+    assert json.dumps(none_name) == json.dumps(expected)
+    assert with_name == {**expected, "client_name": "Example Clinic"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("client_name", ["Example Clinic", None])
+async def test_get_request_client_metadata_client_name(
+    monkeypatch, context: AdminRequestContext, client_name
+):
+    """The signed request object carries client_name only when the record has it."""
+    vp_formats = {"mso_mdoc": {"alg": ["ES256"]}}
+    record = MagicMock(
+        pres_def_id=None,
+        dcql_query_id="dcql-001",
+        vp_formats=vp_formats,
+        client_name=client_name,
+    )
+    record.delete_record = AsyncMock()
+    pres = MagicMock(presentation_id="pres-001")
+    pres.save = AsyncMock()
+    dcql_query = MagicMock(record_value={"credentials": []})
+    jwk = MagicMock(did="did:jwk:abc123")
+    jwt_sign = AsyncMock(return_value="signed-token")
+
+    module = "oid4vc.public_routes.verification"
+    monkeypatch.setattr(
+        f"{module}.OID4VPRequest.retrieve_by_id", AsyncMock(return_value=record)
+    )
+    monkeypatch.setattr(
+        f"{module}.OID4VPPresentation.retrieve_by_request_id",
+        AsyncMock(return_value=pres),
+    )
+    monkeypatch.setattr(
+        f"{module}.DCQLQuery.retrieve_by_id", AsyncMock(return_value=dcql_query)
+    )
+    monkeypatch.setattr(
+        f"{module}.retrieve_or_create_did_jwk", AsyncMock(return_value=jwk)
+    )
+    monkeypatch.setattr(f"{module}._get_x509_identity", AsyncMock(return_value=None))
+    monkeypatch.setattr(f"{module}.jwt_sign", jwt_sign)
+
+    request = MagicMock()
+    request.__getitem__ = lambda _, k: {"context": context}[k]
+    request.match_info = {"request_id": "req-001"}
+
+    response = await get_request(cast(web.Request, request))
+
+    assert response.text == "signed-token"
+    client_metadata = jwt_sign.call_args.kwargs["payload"]["client_metadata"]
+    expected = {
+        "vp_formats": vp_formats,
+        "authorization_signed_response_alg": "ES256",
+    }
+    if client_name:
+        expected["client_name"] = client_name
+    assert json.dumps(client_metadata) == json.dumps(expected)
 
 
 @pytest.mark.asyncio
