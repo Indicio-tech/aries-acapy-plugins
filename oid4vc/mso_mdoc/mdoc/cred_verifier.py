@@ -155,11 +155,12 @@ class MsoMdocCredVerifier(CredVerifier):
                     parse_error = str(e)
 
             if not mdoc:
+                # The parser's text stays in the log only.
                 if parse_error:
-                    error_msg = f"Invalid credential format: {parse_error}"
-                else:
-                    error_msg = "Invalid credential format"
-                return VerifyResult(verified=False, payload={"error": error_msg})
+                    LOGGER.warning("Invalid mdoc credential format: %s", parse_error)
+                return VerifyResult(
+                    verified=False, payload={"error": "Invalid credential format"}
+                )
 
             # Flatten any concatenated PEM chains into individual cert PEMs.
             trust_anchors = (
@@ -236,7 +237,7 @@ class MsoMdocCredVerifier(CredVerifier):
                 return VerifyResult(
                     verified=False,
                     payload={
-                        "error": str(e),
+                        "error": "Issuer signature verification failed",
                         "doctype": mdoc.doctype(),
                         "id": str(mdoc.id()),
                     },
@@ -244,4 +245,6 @@ class MsoMdocCredVerifier(CredVerifier):
 
         except Exception as e:
             LOGGER.error("Failed to parse mdoc credential: %s", e)
-            return VerifyResult(verified=False, payload={"error": str(e)})
+            return VerifyResult(
+                verified=False, payload={"error": "Credential could not be verified"}
+            )

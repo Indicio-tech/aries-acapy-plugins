@@ -221,7 +221,9 @@ class TestMsoMdocPresVerifier:
             assert "Issuer auth failed" in result.payload["error"]
 
     @pytest.mark.asyncio
-    async def test_verify_presentation_exception(self, verifier, mock_presentation):
+    async def test_verify_presentation_exception(
+        self, verifier, mock_presentation, caplog
+    ):
         """Test exception handling during verification."""
         profile, mock_session = create_mock_profile_with_session()
         presentation_data = "mock_presentation_data"
@@ -246,5 +248,7 @@ class TestMsoMdocPresVerifier:
                 profile, presentation_data, mock_presentation
             )
 
+            # A fixed message; the exception text is in the log only.
             assert result.verified is False
-            assert "Native error" in str(result.payload["error"])
+            assert result.payload == {"error": "Presentation could not be verified"}
+            assert "Native error" in caplog.text
