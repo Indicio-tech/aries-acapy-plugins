@@ -43,6 +43,9 @@ from .constants import NONCE_BYTES
 
 LOGGER = logging.getLogger(__name__)
 
+# Stored in record.errors when presentation processing fails unexpectedly.
+PROCESSING_ERROR = "Processing error: the presentation could not be processed"
+
 
 class OID4VPRequestIDMatchSchema(OpenAPISchema):
     """Path parameters and validators for request taking request id."""
@@ -435,7 +438,10 @@ async def post_response(request: web.Request):
             error_msg,
         )
         record.state = OID4VPPresentation.PRESENTATION_INVALID
-        record.errors = [f"Processing error: {error_msg}"]
+        # A fixed message: the exception text can come from parsing holder
+        # data, and record.errors reaches the admin API and webhooks. The
+        # detail is in the log above.
+        record.errors = [PROCESSING_ERROR]
         record.verified = False
         record.matched_credentials = {}
         async with context.session() as session:
