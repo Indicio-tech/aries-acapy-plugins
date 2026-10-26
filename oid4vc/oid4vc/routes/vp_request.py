@@ -1,6 +1,7 @@
 """OID4VP request routes for admin API."""
 
 import json
+import logging
 import re
 from typing import List
 from urllib.parse import quote
@@ -17,8 +18,9 @@ from aiohttp_apispec import (
     request_schema,
     response_schema,
 )
-from marshmallow import fields
+from marshmallow import ValidationError, fields
 
+from ..client_name import normalize_client_name
 from ..config import Config
 from ..did_utils import retrieve_or_create_did_jwk
 from ..models.presentation import (
@@ -29,6 +31,8 @@ from ..models.request import (
     OID4VPRequest,
     OID4VPRequestSchema,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 class CreateOID4VPReqResponseSchema(OpenAPISchema):
@@ -52,6 +56,21 @@ class CreateOID4VPReqResponseSchema(OpenAPISchema):
         required=True,
         metadata={"descripton": "The created presentation"},
     )
+
+
+class ClientNameField(fields.Str):
+    """client_name, checked and trimmed when the request body is loaded.
+
+    The admin server's request validation loads the body with this field, so a
+    refused value is answered with 422 and the handler gets the trimmed value.
+    """
+
+    def _deserialize(self, value, attr, data, **kwargs):
+        value = super()._deserialize(value, attr, data, **kwargs)
+        try:
+            return normalize_client_name(value)
+        except ValueError as err:
+            raise ValidationError(str(err)) from err
 
 
 class CreateOID4VPReqRequestSchema(OpenAPISchema):
@@ -78,6 +97,24 @@ class CreateOID4VPReqRequestSchema(OpenAPISchema):
         },
     )
 
+    client_name = ClientNameField(
+        required=False,
+        metadata={
+            "description": (
+                "Verifier name shown to the holder in the request's"
+                " client_metadata (RFC 7591 client_name). Self-asserted by the"
+                " verifier tenant: not bound to client_id or to any"
+                " certificate. Trimmed; 1 to 80 code points. Refused with 422:"
+                " null, a non-string, and any character in Unicode categories"
+                " Cc, Cf, Cs, Co, Cn, Zl or Zp, a variation selector"
+                " (U+FE00-FE0F, U+E0100-E01EF), U+034F, the Hangul fillers"
+                " U+115F, U+1160, U+3164 and U+FFA0, or U+2800. Omit the field"
+                " to send no name."
+            ),
+            "example": "Example Clinic",
+        },
+    )
+
 
 @docs(
     tags=["oid4vp"],
@@ -90,6 +127,9 @@ async def create_oid4vp_request(request: web.Request):
 
     context: AdminRequestContext = request["context"]
     body = await request.json()
+    # Checked and trimmed by ClientNameField when the admin server validated
+    # the body; absent when the request has no client_name.
+    client_name = request["data"].get("client_name")
 
     async with context.session() as session:
         # Get the DID:JWK that will be used as fallback client_id
@@ -115,7 +155,9 @@ async def create_oid4vp_request(request: web.Request):
 
         if pres_def_id := body.get("pres_def_id"):
             req_record = OID4VPRequest(
-                pres_def_id=pres_def_id, vp_formats=body["vp_formats"]
+                pres_def_id=pres_def_id,
+                vp_formats=body["vp_formats"],
+                client_name=client_name,
             )
             await req_record.save(session=session)
 
@@ -129,7 +171,9 @@ async def create_oid4vp_request(request: web.Request):
 
         elif dcql_query_id := body.get("dcql_query_id"):
             req_record = OID4VPRequest(
-                dcql_query_id=dcql_query_id, vp_formats=body["vp_formats"]
+                dcql_query_id=dcql_query_id,
+                vp_formats=body["vp_formats"],
+                client_name=client_name,
             )
             await req_record.save(session=session)
 
@@ -151,6 +195,13 @@ async def create_oid4vp_request(request: web.Request):
     # single-wallet-askar mode), just read it directly.
     wallet_id = context.profile.settings.get("wallet.id")
     subpath = f"/tenant/{wallet_id}" if wallet_id else ""
+    if client_name is not None:
+        LOGGER.info(
+            "OID4VP request %s for wallet %s carries self-asserted client_name %r",
+            req_record._id,
+            wallet_id,
+            client_name,
+        )
     # Use OID4VP_ENDPOINT when available (may differ from OID4VCI endpoint,
     # e.g.served via a separate TLS-terminating proxy for conformance tests).
     oid4vp_base = config.oid4vp_endpoint or config.endpoint

@@ -24,6 +24,7 @@ from aiohttp_apispec import (
 )
 from marshmallow import fields
 
+from oid4vc.client_name import normalize_client_name
 from oid4vc.dcql import DCQLQueryEvaluator
 from oid4vc.jwt import jwt_sign
 from oid4vc.models.dcql_query import DCQLQuery
@@ -86,7 +87,10 @@ async def _get_x509_identity(session: ProfileSession) -> Optional[Dict[str, Any]
 
 
 def _build_client_metadata(
-    vp_formats: Dict[str, Any], *, include_final_format_name: bool
+    vp_formats: Dict[str, Any],
+    *,
+    include_final_format_name: bool,
+    client_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build client metadata for the selected OID4VP interoperability mode."""
     metadata = {
@@ -95,6 +99,14 @@ def _build_client_metadata(
     }
     if include_final_format_name:
         metadata["vp_formats_supported"] = vp_formats
+    # RFC 7591 client_name: self-asserted by the verifier, not verified. The
+    # stored value was checked on create; checked again here in case the
+    # record was written another way.
+    if client_name is not None:
+        try:
+            metadata["client_name"] = normalize_client_name(client_name)
+        except ValueError:
+            LOGGER.warning("Stored client_name refused; request sent without it")
     return metadata
 
 
@@ -192,6 +204,7 @@ async def get_request(request: web.Request):
             # The final-spec OIDF flow uses x509_san_dns. Current Credo
             # did:jwk holders still infer a pre-final version from vp_formats.
             include_final_format_name=x509_id is not None,
+            client_name=record.client_name,
         ),
         "vp_formats": record.vp_formats,
         "response_type": "vp_token",

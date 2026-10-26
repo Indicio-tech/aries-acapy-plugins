@@ -26,6 +26,7 @@ class OID4VPRequest(BaseRecord):
         pres_def_id: Optional[str] = None,
         dcql_query_id: Optional[str] = None,
         vp_formats: Dict[str, Any],
+        client_name: Optional[str] = None,
         **kwargs,
     ) -> None:
         """Initialize a OID4VPRequest instance."""
@@ -35,6 +36,7 @@ class OID4VPRequest(BaseRecord):
         self.pres_def_id = pres_def_id
         self.dcql_query_id = dcql_query_id
         self.vp_formats = vp_formats
+        self.client_name = client_name
 
     @property
     def request_id(self) -> str:
@@ -50,6 +52,8 @@ class OID4VPRequest(BaseRecord):
             result["pres_def_id"] = self.pres_def_id
         if self.dcql_query_id is not None:
             result["dcql_query_id"] = self.dcql_query_id
+        if self.client_name is not None:
+            result["client_name"] = self.client_name
         return result
 
 
@@ -86,5 +90,16 @@ class OID4VPRequestSchema(BaseRecordSchema):
         required=True,
         metadata={
             "description": "Expected presentation formats from the holder",
+        },
+    )
+
+    client_name = fields.Str(
+        required=False,
+        metadata={
+            "description": (
+                "Verifier name shown to the holder; self-asserted by the"
+                " verifier, not bound to client_id or to any certificate"
+            ),
+            "example": "Example Clinic",
         },
     )

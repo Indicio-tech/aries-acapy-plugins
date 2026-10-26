@@ -8,7 +8,10 @@ import pytest
 from acapy_agent.storage.error import StorageNotFoundError
 from aiohttp import web
 
-from oid4vc.routes.vp_request import create_oid4vp_request
+from oid4vc.routes.vp_request import (
+    CreateOID4VPReqRequestSchema,
+    create_oid4vp_request,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -33,6 +36,9 @@ def vp_request_factory(context):
         def __getitem__(self, key):
             if key == "context":
                 return context
+            if key == "data":
+                # What the admin server's request validation stores.
+                return CreateOID4VPReqRequestSchema().load(self._body)
             raise KeyError(key)
 
     return DummyRequest
