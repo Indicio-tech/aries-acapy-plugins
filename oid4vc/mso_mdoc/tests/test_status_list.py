@@ -10,6 +10,7 @@ need neither a status list server nor a wallet.
 """
 
 import base64
+import logging
 import time
 import zlib
 from types import SimpleNamespace
@@ -378,8 +379,10 @@ async def test_wrong_typ_fails_closed(monkeypatch, profile):
         profile, {"status_list": {"idx": 0, "uri": URI}}
     )
 
-    assert result is not None
-    assert "expected 'statuslist+jwt'" in result
+    # A fixed message: the fetched token's header is not echoed.
+    assert result == (
+        "Could not verify credential status: status list token has an unexpected typ"
+    )
 
 
 @pytest.mark.asyncio
@@ -448,3 +451,94 @@ async def test_token_without_status_list_claim_fails_closed(monkeypatch, profile
 
     assert result is not None
     assert "no 'status_list' claim" in result
+
+
+# ---------------------------------------------------------------------------
+# Public messages: fixed text; the detail is in the log only
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_revoked_message_wording_is_unchanged(monkeypatch, profile):
+    """Consumers match the start of this message, so its wording is kept."""
+    _patch_fetch(monkeypatch)
+    _patch_verify(monkeypatch, payload=_payload(revoked_indices=[3]))
+
+    result = await check_status_list_claim(
+        profile, {"status_list": {"idx": 3, "uri": URI}}
+    )
+
+    assert result == "Credential is revoked or suspended (status_list idx=3, status=1)"
+    assert result.startswith("Credential is revoked or suspended")
+
+
+@pytest.mark.asyncio
+async def test_fetch_failure_message_does_not_name_the_host(monkeypatch, profile, caplog):
+    """The URI comes from the credential, so the fetch error is not echoed."""
+    _patch_fetch(
+        monkeypatch,
+        error=aiohttp.ClientConnectionError(
+            "Cannot connect to host 10.0.0.5:22 ssl:default"
+        ),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        result = await check_status_list_claim(
+            profile, {"status_list": {"idx": 0, "uri": URI}}
+        )
+
+    assert result == (
+        "Could not verify credential status: status list could not be fetched"
+    )
+    assert "10.0.0.5" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_unverifiable_token_message_is_fixed(monkeypatch, profile, caplog):
+    _patch_fetch(monkeypatch)
+    _patch_verify(monkeypatch, raises=ValueError("bad segment at offset 7"))
+
+    with caplog.at_level(logging.WARNING):
+        result = await check_status_list_claim(
+            profile, {"status_list": {"idx": 0, "uri": URI}}
+        )
+
+    assert result == "Could not verify credential status: invalid status list token"
+    assert "offset 7" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_undecodable_bitstring_message_is_fixed(monkeypatch, profile, caplog):
+    payload = _payload()
+    payload["status_list"] = {"bits": 1, "lst": "AAAA"}
+    _patch_fetch(monkeypatch)
+    _patch_verify(monkeypatch, payload=payload)
+
+    with caplog.at_level(logging.WARNING):
+        result = await check_status_list_claim(
+            profile, {"status_list": {"idx": 0, "uri": URI}}
+        )
+
+    assert result == (
+        "Could not verify credential status: failed to decode status list bitstring"
+    )
+    assert "Failed to decode status list bitstring" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_subject_mismatch_message_does_not_echo_the_token(
+    monkeypatch, profile, caplog
+):
+    _patch_fetch(monkeypatch)
+    _patch_verify(monkeypatch, payload=_payload(sub="http://10.0.0.5:8080/status"))
+
+    with caplog.at_level(logging.WARNING):
+        result = await check_status_list_claim(
+            profile, {"status_list": {"idx": 0, "uri": URI}}
+        )
+
+    assert result == (
+        "Could not verify credential status: status list token subject does not "
+        "match the status list URI"
+    )
+    assert "10.0.0.5" in caplog.text

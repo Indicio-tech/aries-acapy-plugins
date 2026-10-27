@@ -351,6 +351,9 @@ class MsoMdocPresVerifier(PresVerifier):
 
             return VerifyResult(verified=True, payload=payload)
 
-        except Exception as e:
+        except Exception:
+            # The exception text stays in the log only.
             LOGGER.exception("Error verifying mdoc presentation")
-            return VerifyResult(verified=False, payload={"error": str(e)})
+            return VerifyResult(
+                verified=False, payload={"error": "Presentation could not be verified"}
+            )

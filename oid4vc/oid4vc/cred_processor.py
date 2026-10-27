@@ -15,7 +15,14 @@ from .pop_result import PopResult
 
 @dataclass
 class VerifyResult:
-    """Result of verification."""
+    """Result of verification.
+
+    On failure, payload may be a dict with an "error" value: a short message a
+    verifier may see (it is kept in the presentation record's errors). It must
+    not carry exception text from parsing holder or issuer data; log that
+    instead. Verifiers that set no "error" (sd_jwt_vc, jwt_vc_json) get the
+    failure line alone, which is intended.
+    """
 
     verified: bool
     payload: Any

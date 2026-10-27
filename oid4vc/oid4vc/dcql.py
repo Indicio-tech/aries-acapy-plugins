@@ -1,6 +1,7 @@
 """Digital Credentials Query Language evaluator."""
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -106,6 +107,50 @@ class ClaimsPathPointer:
         return selected
 
 
+# The verifier error text kept in a failure line is cut to this many characters.
+VERIFIER_ERROR_MAX_LENGTH = 300
+_CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def _verifier_error_text(error: Any) -> Optional[str]:
+    """Return a verifier's error as one short line, or None if it gave none.
+
+    A list is joined with "; " and any other non-string is stringified.
+    Control characters become spaces, and the text is cut to
+    VERIFIER_ERROR_MAX_LENGTH characters.
+    """
+    if error is None:
+        return None
+    if isinstance(error, (list, tuple)):
+        text = "; ".join(str(item) for item in error if item not in (None, ""))
+    elif isinstance(error, str):
+        text = error
+    elif isinstance(error, dict) and not error:
+        return None
+    else:
+        text = str(error)
+    text = _CONTROL_CHARACTERS.sub(" ", text).strip()
+    if not text:
+        return None
+    if len(text) > VERIFIER_ERROR_MAX_LENGTH:
+        text = text[: VERIFIER_ERROR_MAX_LENGTH - 3] + "..."
+    return text
+
+
+def _with_verifier_error(line: str, payload: Any) -> str:
+    """Append the verifier's error text to a failure line, if it gave one.
+
+    Only the payload's "error" value is used. The rest of a failure payload
+    (issuer_auth, device_auth, claims) is never copied into the line, which
+    ends up in the presentation record's errors.
+    """
+    if isinstance(payload, dict):
+        error = _verifier_error_text(payload.get("error"))
+        if error:
+            return f"{line}: {error}"
+    return line
+
+
 @dataclass
 class DCQLVerifyResult:
     """Result of verification."""
@@ -172,7 +217,10 @@ class DCQLQueryEvaluator:
         if not vp_result.verified:
             return (
                 False,
-                f"Presentation for {cred.credential_query_id} failed verification",
+                _with_verifier_error(
+                    f"Presentation for {cred.credential_query_id} failed verification",
+                    vp_result.payload,
+                ),
                 None,
             )
 
@@ -185,7 +233,10 @@ class DCQLQueryEvaluator:
         if not vc_result.verified:
             return (
                 False,
-                f"Credential for {cred.credential_query_id} failed verification",
+                _with_verifier_error(
+                    f"Credential for {cred.credential_query_id} failed verification",
+                    vc_result.payload,
+                ),
                 None,
             )
 
@@ -435,6 +486,8 @@ class DCQLQueryEvaluator:
         processors = profile.inject(CredProcessors)
         id_to_claim: Dict[str, dict] = {}
         verified_cred_ids: Set[str] = set()
+        # Why each credential failed, kept for the credential_sets message
+        failures: List[str] = []
 
         # First, verify all credentials that are present in the vp_token
         for cred in self.query.credentials:
@@ -457,10 +510,12 @@ class DCQLQueryEvaluator:
             if not success:
                 # If credential_sets are defined, this might be optional
                 if self.query.credential_set:
-                    LOGGER.debug(
-                        f"Credential {cred.credential_query_id} failed: {error_msg}, "
-                        "but credential_sets defined - continuing"
+                    LOGGER.info(
+                        "Credential %s failed: %s; credential_sets defined, continuing",
+                        cred.credential_query_id,
+                        error_msg,
                     )
+                    failures.append(error_msg)
                     continue
                 # No credential_sets - all credentials are required
                 return DCQLVerifyResult(details=error_msg)
@@ -474,6 +529,9 @@ class DCQLQueryEvaluator:
         )
 
         if not sets_success:
+            # Keep the verifier's reasons, which the set message alone would lose.
+            if failures:
+                sets_error = f"{sets_error}. Failed: {'; '.join(failures)}"
             return DCQLVerifyResult(details=sets_error)
 
         return DCQLVerifyResult(

@@ -230,15 +230,17 @@ async def _check_single_status_list(profile: Profile, status_entry: Any) -> Opti
                 resp.raise_for_status()
                 jwt_text = await resp.text()
     except Exception as exc:
+        # The URI comes from the credential; the reason stays in the log only,
+        # so the error text cannot be used to probe hosts and ports.
         LOGGER.warning("Could not fetch status list from %r: %s", uri, exc)
-        return f"Could not verify credential status: {exc}"
+        return "Could not verify credential status: status list could not be fetched"
 
     # Verify the token's signature before trusting anything inside it
     try:
         result = await jwt_verify(profile, jwt_text)
     except Exception as exc:
         LOGGER.warning("Could not verify status list token from %r: %s", uri, exc)
-        return f"Could not verify credential status: invalid status list token: {exc}"
+        return "Could not verify credential status: invalid status list token"
 
     if not result.verified:
         LOGGER.warning("Status list token from %r failed signature verification", uri)
@@ -269,8 +271,7 @@ async def _check_single_status_list(profile: Profile, status_entry: Any) -> Opti
     except Exception as exc:
         LOGGER.warning("Failed to decode status list bitstring from %r: %s", uri, exc)
         return (
-            "Could not verify credential status: failed to decode status list "
-            f"bitstring: {exc}"
+            "Could not verify credential status: failed to decode status list bitstring"
         )
 
     # Extract the status value for credential at position *idx*.
@@ -320,8 +321,7 @@ def _check_status_list_token_claims(headers, payload, uri: str) -> Optional[str]
             STATUS_LIST_TYP,
         )
         return (
-            f"Could not verify credential status: status list token has typ "
-            f"{typ!r}, expected {STATUS_LIST_TYP!r}"
+            "Could not verify credential status: status list token has an unexpected typ"
         )
 
     subject = payload.get("sub")
@@ -333,7 +333,7 @@ def _check_status_list_token_claims(headers, payload, uri: str) -> Optional[str]
         )
         return (
             "Could not verify credential status: status list token subject "
-            f"{subject!r} does not match {uri!r}"
+            "does not match the status list URI"
         )
 
     now = int(time.time())

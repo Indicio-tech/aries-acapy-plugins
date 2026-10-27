@@ -124,7 +124,7 @@ class TestMsoMdocVerifierSignature:
             assert result.verified is False
             assert "Signature verification failed" in result.payload["error"]
 
-    async def test_verify_credential_fails_on_verification_error(self):
+    async def test_verify_credential_fails_on_verification_error(self, caplog):
         """Test that verification fails if verify_issuer_signature raises an error.
 
         A trust store with at least one anchor must be configured so that the
@@ -168,10 +168,12 @@ class TestMsoMdocVerifierSignature:
             result = await verifier.verify_credential(profile, hex_credential)
 
             # Verification should fail
+            # A fixed message; the library's text is in the log only.
             assert result.verified is False
-            assert "X5Chain" in result.payload["error"]
+            assert result.payload["error"] == "Issuer signature verification failed"
+            assert "X5Chain header missing" in caplog.text
 
-    async def test_verify_credential_fails_on_structural_error(self):
+    async def test_verify_credential_fails_on_structural_error(self, caplog):
         """Test that verification fails if parsing fails (structural error)."""
         verifier = MsoMdocCredVerifier()
         profile = MagicMock()
@@ -194,5 +196,7 @@ class TestMsoMdocVerifierSignature:
 
             result = await verifier.verify_credential(profile, hex_credential)
 
+            # A fixed message; the parser's text is in the log only.
             assert result.verified is False
-            assert "CBOR error" in result.payload["error"]
+            assert result.payload == {"error": "Invalid credential format"}
+            assert "CBOR error" in caplog.text

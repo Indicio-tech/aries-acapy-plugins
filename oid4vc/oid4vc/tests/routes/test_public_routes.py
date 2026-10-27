@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -21,7 +22,7 @@ from oid4vc.public_routes import (
     openid_configuration,
     receive_notification,
 )
-from oid4vc.public_routes.verification import _build_client_metadata
+from oid4vc.public_routes.verification import _build_client_metadata, post_response
 
 
 @pytest.fixture
@@ -448,3 +449,37 @@ async def test_openid_configuration_advertises_es256_dpop_only(req):
 
     metadata = mock_json_response.call_args.args[0]
     assert metadata["dpop_signing_alg_values_supported"] == ["ES256"]
+
+
+@pytest.mark.asyncio
+async def test_post_response_processing_error_is_fixed(
+    monkeypatch, context: AdminRequestContext, caplog
+):
+    """An exception that escapes the verifiers is stored as a fixed message;
+    its text, which can come from parsing holder data, is only logged."""
+    module = "oid4vc.public_routes.verification"
+    record = MagicMock(pres_def_id=None, dcql_query_id="dcql-001")
+    record.save = AsyncMock()
+    monkeypatch.setattr(
+        f"{module}.OID4VPPresentation.retrieve_by_id", AsyncMock(return_value=record)
+    )
+    monkeypatch.setattr(
+        f"{module}.verify_dcql_presentation",
+        AsyncMock(side_effect=ValueError("CBOR decode failed at byte 7 of holder data")),
+    )
+
+    request = MagicMock()
+    request.__getitem__ = lambda _, k: {"context": context}[k]
+    request.match_info = {"presentation_id": "pres-001"}
+    request.post = AsyncMock(
+        return_value={"vp_token": json.dumps({"q": "x"}), "state": "pres-001"}
+    )
+
+    with caplog.at_level(logging.ERROR):
+        response = await post_response(cast(web.Request, request))
+
+    assert response.status == 200
+    assert record.errors == ["Processing error: the presentation could not be processed"]
+    assert record.verified is False
+    record.save.assert_awaited()
+    assert "byte 7 of holder data" in caplog.text
