@@ -311,6 +311,7 @@ class TestInvalidStatusKeepsClaims:
         result = await self._verify(verifier, "VALID", device)
 
         assert result.verified is False
+        assert result.invalid_status is True
         assert result.payload == {
             "status": "invalid_status",
             "docType": "org.iso.18013.5.1.mDL",
@@ -327,6 +328,7 @@ class TestInvalidStatusKeepsClaims:
         result = await self._verify(verifier, "VALID", "INVALID")
 
         assert result.verified is False
+        assert result.invalid_status is False
         assert result.payload == {
             "error": STATUS_ERROR,
             "docType": "org.iso.18013.5.1.mDL",
@@ -346,6 +348,7 @@ class TestInvalidStatusKeepsClaims:
         result = await self._verify(verifier, "VALID", "VALID", status_error=status_error)
 
         assert result.verified is False
+        assert result.invalid_status is False
         assert result.payload == {
             "error": status_error,
             "docType": "org.iso.18013.5.1.mDL",
@@ -357,6 +360,7 @@ class TestInvalidStatusKeepsClaims:
         result = await self._verify(verifier, "INVALID", "VALID")
 
         assert result.verified is False
+        assert result.invalid_status is False
         assert "status" not in result.payload
 
     @pytest.mark.asyncio

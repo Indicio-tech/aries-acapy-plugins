@@ -334,6 +334,9 @@ class MsoMdocPresVerifier(PresVerifier):
                             }
                             payload.update(claims)
                             payload["error"] = revocation_error
+                            return VerifyResult(
+                                verified=False, payload=payload, invalid_status=True
+                            )
                         return VerifyResult(verified=False, payload=payload)
 
                     payload = {

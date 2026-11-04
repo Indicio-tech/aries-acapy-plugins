@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from acapy_agent.core.profile import Profile
 
-from oid4vc.cred_processor import INVALID_STATUS, CredProcessors
+from oid4vc.cred_processor import CredProcessors, VerifyResult
 from oid4vc.models.dcql_query import ClaimsQuery, CredentialQuery, DCQLQuery
 from oid4vc.models.presentation import OID4VPPresentation
 
@@ -191,9 +191,9 @@ class DCQLQueryEvaluator:
         Returns:
             Tuple of (success, error_message, payload). The payload is the
             verified claims on success. On failure it is None, except for a
-            credential with an invalid status that otherwise matches the
-            query: then it is that credential's claims (see
-            _invalid_status_claims).
+            presentation the mso_mdoc verifier marked invalid_status that
+            otherwise matches the query: then it is that credential's claims
+            (see _invalid_status_claims).
         """
         pres_list = vp_token.get(cred.credential_query_id)
         if not pres_list:
@@ -225,7 +225,7 @@ class DCQLQueryEvaluator:
                     f"Presentation for {cred.credential_query_id} failed verification",
                     vp_result.payload,
                 ),
-                await self._invalid_status_claims(processors, cred, vp_result.payload),
+                await self._invalid_status_claims(processors, cred, vp_result),
             )
 
         cred_verifier = processors.cred_verifier_for_format(cred.format)
@@ -241,7 +241,7 @@ class DCQLQueryEvaluator:
                     f"Credential for {cred.credential_query_id} failed verification",
                     vc_result.payload,
                 ),
-                await self._invalid_status_claims(processors, cred, vc_result.payload),
+                None,
             )
 
         # Credential type validation (doctype for mDOC, vct for SD-JWT, etc.)
@@ -264,17 +264,19 @@ class DCQLQueryEvaluator:
         self,
         processors: CredProcessors,
         cred: CredentialQuery,
-        payload: Any,
+        vp_result: VerifyResult,
     ) -> Optional[dict]:
-        """Return the claims of a failed credential that has an invalid status.
+        """Return the claims of a failed presentation that has an invalid status.
 
-        Kept only when the verifier marked the payload INVALID_STATUS (the
-        credential was authentic; its status list entry is revoked or
-        suspended) and the credential otherwise matches the query: its type
-        and its claims. Every other failure returns None, so the record keeps
-        no claims.
+        Kept only when the presentation verifier set invalid_status (only the
+        mso_mdoc verifier does: the credential was authentic and its status
+        list entry is revoked or suspended) and the credential otherwise
+        matches the query: its type and its claims. The payload's content
+        alone is never enough. Every other failure returns None, so the record
+        keeps no claims.
         """
-        if not isinstance(payload, dict) or payload.get("status") != INVALID_STATUS:
+        payload = vp_result.payload
+        if not vp_result.invalid_status or not isinstance(payload, dict):
             return None
         cred_verifier = processors.cred_verifier_for_format(cred.format)
         if not self._validate_credential_type(cred_verifier, cred, payload)[0]:

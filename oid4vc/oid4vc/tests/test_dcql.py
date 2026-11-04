@@ -341,7 +341,9 @@ INVALID_STATUS_PAYLOAD = {
 @pytest.mark.asyncio
 async def test_invalid_status_keeps_claims_and_still_fails(profile: Profile):
     result, cred_verifier = await _verify_with_results(
-        profile, VerifyResult(False, INVALID_STATUS_PAYLOAD), VerifyResult(True, {})
+        profile,
+        VerifyResult(False, INVALID_STATUS_PAYLOAD, invalid_status=True),
+        VerifyResult(True, {}),
     )
 
     assert not result.verified
@@ -354,43 +356,57 @@ async def test_invalid_status_keeps_claims_and_still_fails(profile: Profile):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "payload",
+    ("payload", "invalid_status"),
     [
-        # wrong doctype
-        {**INVALID_STATUS_PAYLOAD, "docType": "org.example.other.1"},
-        # the query's claim is missing
-        {
-            key: value
-            for key, value in INVALID_STATUS_PAYLOAD.items()
-            if key != "org.example.doc.1"
-        },
+        # marked invalid_status, but a wrong doctype
+        ({**INVALID_STATUS_PAYLOAD, "docType": "org.example.other.1"}, True),
+        # marked invalid_status, but the query's claim is missing
+        (
+            {
+                key: value
+                for key, value in INVALID_STATUS_PAYLOAD.items()
+                if key != "org.example.doc.1"
+            },
+            True,
+        ),
         # an untrusted issuer: the mdoc verifier's failure payload, with no status
-        {
-            "error": "IssuerAuthentication: invalid",
-            "issuer_auth": "AuthenticationStatus.INVALID",
-            "device_auth": "AuthenticationStatus.VALID",
-            "claims": {"org.example.doc.1": {"given_name": "Example"}},
-        },
+        (
+            {
+                "error": "IssuerAuthentication: invalid",
+                "issuer_auth": "AuthenticationStatus.INVALID",
+                "device_auth": "AuthenticationStatus.VALID",
+                "claims": {"org.example.doc.1": {"given_name": "Example"}},
+            },
+            False,
+        ),
         # a refused device signature: error and docType only
-        {"error": STATUS_ERROR, "docType": "org.example.doc.1"},
+        ({"error": STATUS_ERROR, "docType": "org.example.doc.1"}, False),
         # a status that could not be verified: fetch failure, bad signature
-        {
-            "error": "Could not verify credential status: status list could "
-            "not be fetched",
-            "docType": "org.example.doc.1",
-        },
-        {
-            "error": "Could not verify credential status: status list token "
-            "signature verification failed",
-            "docType": "org.example.doc.1",
-        },
-        # a status other than invalid_status
-        {**INVALID_STATUS_PAYLOAD, "status": "verified"},
+        (
+            {
+                "error": "Could not verify credential status: status list could "
+                "not be fetched",
+                "docType": "org.example.doc.1",
+            },
+            False,
+        ),
+        (
+            {
+                "error": "Could not verify credential status: status list token "
+                "signature verification failed",
+                "docType": "org.example.doc.1",
+            },
+            False,
+        ),
+        # the payload says invalid_status, but the verifier did not set the flag
+        (dict(INVALID_STATUS_PAYLOAD), False),
     ],
 )
-async def test_other_failures_keep_no_claims(profile: Profile, payload):
+async def test_other_failures_keep_no_claims(profile: Profile, payload, invalid_status):
     result, _ = await _verify_with_results(
-        profile, VerifyResult(False, payload), VerifyResult(True, {})
+        profile,
+        VerifyResult(False, payload, invalid_status=invalid_status),
+        VerifyResult(True, {}),
     )
 
     assert not result.verified
@@ -416,7 +432,7 @@ async def test_invalid_status_under_credential_sets(profile: Profile, required):
         profile,
         {
             "pres-first": VerifyResult(True, {"id": "first"}),
-            "pres-second": VerifyResult(False, second),
+            "pres-second": VerifyResult(False, second, invalid_status=True),
         },
         {"first": VerifyResult(True, {"id": "first"})},
         query=query,
@@ -429,3 +445,45 @@ async def test_invalid_status_under_credential_sets(profile: Profile, required):
     else:
         assert result.verified
         assert result.cred_query_id_to_claims == {"first": {"id": "first"}}
+
+
+jwt_query = {
+    "credentials": [
+        {
+            "id": "jwt_cred",
+            "format": "jwt_vc_json",
+            "claims": [{"path": ["org.example.doc.1", "given_name"]}],
+        }
+    ]
+}
+
+
+@pytest.mark.asyncio
+async def test_payload_alone_never_keeps_claims_from_another_format(profile: Profile):
+    """A failure from another format whose payload carries "status":
+    "invalid_status" and matching claims keeps {} at the presentation stage."""
+    result, _ = await _verify_with_results(
+        profile,
+        VerifyResult(False, dict(INVALID_STATUS_PAYLOAD)),
+        VerifyResult(True, {}),
+        query=jwt_query,
+        vp_token={"jwt_cred": "blah"},
+    )
+
+    assert not result.verified
+    assert result.cred_query_id_to_claims == {}
+
+
+@pytest.mark.asyncio
+async def test_credential_stage_never_keeps_claims(profile: Profile):
+    """At the credential stage claims are never kept, even with the flag set."""
+    result, _ = await _verify_with_results(
+        profile,
+        VerifyResult(True, {"id": "jwt_cred"}),
+        VerifyResult(False, dict(INVALID_STATUS_PAYLOAD), invalid_status=True),
+        query=jwt_query,
+        vp_token={"jwt_cred": "blah"},
+    )
+
+    assert not result.verified
+    assert result.cred_query_id_to_claims == {}
