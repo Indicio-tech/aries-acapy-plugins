@@ -13,6 +13,11 @@ from .models.supported_cred import SupportedCredential
 from .pop_result import PopResult
 
 
+# Payload status, for consumers, of a failed mso_mdoc result whose credential
+# was authentic but has a revoked or suspended status list entry.
+INVALID_STATUS = "invalid_status"
+
+
 @dataclass
 class VerifyResult:
     """Result of verification.
@@ -22,10 +27,19 @@ class VerifyResult:
     not carry exception text from parsing holder or issuer data; log that
     instead. Verifiers that set no "error" (sd_jwt_vc, jwt_vc_json) get the
     failure line alone, which is intended.
+
+    invalid_status is set only by the mso_mdoc presentation verifier, on a
+    failure whose credential was authentic (issuer signature valid, device
+    signature not refused) but whose status list entry is revoked or
+    suspended. Its payload then also carries the disclosed claims, in the same
+    form as a verified payload, with "status" INVALID_STATUS for consumers.
+    DCQL keeps those claims on the record because of the flag, never because
+    of the payload's content.
     """
 
     verified: bool
     payload: Any
+    invalid_status: bool = False
 
 
 class Issuer(Protocol):

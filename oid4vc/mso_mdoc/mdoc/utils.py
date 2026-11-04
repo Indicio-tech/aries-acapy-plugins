@@ -16,6 +16,11 @@ LOGGER = logging.getLogger(__name__)
 # Media type a status list token must declare (IETF Token Status List, sec. 5.1).
 STATUS_LIST_TYP = "statuslist+jwt"
 
+# The start of the status check message for a credential whose status list
+# entry marks it revoked or suspended. Every other message from the check
+# means the status could not be verified. Consumers match this prefix.
+REVOKED_OR_SUSPENDED = "Credential is revoked or suspended"
+
 # Clock-skew allowance, in seconds, when checking `exp` and `nbf`.
 CLOCK_SKEW_SECONDS = 60
 
@@ -297,12 +302,18 @@ async def _check_single_status_list(profile: Profile, status_entry: Any) -> Opti
     status_value = (raw_bytes[byte_idx] >> bit_in_byte) & mask
 
     if status_value != 0:
-        return (
-            f"Credential is revoked or suspended "
-            f"(status_list idx={idx}, status={status_value})"
-        )
+        return f"{REVOKED_OR_SUSPENDED} (status_list idx={idx}, status={status_value})"
 
     return None  # Bit is 0 -> credential is valid
+
+
+# Tells a revoked or suspended credential from a status that could not be checked.
+def is_revoked_or_suspended(message: Optional[str]) -> bool:
+    """Return True if a status check message reports a revoked or suspended credential.
+
+    False for a status that could not be verified, and for no message.
+    """
+    return isinstance(message, str) and message.startswith(REVOKED_OR_SUSPENDED)
 
 
 # Validates a verified status list token's type header, subject and validity window.
