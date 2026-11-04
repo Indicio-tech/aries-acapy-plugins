@@ -373,6 +373,17 @@ async def test_invalid_status_keeps_claims_and_still_fails(profile: Profile):
         },
         # a refused device signature: error and docType only
         {"error": STATUS_ERROR, "docType": "org.example.doc.1"},
+        # a status that could not be verified: fetch failure, bad signature
+        {
+            "error": "Could not verify credential status: status list could "
+            "not be fetched",
+            "docType": "org.example.doc.1",
+        },
+        {
+            "error": "Could not verify credential status: status list token "
+            "signature verification failed",
+            "docType": "org.example.doc.1",
+        },
         # a status other than invalid_status
         {**INVALID_STATUS_PAYLOAD, "status": "verified"},
     ],

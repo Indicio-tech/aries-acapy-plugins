@@ -13,7 +13,11 @@ from oid4vc.cred_processor import INVALID_STATUS, PresVerifier, VerifyResult
 from oid4vc.did_utils import retrieve_or_create_did_jwk
 from oid4vc.models.presentation import OID4VPPresentation
 
-from .utils import check_status_list_claim, flatten_trust_anchors
+from .utils import (
+    check_status_list_claim,
+    flatten_trust_anchors,
+    is_revoked_or_suspended,
+)
 from .cred_verifier import PreverifiedMdocClaims
 from .mdoc_item import (
     _decode_presentation_bytes,
@@ -310,13 +314,16 @@ class MsoMdocPresVerifier(PresVerifier):
                             "error": revocation_error,
                             "docType": verified_data.doc_type,
                         }
-                        # The issuer signature checked out and the device
-                        # signature was not refused, so the disclosed claims are
-                        # authentic: keep them with the failure, so a verifier
-                        # can show who presented an invalid-status credential.
-                        # The presentation still fails.
+                        # The status list marks the credential revoked or
+                        # suspended, the issuer signature checked out and the
+                        # device signature was not refused, so the disclosed
+                        # claims are authentic: keep them with the failure, so a
+                        # verifier can show who presented it. A status that could
+                        # not be verified keeps no claims. The presentation
+                        # still fails.
                         if (
-                            verified_data.device_authentication
+                            is_revoked_or_suspended(revocation_error)
+                            and verified_data.device_authentication
                             != isomdl_uniffi.AuthenticationStatus.INVALID
                         ):
                             payload = {

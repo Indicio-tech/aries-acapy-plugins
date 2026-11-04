@@ -333,6 +333,25 @@ class TestInvalidStatusKeepsClaims:
         }
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "status_error",
+        [
+            "Could not verify credential status: status list could not be fetched",
+            "Could not verify credential status: status list token signature "
+            "verification failed",
+        ],
+    )
+    async def test_unverifiable_status_keeps_none(self, verifier, status_error):
+        """A status that could not be verified is not an invalid status."""
+        result = await self._verify(verifier, "VALID", "VALID", status_error=status_error)
+
+        assert result.verified is False
+        assert result.payload == {
+            "error": status_error,
+            "docType": "org.iso.18013.5.1.mDL",
+        }
+
+    @pytest.mark.asyncio
     async def test_untrusted_issuer_has_no_invalid_status(self, verifier):
         """An issuer that fails authentication never reaches the status check."""
         result = await self._verify(verifier, "INVALID", "VALID")

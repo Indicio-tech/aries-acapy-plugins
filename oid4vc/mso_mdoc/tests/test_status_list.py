@@ -19,7 +19,12 @@ import aiohttp
 import pytest
 
 from ..mdoc import utils
-from ..mdoc.utils import STATUS_LIST_TYP, check_status_list_claim
+from ..mdoc.utils import (
+    REVOKED_OR_SUSPENDED,
+    STATUS_LIST_TYP,
+    check_status_list_claim,
+    is_revoked_or_suspended,
+)
 
 URI = "https://issuer.example/status/1"
 TOKEN = "header.payload.signature"
@@ -542,3 +547,51 @@ async def test_subject_mismatch_message_does_not_echo_the_token(
         "match the status list URI"
     )
     assert "10.0.0.5" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Revoked or suspended, versus a status that could not be verified
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_revoked_message_is_recognised(monkeypatch, profile):
+    """The helper and the message it matches are pinned together."""
+    _patch_fetch(monkeypatch)
+    _patch_verify(monkeypatch, payload=_payload(revoked_indices=[3]))
+
+    result = await check_status_list_claim(
+        profile, {"status_list": {"idx": 3, "uri": URI}}
+    )
+
+    assert result.startswith(REVOKED_OR_SUSPENDED)
+    assert is_revoked_or_suspended(result)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case",
+    ["fetch failure", "signature failed", "unverifiable token", "malformed claim"],
+)
+async def test_unverifiable_status_is_not_revoked(monkeypatch, profile, case):
+    claim = {"status_list": {"idx": 0, "uri": URI}}
+    if case == "fetch failure":
+        _patch_fetch(monkeypatch, error=aiohttp.ClientConnectionError("down"))
+    elif case == "signature failed":
+        _patch_fetch(monkeypatch)
+        _patch_verify(monkeypatch, verified=False)
+    elif case == "unverifiable token":
+        _patch_fetch(monkeypatch)
+        _patch_verify(monkeypatch, raises=ValueError("bad token"))
+    else:
+        claim = {"status_list": {"idx": 0}}
+
+    result = await check_status_list_claim(profile, claim)
+
+    assert result.startswith("Could not verify credential status")
+    assert not is_revoked_or_suspended(result)
+
+
+def test_no_message_is_not_revoked():
+    assert not is_revoked_or_suspended(None)
+    assert not is_revoked_or_suspended("")
