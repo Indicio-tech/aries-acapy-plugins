@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from acapy_agent.core.profile import Profile
 
-from oid4vc.cred_processor import CredProcessors
+from oid4vc.cred_processor import INVALID_STATUS, CredProcessors
 from oid4vc.models.dcql_query import ClaimsQuery, CredentialQuery, DCQLQuery
 from oid4vc.models.presentation import OID4VPPresentation
 
@@ -189,7 +189,11 @@ class DCQLQueryEvaluator:
         """Verify a single credential from the vp_token.
 
         Returns:
-            Tuple of (success, error_message, verified_payload)
+            Tuple of (success, error_message, payload). The payload is the
+            verified claims on success. On failure it is None, except for a
+            credential with an invalid status that otherwise matches the
+            query: then it is that credential's claims (see
+            _invalid_status_claims).
         """
         pres_list = vp_token.get(cred.credential_query_id)
         if not pres_list:
@@ -221,7 +225,7 @@ class DCQLQueryEvaluator:
                     f"Presentation for {cred.credential_query_id} failed verification",
                     vp_result.payload,
                 ),
-                None,
+                await self._invalid_status_claims(processors, cred, vp_result.payload),
             )
 
         cred_verifier = processors.cred_verifier_for_format(cred.format)
@@ -237,7 +241,7 @@ class DCQLQueryEvaluator:
                     f"Credential for {cred.credential_query_id} failed verification",
                     vc_result.payload,
                 ),
-                None,
+                await self._invalid_status_claims(processors, cred, vc_result.payload),
             )
 
         # Credential type validation (doctype for mDOC, vct for SD-JWT, etc.)
@@ -255,6 +259,29 @@ class DCQLQueryEvaluator:
             return claims_result
 
         return (True, None, vc_result.payload)
+
+    async def _invalid_status_claims(
+        self,
+        processors: CredProcessors,
+        cred: CredentialQuery,
+        payload: Any,
+    ) -> Optional[dict]:
+        """Return the claims of a failed credential that has an invalid status.
+
+        Kept only when the verifier marked the payload INVALID_STATUS (the
+        credential was authentic; its status list entry is revoked or
+        suspended) and the credential otherwise matches the query: its type
+        and its claims. Every other failure returns None, so the record keeps
+        no claims.
+        """
+        if not isinstance(payload, dict) or payload.get("status") != INVALID_STATUS:
+            return None
+        cred_verifier = processors.cred_verifier_for_format(cred.format)
+        if not self._validate_credential_type(cred_verifier, cred, payload)[0]:
+            return None
+        if not (await self._verify_claims(cred, payload))[0]:
+            return None
+        return payload
 
     async def _verify_claims(
         self,
@@ -488,6 +515,8 @@ class DCQLQueryEvaluator:
         verified_cred_ids: Set[str] = set()
         # Why each credential failed, kept for the credential_sets message
         failures: List[str] = []
+        # Claims of failed credentials that have an invalid status
+        invalid_status_claims: Dict[str, dict] = {}
 
         # First, verify all credentials that are present in the vp_token
         for cred in self.query.credentials:
@@ -516,9 +545,17 @@ class DCQLQueryEvaluator:
                         error_msg,
                     )
                     failures.append(error_msg)
+                    if payload is not None:
+                        invalid_status_claims[cred.credential_query_id] = payload
                     continue
-                # No credential_sets - all credentials are required
-                return DCQLVerifyResult(details=error_msg)
+                # No credential_sets - all credentials are required. The record
+                # still fails; it keeps the claims only for an invalid status.
+                return DCQLVerifyResult(
+                    details=error_msg,
+                    cred_query_id_to_claims=(
+                        {cred.credential_query_id: payload} if payload is not None else {}
+                    ),
+                )
 
             verified_cred_ids.add(cred.credential_query_id)
             id_to_claim[cred.credential_query_id] = payload
@@ -532,7 +569,9 @@ class DCQLQueryEvaluator:
             # Keep the verifier's reasons, which the set message alone would lose.
             if failures:
                 sets_error = f"{sets_error}. Failed: {'; '.join(failures)}"
-            return DCQLVerifyResult(details=sets_error)
+            return DCQLVerifyResult(
+                details=sets_error, cred_query_id_to_claims=invalid_status_claims
+            )
 
         return DCQLVerifyResult(
             verified=True,

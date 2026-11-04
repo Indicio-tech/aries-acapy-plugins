@@ -13,6 +13,11 @@ from .models.supported_cred import SupportedCredential
 from .pop_result import PopResult
 
 
+# Payload status of a failed result whose credential was authentic but has a
+# status list entry other than valid (revoked or suspended).
+INVALID_STATUS = "invalid_status"
+
+
 @dataclass
 class VerifyResult:
     """Result of verification.
@@ -22,6 +27,10 @@ class VerifyResult:
     not carry exception text from parsing holder or issuer data; log that
     instead. Verifiers that set no "error" (sd_jwt_vc, jwt_vc_json) get the
     failure line alone, which is intended.
+
+    A failed payload with "status" INVALID_STATUS also carries the disclosed
+    claims, in the same form as a verified payload. It is set only when the
+    credential was authentic and its status list entry is not valid.
     """
 
     verified: bool

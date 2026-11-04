@@ -9,7 +9,7 @@ from acapy_agent.core.profile import Profile
 from cryptography import x509 as _x509
 
 from oid4vc.config import Config
-from oid4vc.cred_processor import PresVerifier, VerifyResult
+from oid4vc.cred_processor import INVALID_STATUS, PresVerifier, VerifyResult
 from oid4vc.did_utils import retrieve_or_create_did_jwk
 from oid4vc.models.presentation import OID4VPPresentation
 
@@ -306,13 +306,28 @@ class MsoMdocPresVerifier(PresVerifier):
                             "mDoc presentation rejected — credential revoked: %s",
                             revocation_error,
                         )
-                        return VerifyResult(
-                            verified=False,
-                            payload={
-                                "error": revocation_error,
+                        payload = {
+                            "error": revocation_error,
+                            "docType": verified_data.doc_type,
+                        }
+                        # The issuer signature checked out and the device
+                        # signature was not refused, so the disclosed claims are
+                        # authentic: keep them with the failure, so a verifier
+                        # can show who presented an invalid-status credential.
+                        # The presentation still fails.
+                        if (
+                            verified_data.device_authentication
+                            != isomdl_uniffi.AuthenticationStatus.INVALID
+                        ):
+                            payload = {
+                                "status": INVALID_STATUS,
                                 "docType": verified_data.doc_type,
-                            },
-                        )
+                                "issuer_auth": str(verified_data.issuer_authentication),
+                                "device_auth": str(verified_data.device_authentication),
+                            }
+                            payload.update(claims)
+                            payload["error"] = revocation_error
+                        return VerifyResult(verified=False, payload=payload)
 
                     payload = {
                         "status": "verified",

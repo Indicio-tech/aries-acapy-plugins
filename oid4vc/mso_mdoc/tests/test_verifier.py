@@ -252,3 +252,97 @@ class TestMsoMdocPresVerifier:
             assert result.verified is False
             assert result.payload == {"error": "Presentation could not be verified"}
             assert "Native error" in caplog.text
+
+
+STATUS_ERROR = "Credential is revoked or suspended (status_list idx=3, status=1)"
+CLAIMS = {"org.iso.18013.5.1": {"given_name": "Example", "family_name": "Person"}}
+
+
+class TestInvalidStatusKeepsClaims:
+    """A credential with an invalid status keeps its authenticated claims."""
+
+    @pytest.fixture
+    def verifier(self):
+        pem_cert = (
+            "-----BEGIN CERTIFICATE-----\nZmFrZWNlcnQ=\n-----END CERTIFICATE-----\n"
+        )
+        return MsoMdocPresVerifier(trust_anchors=[pem_cert])
+
+    async def _verify(self, verifier, issuer, device, status_error=STATUS_ERROR):
+        profile, _ = create_mock_profile_with_session()
+        presentation_record = MagicMock(spec=OID4VPPresentation)
+        presentation_record.nonce = "test_nonce"
+        with (
+            patch("mso_mdoc.mdoc.pres_verifier.isomdl_uniffi") as mock_isomdl,
+            patch("mso_mdoc.mdoc.pres_verifier.Config") as mock_config,
+            patch(
+                "mso_mdoc.mdoc.pres_verifier.retrieve_or_create_did_jwk"
+            ) as mock_did_jwk,
+            patch(
+                "mso_mdoc.mdoc.pres_verifier.extract_verified_claims",
+                return_value=CLAIMS,
+            ),
+            patch(
+                "mso_mdoc.mdoc.pres_verifier.check_status_list_claim",
+                return_value=status_error,
+            ),
+        ):
+            mock_config.from_settings.return_value.endpoint = "http://test-endpoint"
+            mock_did_jwk.return_value = MagicMock(did="did:jwk:test")
+            mock_isomdl.AuthenticationStatus.VALID = "VALID"
+            mock_isomdl.AuthenticationStatus.INVALID = "INVALID"
+            mock_isomdl.AuthenticationStatus.UNCHECKED = "UNCHECKED"
+            response = MagicMock()
+            response.issuer_authentication = issuer
+            response.device_authentication = device
+            response.errors = None
+            response.doc_type = "org.iso.18013.5.1.mDL"
+            response.verified_response = {}
+            mock_isomdl.verify_oid4vp_response.return_value = response
+            # Device auth other than VALID retries the 2023 format: same result.
+            mock_isomdl.verify_oid4vp_response_legacy.return_value = response
+            return await verifier.verify_presentation(
+                profile, "mock_presentation_data", presentation_record
+            )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("device", ["VALID", "UNCHECKED"])
+    async def test_invalid_status_keeps_claims(self, verifier, device):
+        result = await self._verify(verifier, "VALID", device)
+
+        assert result.verified is False
+        assert result.payload == {
+            "status": "invalid_status",
+            "docType": "org.iso.18013.5.1.mDL",
+            "issuer_auth": "VALID",
+            "device_auth": device,
+            "error": STATUS_ERROR,
+            **CLAIMS,
+        }
+
+    @pytest.mark.asyncio
+    async def test_invalid_status_with_refused_device_signature_keeps_none(
+        self, verifier
+    ):
+        result = await self._verify(verifier, "VALID", "INVALID")
+
+        assert result.verified is False
+        assert result.payload == {
+            "error": STATUS_ERROR,
+            "docType": "org.iso.18013.5.1.mDL",
+        }
+
+    @pytest.mark.asyncio
+    async def test_untrusted_issuer_has_no_invalid_status(self, verifier):
+        """An issuer that fails authentication never reaches the status check."""
+        result = await self._verify(verifier, "INVALID", "VALID")
+
+        assert result.verified is False
+        assert "status" not in result.payload
+
+    @pytest.mark.asyncio
+    async def test_valid_status_is_verified(self, verifier):
+        result = await self._verify(verifier, "VALID", "VALID", status_error=None)
+
+        assert result.verified is True
+        assert result.payload.claims["status"] == "verified"
